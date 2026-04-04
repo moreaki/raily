@@ -312,6 +312,10 @@ function normalizeWheelDelta(delta: number, deltaMode: number) {
   return delta;
 }
 
+function snapCoordinate(value: number, step: number) {
+  return Math.round(value / step) * step;
+}
+
 function rotatePoint(point: MapPoint, center: MapPoint, rotation: number) {
   if (rotation === 0) return point;
   const angle = (rotation * Math.PI) / 180;
@@ -900,6 +904,7 @@ export default function RailwayMapEditor() {
   const [viewportCenter, setViewportCenter] = useState({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
   const [sheetViews, setSheetViews] = useState<Record<string, { zoom: number; centerX: number; centerY: number }>>(loadStoredSheetViews);
   const [showGrid, setShowGrid] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(false);
   const [gridStepX, setGridStepX] = useState(20);
   const [gridStepY, setGridStepY] = useState(20);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
@@ -931,6 +936,11 @@ export default function RailwayMapEditor() {
   const mapRef = useRef(map);
   const zoomRef = useRef(zoom);
   const viewBoxRef = useRef({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, centerX: CANVAS_WIDTH / 2, centerY: CANVAS_HEIGHT / 2 });
+  const nodeDragSnapshotRef = useRef<{
+    startPoint: MapPoint;
+    positionsByNodeId: Map<string, MapPoint>;
+    labelOffsetsByStationId: Map<string, MapPoint>;
+  } | null>(null);
   const wheelZoomDeltaRef = useRef(0);
   const wheelZoomFocusRef = useRef<MapPoint | null>(null);
   const wheelZoomFrameRef = useRef<number | null>(null);
@@ -967,6 +977,8 @@ export default function RailwayMapEditor() {
     () => model.segments.filter((segment) => segment.sheetId === currentSheetId),
     [currentSheetId, model.segments],
   );
+  const effectiveGridStepX = Math.max(MIN_GRID_STEP, gridStepX);
+  const effectiveGridStepY = Math.max(MIN_GRID_STEP, gridStepY);
 
   const nodesById = useMemo(() => new Map(currentNodes.map((node) => [node.id, node])), [currentNodes]);
   const segmentsById = useMemo(() => new Map(currentSegments.map((segment) => [segment.id, segment])), [currentSegments]);
@@ -1322,6 +1334,10 @@ export default function RailwayMapEditor() {
         forward: "Down",
         hint: "Lane order for this node runs top to bottom around the node center.",
       };
+  const snapPointToGrid = (point: MapPoint) => ({
+    x: snapCoordinate(point.x, effectiveGridStepX),
+    y: snapCoordinate(point.y, effectiveGridStepY),
+  });
   const viewBoxDimensions = useMemo(() => {
     const width = CANVAS_WIDTH / zoom;
     const height = CANVAS_HEIGHT / zoom;
@@ -1632,6 +1648,7 @@ export default function RailwayMapEditor() {
     if (!currentSheet) return;
     updateMap((current) => {
       const placement = findNearbyFreePoint(current, currentSheet.id, viewportCenter);
+      const snappedPlacement = snapToGrid ? snapPointToGrid(placement) : placement;
       return {
         ...current,
         model: {
@@ -1640,8 +1657,8 @@ export default function RailwayMapEditor() {
             ...current.model.nodes,
             {
               ...createDefaultNodeForSheet(current, currentSheet.id),
-              x: placement.x,
-              y: placement.y,
+              x: snappedPlacement.x,
+              y: snappedPlacement.y,
             },
           ],
         },
@@ -2058,9 +2075,11 @@ export default function RailwayMapEditor() {
 
     const sourcePoints = buildSegmentPoints(source, new Map(model.nodes.map((node) => [node.id, node])));
     if (sourcePoints.length < 2) return;
+    const halfwayPoint = pointOnPathAtHalf(sourcePoints);
+    const snappedHalfwayPoint = snapToGrid ? snapPointToGrid(halfwayPoint) : halfwayPoint;
     const insertedNode = {
       ...createDefaultNodeForSheet(map, source.sheetId),
-      ...pointOnPathAtHalf(sourcePoints),
+      ...snappedHalfwayPoint,
     };
 
     updateMap((current) => {
@@ -2438,6 +2457,29 @@ export default function RailwayMapEditor() {
       const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
       if (point) {
         setDragLastPoint({ x: point.x, y: point.y });
+        const nodeIdsToMove = selectedNodeIdsSet.has(nodeId) ? selectedNodeIds : [nodeId];
+        nodeDragSnapshotRef.current = {
+          startPoint: { x: point.x, y: point.y },
+          positionsByNodeId: new Map(
+            model.nodes
+              .filter((node) => nodeIdsToMove.includes(node.id))
+              .map((node) => [node.id, { x: node.x, y: node.y }]),
+          ),
+          labelOffsetsByStationId: new Map(
+            model.stations
+              .filter((station) => !!station.nodeId && nodeIdsToMove.includes(station.nodeId) && !!station.label)
+              .map((station) => {
+                const node = model.nodes.find((candidate) => candidate.id === station.nodeId)!;
+                return [
+                  station.id,
+                  {
+                    x: station.label!.x - node.x,
+                    y: station.label!.y - node.y,
+                  },
+                ];
+              }),
+          ),
+        };
       }
     }
   }
@@ -2534,6 +2576,7 @@ export default function RailwayMapEditor() {
     setDraggingLabelStationId(null);
     setRotatingLabelState(null);
     setPendingSegmentStart(null);
+    nodeDragSnapshotRef.current = null;
     if (!svgRef.current) return;
     const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
     if (!point) return;
@@ -2656,36 +2699,54 @@ export default function RailwayMapEditor() {
       return;
     }
 
-    if (!draggingNodeId || !dragLastPoint) return;
-    const deltaX = Math.round(svgPoint.x - dragLastPoint.x);
-    const deltaY = Math.round(svgPoint.y - dragLastPoint.y);
-    if (deltaX === 0 && deltaY === 0) return;
+    if (!draggingNodeId) return;
+    const dragSnapshot = nodeDragSnapshotRef.current;
+    if (!dragSnapshot) return;
 
-    const nodeIdsToMove = selectedNodeIdsSet.has(draggingNodeId) ? selectedNodeIdsSet : new Set([draggingNodeId]);
+    const draggedNodeStart = dragSnapshot.positionsByNodeId.get(draggingNodeId);
+    if (!draggedNodeStart) return;
+
+    const rawDeltaX = svgPoint.x - dragSnapshot.startPoint.x;
+    const rawDeltaY = svgPoint.y - dragSnapshot.startPoint.y;
+    let deltaX = Math.round(rawDeltaX);
+    let deltaY = Math.round(rawDeltaY);
+
+    if (snapToGrid) {
+      const snappedTarget = snapPointToGrid({
+        x: draggedNodeStart.x + rawDeltaX,
+        y: draggedNodeStart.y + rawDeltaY,
+      });
+      deltaX = snappedTarget.x - draggedNodeStart.x;
+      deltaY = snappedTarget.y - draggedNodeStart.y;
+    }
+
+    if (deltaX === 0 && deltaY === 0) return;
 
     updateMap((current) => ({
       ...current,
       model: {
         ...current.model,
         nodes: current.model.nodes.map((node) => {
-          const shouldMove = nodeIdsToMove.has(node.id);
-          return shouldMove ? { ...node, x: node.x + deltaX, y: node.y + deltaY } : node;
+          const start = dragSnapshot.positionsByNodeId.get(node.id);
+          return start ? { ...node, x: start.x + deltaX, y: start.y + deltaY } : node;
         }),
         stations: current.model.stations.map((station) => {
-          const shouldMove = !!station.nodeId && nodeIdsToMove.has(station.nodeId);
-          if (!shouldMove || !station.label) return station;
+          if (!station.nodeId || !station.label) return station;
+          if (!dragSnapshot.positionsByNodeId.has(station.nodeId)) return station;
+          const startNode = dragSnapshot.positionsByNodeId.get(station.nodeId);
+          const labelOffset = dragSnapshot.labelOffsetsByStationId.get(station.id);
+          if (!startNode || !labelOffset) return station;
           return {
             ...station,
             label: {
               ...station.label,
-              x: station.label.x + deltaX,
-              y: station.label.y + deltaY,
+              x: startNode.x + deltaX + labelOffset.x,
+              y: startNode.y + deltaY + labelOffset.y,
             },
           };
         }),
       },
     }), { trackHistory: false });
-    setDragLastPoint({ x: svgPoint.x, y: svgPoint.y });
   }
 
   function handleSvgMouseUp() {
@@ -2714,6 +2775,7 @@ export default function RailwayMapEditor() {
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
     setDragLastPoint(null);
+    nodeDragSnapshotRef.current = null;
     setPanning(false);
     setPanStart(null);
   }
@@ -2916,6 +2978,10 @@ export default function RailwayMapEditor() {
                         <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
                         Grid
                       </label>
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapToGrid(event.target.checked)} />
+                        Snap
+                      </label>
                       <Input
                         type="number"
                         value={gridStepX}
@@ -3085,14 +3151,17 @@ export default function RailwayMapEditor() {
                       const labelY = position.y;
                       const labelRotation = position.rotation;
                       const isDragging = draggingLabelStationId === station.id;
+                      const isNodeDragging =
+                        !!draggingNodeId &&
+                        !!station.nodeId &&
+                        !!nodeDragSnapshotRef.current?.positionsByNodeId.has(station.nodeId);
                       const isRotating = rotatingLabelState?.stationId === station.id;
                       const isSelected = selectedStationId === station.id;
                       const diagnostics = labelDiagnostics.get(station.id);
                       const box =
                         diagnostics?.box ??
                         estimateLabelBox(station.name, labelX, labelY, getStationKindFontSize(stationKind), labelRotation);
-                      const shouldShowLeader = isDragging && (diagnostics?.leaderLine ?? false);
-                      const labelAnchorY = labelY - 6;
+                      const shouldShowLeader = (isDragging || isNodeDragging) && (diagnostics?.leaderLine ?? false);
                       const labelCenterX = box.center.x;
                       const labelCenterY = box.center.y;
                       const labelTransform = labelRotation
@@ -3112,8 +3181,8 @@ export default function RailwayMapEditor() {
                             <line
                               x1={node.x}
                               y1={node.y}
-                              x2={Math.max(box.minX, Math.min(node.x, box.maxX))}
-                              y2={Math.max(box.minY, Math.min(labelAnchorY, box.maxY))}
+                              x2={labelCenterX}
+                              y2={labelCenterY}
                               stroke={diagnostics?.colliding ? "#dc2626" : "#94a3b8"}
                               strokeWidth="1.5"
                               strokeDasharray="3 3"
