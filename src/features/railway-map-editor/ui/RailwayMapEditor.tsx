@@ -1,10 +1,11 @@
 import type { MouseEvent, WheelEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Grip, Link2, Plus, Trash2, Upload } from "lucide-react";
-import { INITIAL_MAP, LINE_PRESETS } from "@/entities/railway-map/model/constants";
+import { DEVELOPMENT_BOOTSTRAP_MAP, INITIAL_MAP, LINE_PRESETS } from "@/entities/railway-map/model/constants";
 import { railwayMapSchema } from "@/entities/railway-map/model/schema";
-import type { Line, LineRun, MapNode, RailwayMap, Station, StationKind, StationKindShape } from "@/entities/railway-map/model/types";
+import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape } from "@/entities/railway-map/model/types";
 import {
+  buildSegmentPoints,
   buildLineRunPath,
   buildSegmentPath,
   createDefaultLine,
@@ -31,6 +32,9 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 1.04;
 const WORLD_SIZE = 200000;
+const LABEL_FONT_SIZE = 14;
+const LABEL_PADDING_X = 10;
+const LABEL_PADDING_Y = 8;
 
 function downloadFile(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -98,6 +102,118 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function estimateLabelBox(label: string, x: number, y: number) {
+  const width = Math.max(38, label.length * 7.6);
+  const height = LABEL_FONT_SIZE + 8;
+  return {
+    minX: x - LABEL_PADDING_X / 2,
+    maxX: x + width + LABEL_PADDING_X / 2,
+    minY: y - height + LABEL_PADDING_Y / 2,
+    maxY: y + LABEL_PADDING_Y / 2,
+  };
+}
+
+function boxesOverlap(
+  left: ReturnType<typeof estimateLabelBox>,
+  right: ReturnType<typeof estimateLabelBox>,
+) {
+  return left.minX < right.maxX && left.maxX > right.minX && left.minY < right.maxY && left.maxY > right.minY;
+}
+
+function pointToSegmentDistance(point: MapPoint, start: MapPoint, end: MapPoint) {
+  const deltaX = end.x - start.x;
+  const deltaY = end.y - start.y;
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+
+  const t = clamp(((point.x - start.x) * deltaX + (point.y - start.y) * deltaY) / lengthSquared, 0, 1);
+  const projectedX = start.x + deltaX * t;
+  const projectedY = start.y + deltaY * t;
+  return Math.hypot(point.x - projectedX, point.y - projectedY);
+}
+
+function candidateLabelPositions(node: MapNode) {
+  return [
+    { x: node.x + 14, y: node.y - 12, align: "right" as const },
+    { x: node.x + 14, y: node.y + 22, align: "right" as const },
+    { x: node.x - 78, y: node.y - 12, align: "left" as const },
+    { x: node.x - 78, y: node.y + 22, align: "left" as const },
+    { x: node.x - 18, y: node.y - 22, align: "top" as const },
+    { x: node.x - 18, y: node.y + 34, align: "bottom" as const },
+  ];
+}
+
+function autoPlaceLabels(current: RailwayMap) {
+  const nodesById = new Map(current.nodes.map((node) => [node.id, node]));
+  const segmentsBySheetId = new Map<string, Segment[]>();
+  for (const segment of current.segments) {
+    const existing = segmentsBySheetId.get(segment.sheetId) ?? [];
+    existing.push(segment);
+    segmentsBySheetId.set(segment.sheetId, existing);
+  }
+
+  const resolvedBoxes: Array<{ stationId: string; box: ReturnType<typeof estimateLabelBox> }> = [];
+
+  return current.stations.map((station) => {
+    const node = nodesById.get(station.nodeId);
+    if (!node) return station;
+
+    const sheetSegments = segmentsBySheetId.get(node.sheetId) ?? [];
+    const candidate = candidateLabelPositions(node)
+      .map((position) => {
+        const box = estimateLabelBox(station.name, position.x, position.y);
+        let overlapPenalty = 0;
+        for (const resolved of resolvedBoxes) {
+          if (boxesOverlap(box, resolved.box)) overlapPenalty += 300;
+        }
+
+        let segmentPenalty = 0;
+        for (const segment of sheetSegments) {
+          const points = buildSegmentPoints(segment, nodesById);
+          for (let index = 0; index < points.length - 1; index += 1) {
+            const start = points[index];
+            const end = points[index + 1];
+            const boxCorners = [
+              { x: box.minX, y: box.minY },
+              { x: box.maxX, y: box.minY },
+              { x: box.minX, y: box.maxY },
+              { x: box.maxX, y: box.maxY },
+              { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 },
+            ];
+            const minDistance = Math.min(...boxCorners.map((corner) => pointToSegmentDistance(corner, start, end)));
+            if (minDistance < 8) {
+              segmentPenalty += 500;
+            } else if (minDistance < 18) {
+              segmentPenalty += 120;
+            }
+          }
+        }
+
+        const offsetPenalty = Math.hypot(position.x - node.x, position.y - node.y) * 0.2;
+        return { position, box, score: overlapPenalty + segmentPenalty + offsetPenalty };
+      })
+      .sort((left, right) => left.score - right.score)[0];
+
+    if (!candidate) return station;
+
+    resolvedBoxes.push({ stationId: station.id, box: candidate.box });
+    return {
+      ...station,
+      label: {
+        x: candidate.position.x,
+        y: candidate.position.y,
+        align: candidate.position.align,
+      },
+    };
+  });
+}
+
+function cloneMap(map: RailwayMap) {
+  return JSON.parse(JSON.stringify(map)) as RailwayMap;
+}
+
 function getSheetContentCenter(nodes: MapNode[]) {
   if (nodes.length === 0) {
     return { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
@@ -152,6 +268,7 @@ export default function RailwayMapEditor() {
   const [gridStepX, setGridStepX] = useState(80);
   const [gridStepY, setGridStepY] = useState(80);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [draggingLabelStationId, setDraggingLabelStationId] = useState<string | null>(null);
   const [dragLastPoint, setDragLastPoint] = useState<{ x: number; y: number } | null>(null);
   const [panning, setPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; centerX: number; centerY: number } | null>(null);
@@ -401,6 +518,41 @@ export default function RailwayMapEditor() {
     setSelectedLineId(nextLine.id);
   }
 
+  function bootstrapDevelopmentModel() {
+    const nextMap = cloneMap(DEVELOPMENT_BOOTSTRAP_MAP);
+    setMap(nextMap);
+    setSelectedNodeId(nextMap.nodes[0]?.id ?? "");
+    setSelectedSegmentId(nextMap.segments[0]?.id ?? "");
+    setSelectedLineId(nextMap.lines[0]?.id ?? "");
+    setSelectedStationKindId(nextMap.stationKinds[0]?.id ?? "");
+    setCurrentSheetId(nextMap.sheets[0]?.id ?? "");
+    setSheetViews({
+      "sh-ov": { zoom: 1, centerX: 510, centerY: 260 },
+      "sh-mid": { zoom: 1.1, centerX: 480, centerY: 280 },
+      "sh-urban": { zoom: 1.3, centerX: 420, centerY: 280 },
+      "sh-north": { zoom: 1.15, centerX: 410, centerY: 220 },
+    });
+    setViewportCenter({ x: 510, y: 260 });
+    setZoom(1);
+    setMoveAllNodes(false);
+    setNodeContextMenu(null);
+    setPendingSegmentStartNodeId(null);
+    setErrorMessage("");
+  }
+
+  function autoPlaceCurrentSheetLabels() {
+    if (!currentSheetId) return;
+    updateMap((current) => ({
+      ...current,
+      stations: autoPlaceLabels(current).map((station) => {
+        const node = current.nodes.find((candidate) => candidate.id === station.nodeId);
+        return node?.sheetId === currentSheetId
+          ? station
+          : current.stations.find((candidate) => candidate.id === station.id) ?? station;
+      }),
+    }));
+  }
+
   function updateCurrentSheetName(name: string) {
     if (!currentSheet) return;
 
@@ -643,10 +795,26 @@ export default function RailwayMapEditor() {
     }
   }
 
+  function handleLabelMouseDown(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
+    event.stopPropagation();
+    setNodeContextMenu(null);
+    setSidePanel("edit");
+    setSelectedNodeId(nodeId);
+    setDraggingNodeId(null);
+    setDraggingLabelStationId(stationId);
+    if (svgRef.current) {
+      const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+      if (point) {
+        setDragLastPoint({ x: point.x, y: point.y });
+      }
+    }
+  }
+
   function handleCanvasMouseDown(event: MouseEvent<SVGSVGElement>) {
     if (event.target !== event.currentTarget) return;
     setNodeContextMenu(null);
     setDraggingNodeId(null);
+    setDraggingLabelStationId(null);
     setPendingSegmentStartNodeId(null);
     setPanning(true);
     setPanStart({
@@ -682,6 +850,30 @@ export default function RailwayMapEditor() {
       return;
     }
 
+    if (draggingLabelStationId && dragLastPoint) {
+      const deltaX = Math.round(svgPoint.x - dragLastPoint.x);
+      const deltaY = Math.round(svgPoint.y - dragLastPoint.y);
+      if (deltaX === 0 && deltaY === 0) return;
+
+      updateMap((current) => ({
+        ...current,
+        stations: current.stations.map((station) => {
+          if (station.id !== draggingLabelStationId) return station;
+          const stationNode = current.nodes.find((node) => node.id === station.nodeId);
+          return {
+            ...station,
+            label: {
+              x: (station.label?.x ?? ((stationNode?.x ?? 0) + 12)) + deltaX,
+              y: (station.label?.y ?? ((stationNode?.y ?? 0) - 10)) + deltaY,
+              align: station.label?.align ?? "right",
+            },
+          };
+        }),
+      }));
+      setDragLastPoint({ x: svgPoint.x, y: svgPoint.y });
+      return;
+    }
+
     if (!draggingNodeId || !dragLastPoint) return;
     const deltaX = Math.round(svgPoint.x - dragLastPoint.x);
     const deltaY = Math.round(svgPoint.y - dragLastPoint.y);
@@ -714,6 +906,7 @@ export default function RailwayMapEditor() {
 
   function handleSvgMouseUp() {
     setDraggingNodeId(null);
+    setDraggingLabelStationId(null);
     setDragLastPoint(null);
     setPanning(false);
     setPanStart(null);
@@ -1019,11 +1212,31 @@ export default function RailwayMapEditor() {
                       if (!node) return null;
                       const labelX = station.label?.x ?? node.x + 12;
                       const labelY = station.label?.y ?? node.y - 10;
+                      const isDragging = draggingLabelStationId === station.id;
 
                       return (
-                        <text key={station.id} x={labelX} y={labelY} fontSize="14" fontWeight="600" fill="#111827">
-                          {station.name}
-                        </text>
+                        <g
+                          key={station.id}
+                          onMouseDown={(event) => handleLabelMouseDown(event, station.id, station.nodeId)}
+                          style={{ cursor: "grab" }}
+                        >
+                          {isDragging ? (
+                            <rect
+                              x={estimateLabelBox(station.name, labelX, labelY).minX}
+                              y={estimateLabelBox(station.name, labelX, labelY).minY}
+                              width={estimateLabelBox(station.name, labelX, labelY).maxX - estimateLabelBox(station.name, labelX, labelY).minX}
+                              height={estimateLabelBox(station.name, labelX, labelY).maxY - estimateLabelBox(station.name, labelX, labelY).minY}
+                              rx="6"
+                              fill="white"
+                              fillOpacity="0.85"
+                              stroke="#0f172a"
+                              strokeDasharray="4 3"
+                            />
+                          ) : null}
+                          <text x={labelX} y={labelY} fontSize="14" fontWeight="600" fill="#111827">
+                            {station.name}
+                          </text>
+                        </g>
                       );
                     })}
                   </svg>
@@ -1309,6 +1522,21 @@ export default function RailwayMapEditor() {
                     </>
                   ) : (
                     <>
+                      <section className="space-y-3">
+                        <div className="text-sm font-semibold text-ink">Development Tools</div>
+                        <div className="grid gap-2">
+                          <Button className="w-full" onClick={bootstrapDevelopmentModel}>
+                            Bootstrap Model
+                          </Button>
+                          <Button variant="outline" className="w-full" onClick={autoPlaceCurrentSheetLabels}>
+                            Auto-place labels on this sheet
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted">
+                          Bootstrap seeds the editor with multiple overview/detail sheets, station kinds, line styles, and ready-made runs.
+                        </p>
+                      </section>
+
                       <section className="space-y-3">
                         <div className="text-sm font-semibold text-ink">Station Kinds</div>
                         <div className="flex gap-2">
