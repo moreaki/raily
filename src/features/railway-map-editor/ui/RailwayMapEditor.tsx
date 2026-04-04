@@ -14,6 +14,7 @@ import {
   createDefaultStation,
   createDefaultStationAtNode,
   createLineRunId,
+  createSegmentId,
   createStationKindId,
   createStraightSegmentForSheet,
   lineStrokeDasharray,
@@ -607,6 +608,15 @@ export default function RailwayMapEditor() {
     () => map.lineRuns.find((lineRun) => lineRun.lineId === selectedLineId) ?? null,
     [map.lineRuns, selectedLineId],
   );
+  const assignedSegmentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const lineRun of map.lineRuns) {
+      for (const segmentId of lineRun.segmentIds) {
+        ids.add(segmentId);
+      }
+    }
+    return ids;
+  }, [map.lineRuns]);
   const viewBoxDimensions = useMemo(() => {
     const width = CANVAS_WIDTH / zoom;
     const height = CANVAS_HEIGHT / zoom;
@@ -1822,7 +1832,7 @@ export default function RailwayMapEditor() {
                         key={segment.id}
                         d={buildSegmentPath(segment, nodesById)}
                         fill="none"
-                        stroke={selectedSegmentId === segment.id ? "#94a3b8" : "#dbe4ee"}
+                        stroke={selectedSegmentId === segment.id ? "#94a3b8" : assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee"}
                         strokeWidth={selectedSegmentId === segment.id ? "22" : "18"}
                         strokeLinecap="round"
                         strokeLinejoin="round"
