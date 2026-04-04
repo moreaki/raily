@@ -3,7 +3,6 @@ export interface MapPoint {
   y: number;
 }
 
-export type NodeKind = "station" | "junction" | "waypoint";
 export type LabelAlignment = "left" | "right" | "top" | "bottom";
 export type StationKindShape = "circle" | "interchange" | "terminal";
 export type LineStrokeStyle = "solid" | "dashed" | "dotted";
@@ -22,7 +21,6 @@ export interface StationKind {
 export interface MapNode extends MapPoint {
   id: string;
   sheetId: string;
-  kind: NodeKind;
 }
 
 export interface StationLabel extends MapPoint {

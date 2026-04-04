@@ -37,20 +37,19 @@ export function pathFromPoints(points: MapPoint[]) {
   return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
 }
 
-export function createDefaultNode(map: RailwayMap, kind: MapNode["kind"] = "station"): MapNode {
+export function createDefaultNode(map: RailwayMap): MapNode {
   const sheetId = map.sheets[0]?.id ?? "";
   return {
     id: createNodeId(),
     sheetId,
-    kind,
     x: 160 + (map.nodes.length % 5) * 90,
     y: 520,
   };
 }
 
-export function createDefaultNodeForSheet(map: RailwayMap, sheetId: string, kind: MapNode["kind"] = "station"): MapNode {
+export function createDefaultNodeForSheet(map: RailwayMap, sheetId: string): MapNode {
   return {
-    ...createDefaultNode(map, kind),
+    ...createDefaultNode(map),
     sheetId,
   };
 }

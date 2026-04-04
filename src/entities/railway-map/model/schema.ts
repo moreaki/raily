@@ -13,7 +13,6 @@ const sheetSchema = z.object({
 const nodeSchema = pointSchema.extend({
   id: z.string().min(1),
   sheetId: z.string().min(1),
-  kind: z.enum(["station", "junction", "waypoint"]),
 });
 
 const stationLabelSchema = pointSchema.extend({

@@ -383,7 +383,7 @@ export default function RailwayMapEditor() {
   const [pendingSegmentStartNodeId, setPendingSegmentStartNodeId] = useState<string | null>(null);
   const [jsonText, setJsonText] = useState(JSON.stringify(initialMap, null, 2));
   const [errorMessage, setErrorMessage] = useState("");
-  const [nodeContextMenu, setNodeContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [nodeContextMenu, setNodeContextMenu] = useState<{ nodeIds: string[]; x: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const lastRestoredSheetIdRef = useRef<string | null>(null);
@@ -656,7 +656,7 @@ export default function RailwayMapEditor() {
     if (!currentSheet) return;
     updateMap((current) => {
       const node = {
-        ...createDefaultNodeForSheet(current, currentSheet.id, "station"),
+        ...createDefaultNodeForSheet(current, currentSheet.id),
         x: Math.round(viewportCenter.x),
         y: Math.round(viewportCenter.y),
       };
@@ -670,14 +670,14 @@ export default function RailwayMapEditor() {
     setNewStationName("");
   }
 
-  function addJunction() {
+  function addNode() {
     if (!currentSheet) return;
     updateMap((current) => ({
       ...current,
       nodes: [
         ...current.nodes,
         {
-          ...createDefaultNodeForSheet(current, currentSheet.id, "junction"),
+          ...createDefaultNodeForSheet(current, currentSheet.id),
           x: Math.round(viewportCenter.x),
           y: Math.round(viewportCenter.y),
         },
@@ -1416,9 +1416,9 @@ export default function RailwayMapEditor() {
                         className="h-8 w-20 px-2 py-1 text-xs"
                       />
                     </div>
-                    <Button variant="outline" className="bg-white/90 backdrop-blur" onClick={addJunction}>
+                    <Button variant="outline" className="bg-white/90 backdrop-blur" onClick={addNode}>
                       <Plus className="h-4 w-4" />
-                      Junction
+                      Node
                     </Button>
                     <Button variant="outline" className="bg-white/90 backdrop-blur" onClick={addStation}>
                       <Plus className="h-4 w-4" />
@@ -1784,7 +1784,6 @@ export default function RailwayMapEditor() {
                               <Input type="number" value={selectedNode.x} onChange={(event) => updateNode({ x: Number(event.target.value) })} />
                               <Input type="number" value={selectedNode.y} onChange={(event) => updateNode({ y: Number(event.target.value) })} />
                             </div>
-                            <div className="text-xs text-muted">Kind: {selectedNode.kind}</div>
                             <div className="space-y-2">
                               {selectedNodeStations.map((station) => (
                                 <div key={station.id} className="rounded-xl bg-white px-3 py-2 text-sm text-ink">
