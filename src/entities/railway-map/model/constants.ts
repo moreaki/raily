@@ -1,12 +1,12 @@
 import type { RailwayMap } from "./types";
 
 export const LINE_PRESETS = [
-  { id: "C1", color: "#e11d48" },
-  { id: "C2", color: "#2563eb" },
-  { id: "C3", color: "#16a34a" },
-  { id: "C4", color: "#f59e0b" },
-  { id: "C5", color: "#7c3aed" },
-  { id: "C6", color: "#0891b2" },
+  { id: "C1", color: "#e11d48", strokeWidth: 10, strokeStyle: "solid" as const },
+  { id: "C2", color: "#2563eb", strokeWidth: 10, strokeStyle: "dashed" as const },
+  { id: "C3", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" as const },
+  { id: "C4", color: "#f59e0b", strokeWidth: 10, strokeStyle: "dotted" as const },
+  { id: "C5", color: "#7c3aed", strokeWidth: 10, strokeStyle: "solid" as const },
+  { id: "C6", color: "#0891b2", strokeWidth: 10, strokeStyle: "dashed" as const },
 ];
 
 export const INITIAL_MAP: RailwayMap = {
@@ -65,9 +65,9 @@ export const INITIAL_MAP: RailwayMap = {
     { id: "sg12", sheetId: "sh2", fromNodeId: "n13", toNodeId: "n14", geometry: { kind: "straight" } },
   ],
   lines: [
-    { id: "l1", name: "C1", color: "#e11d48" },
-    { id: "l2", name: "C2", color: "#2563eb" },
-    { id: "l3", name: "C3", color: "#16a34a" },
+    { id: "l1", name: "C1", color: "#e11d48", strokeWidth: 10, strokeStyle: "solid" },
+    { id: "l2", name: "C2", color: "#2563eb", strokeWidth: 10, strokeStyle: "dashed" },
+    { id: "l3", name: "C3", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" },
   ],
   lineRuns: [
     { id: "lr1", lineId: "l1", segmentIds: ["sg1", "sg2", "sg3"] },

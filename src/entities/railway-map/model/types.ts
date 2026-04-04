@@ -6,6 +6,7 @@ export interface MapPoint {
 export type NodeKind = "station" | "junction" | "waypoint";
 export type LabelAlignment = "left" | "right" | "top" | "bottom";
 export type StationKindShape = "circle" | "interchange" | "terminal";
+export type LineStrokeStyle = "solid" | "dashed" | "dotted";
 
 export interface Sheet {
   id: string;
@@ -67,6 +68,8 @@ export interface Line {
   id: string;
   name: string;
   color: string;
+  strokeWidth: number;
+  strokeStyle: LineStrokeStyle;
 }
 
 export interface LineRun {

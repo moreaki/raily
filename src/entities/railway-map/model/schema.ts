@@ -60,6 +60,8 @@ const lineSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   color: z.string().regex(/^#([0-9a-fA-F]{6})$/),
+  strokeWidth: z.number().min(1).max(32),
+  strokeStyle: z.enum(["solid", "dashed", "dotted"]),
 });
 
 const lineRunSchema = z.object({

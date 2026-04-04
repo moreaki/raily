@@ -15,6 +15,7 @@ import {
   createLineRunId,
   createStationKindId,
   createStraightSegmentForSheet,
+  lineStrokeDasharray,
 } from "@/entities/railway-map/model/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -157,6 +158,7 @@ export default function RailwayMapEditor() {
   const [pendingSegmentStartNodeId, setPendingSegmentStartNodeId] = useState<string | null>(null);
   const [jsonText, setJsonText] = useState(JSON.stringify(initialMap, null, 2));
   const [errorMessage, setErrorMessage] = useState("");
+  const [nodeContextMenu, setNodeContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const lastRestoredSheetIdRef = useRef<string | null>(null);
@@ -512,6 +514,27 @@ export default function RailwayMapEditor() {
     }));
   }
 
+  function deleteNode(nodeId: string) {
+    const connectedSegmentIds = new Set(
+      map.segments
+        .filter((segment) => segment.fromNodeId === nodeId || segment.toNodeId === nodeId)
+        .map((segment) => segment.id),
+    );
+
+    updateMap((current) => ({
+      ...current,
+      nodes: current.nodes.filter((node) => node.id !== nodeId),
+      stations: current.stations.filter((station) => station.nodeId !== nodeId),
+      segments: current.segments.filter((segment) => !connectedSegmentIds.has(segment.id)),
+      lineRuns: current.lineRuns.map((lineRun) => ({
+        ...lineRun,
+        segmentIds: lineRun.segmentIds.filter((segmentId) => !connectedSegmentIds.has(segmentId)),
+      })),
+    }));
+
+    setNodeContextMenu(null);
+  }
+
   function deleteSelectedStationKind() {
     if (!selectedStationKind) return;
     if (map.stationKinds.length <= 1) return;
@@ -601,6 +624,7 @@ export default function RailwayMapEditor() {
   }
 
   function handleNodeMouseDown(event: MouseEvent<SVGGElement>, nodeId: string) {
+    setNodeContextMenu(null);
     setSidePanel("edit");
     if (mode === "segment") {
       setSelectedNodeId(nodeId);
@@ -621,6 +645,7 @@ export default function RailwayMapEditor() {
 
   function handleCanvasMouseDown(event: MouseEvent<SVGSVGElement>) {
     if (event.target !== event.currentTarget) return;
+    setNodeContextMenu(null);
     setDraggingNodeId(null);
     setPendingSegmentStartNodeId(null);
     setPanning(true);
@@ -633,6 +658,7 @@ export default function RailwayMapEditor() {
   }
 
   function handleSegmentMouseDown(segmentId: string) {
+    setNodeContextMenu(null);
     setSidePanel("edit");
     setSelectedSegmentId(segmentId);
 
@@ -691,6 +717,16 @@ export default function RailwayMapEditor() {
     setDragLastPoint(null);
     setPanning(false);
     setPanStart(null);
+  }
+
+  function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string) {
+    event.preventDefault();
+    setSelectedNodeId(nodeId);
+    setNodeContextMenu({
+      nodeId,
+      x: event.clientX,
+      y: event.clientY,
+    });
   }
 
   function applyZoom(nextZoom: number, focusPoint?: { x: number; y: number }) {
@@ -952,7 +988,8 @@ export default function RailwayMapEditor() {
                           d={buildLineRunPath(lineRun, segmentsById, nodesById)}
                           fill="none"
                           stroke={line.color}
-                          strokeWidth="10"
+                          strokeWidth={line.strokeWidth}
+                          strokeDasharray={lineStrokeDasharray(line)}
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         />
@@ -966,7 +1003,12 @@ export default function RailwayMapEditor() {
                       const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
 
                       return (
-                        <g key={node.id} onMouseDown={(event) => handleNodeMouseDown(event, node.id)} style={{ cursor: "grab" }}>
+                        <g
+                          key={node.id}
+                          onMouseDown={(event) => handleNodeMouseDown(event, node.id)}
+                          onContextMenu={(event) => handleNodeContextMenu(event, node.id)}
+                          style={{ cursor: "grab" }}
+                        >
                           {renderNodeSymbol(shape, node, isSelected)}
                         </g>
                       );
@@ -998,6 +1040,22 @@ export default function RailwayMapEditor() {
                     {currentSheet?.name ?? "Sheet"}
                   </div>
                 </div>
+
+                {nodeContextMenu ? (
+                  <div
+                    className="fixed z-30 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                    style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
+                  >
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
+                      onClick={() => deleteNode(nodeContextMenu.nodeId)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete node
+                    </button>
+                  </div>
+                ) : null}
 
                 <div className="absolute inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/92 px-3 py-2 backdrop-blur">
                   <div className="flex items-center gap-2 overflow-x-auto">
@@ -1101,17 +1159,27 @@ export default function RailwayMapEditor() {
                         <div className="text-sm font-semibold text-ink">Stations</div>
                         <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
                           {currentStations.map((station) => (
-                            <button
+                            <div
                               key={station.id}
-                              type="button"
-                              onClick={() => setSelectedNodeId(station.nodeId)}
-                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${
+                              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
                                 selectedNodeId === station.nodeId ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
                               }`}
                             >
-                              <span>{station.name}</span>
-                              <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
-                            </button>
+                              <button type="button" onClick={() => setSelectedNodeId(station.nodeId)} className="flex min-w-0 flex-1 items-center justify-between text-left">
+                                <span className="truncate">{station.name}</span>
+                                <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Delete ${station.name}`}
+                                className={`rounded-lg px-2 py-1 ${
+                                  selectedNodeId === station.nodeId ? "bg-white/15 text-white hover:bg-white/25" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                }`}
+                                onClick={() => deleteNode(station.nodeId)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           ))}
                         </div>
                       </section>
@@ -1189,7 +1257,41 @@ export default function RailwayMapEditor() {
                         {selectedLine ? (
                           <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                             <Input value={selectedLine.name} onChange={(event) => updateLine({ name: event.target.value })} />
-                            <Input type="color" value={selectedLine.color} onChange={(event) => updateLine({ color: event.target.value })} />
+                            <div className="grid grid-cols-3 gap-2">
+                              <Input type="color" value={selectedLine.color} onChange={(event) => updateLine({ color: event.target.value })} />
+                              <Input
+                                type="number"
+                                min={1}
+                                max={32}
+                                value={selectedLine.strokeWidth}
+                                onChange={(event) =>
+                                  updateLine({
+                                    strokeWidth: Math.min(32, Math.max(1, Number(event.target.value) || 1)),
+                                  })
+                                }
+                              />
+                              <select
+                                value={selectedLine.strokeStyle}
+                                onChange={(event) => updateLine({ strokeStyle: event.target.value as Line["strokeStyle"] })}
+                                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                              >
+                                <option value="solid">Solid</option>
+                                <option value="dashed">Dashed</option>
+                                <option value="dotted">Dotted</option>
+                              </select>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                              <svg viewBox="0 0 180 24" className="h-6 w-full">
+                                <path
+                                  d="M 8 12 L 172 12"
+                                  fill="none"
+                                  stroke={selectedLine.color}
+                                  strokeWidth={selectedLine.strokeWidth}
+                                  strokeDasharray={lineStrokeDasharray(selectedLine)}
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            </div>
                             <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-white p-2">
                               {currentSegments.map((segment) => {
                                 const active = selectedLineRun?.segmentIds.includes(segment.id) ?? false;

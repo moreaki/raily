@@ -84,12 +84,29 @@ export function createDefaultStationAtNode(map: RailwayMap, node: MapNode, name:
   };
 }
 
-export function createDefaultLine(index: number, preset: { id: string; color: string }): Line {
+export function createDefaultLine(
+  index: number,
+  preset: { id: string; color: string; strokeWidth: number; strokeStyle: Line["strokeStyle"] },
+): Line {
   return {
     id: createLineId(),
     name: preset.id || `L${index + 1}`,
     color: preset.color,
+    strokeWidth: preset.strokeWidth,
+    strokeStyle: preset.strokeStyle,
   };
+}
+
+export function lineStrokeDasharray(line: Line) {
+  if (line.strokeStyle === "dashed") {
+    return `${Math.max(8, line.strokeWidth * 1.8)} ${Math.max(6, line.strokeWidth * 1.2)}`;
+  }
+
+  if (line.strokeStyle === "dotted") {
+    return `1 ${Math.max(6, line.strokeWidth * 1.4)}`;
+  }
+
+  return undefined;
 }
 
 export function createStraightSegment(fromNodeId: string, toNodeId: string): Segment {
