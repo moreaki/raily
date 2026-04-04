@@ -316,6 +316,18 @@ function snapCoordinate(value: number, step: number) {
   return Math.round(value / step) * step;
 }
 
+function getClampedMenuPosition(x: number, y: number, menuWidth: number, menuHeight: number) {
+  if (typeof window === "undefined") {
+    return { left: x, top: y };
+  }
+
+  const padding = 12;
+  return {
+    left: clamp(x, padding, window.innerWidth - menuWidth - padding),
+    top: clamp(y, padding, window.innerHeight - menuHeight - padding),
+  };
+}
+
 function rotatePoint(point: MapPoint, center: MapPoint, rotation: number) {
   if (rotation === 0) return point;
   const angle = (rotation * Math.PI) / 180;
@@ -1334,6 +1346,19 @@ export default function RailwayMapEditor() {
         forward: "Down",
         hint: "Lane order for this node runs top to bottom around the node center.",
       };
+  const nodeContextMenuPosition = useMemo(() => {
+    if (!nodeContextMenu) return null;
+    return getClampedMenuPosition(
+      nodeContextMenu.x,
+      nodeContextMenu.y,
+      320,
+      nodeContextMenu.nodeIds.length === 1 ? 520 : 120,
+    );
+  }, [nodeContextMenu]);
+  const segmentContextMenuPosition = useMemo(() => {
+    if (!segmentContextMenu) return null;
+    return getClampedMenuPosition(segmentContextMenu.x, segmentContextMenu.y, 320, 420);
+  }, [segmentContextMenu]);
   const snapPointToGrid = (point: MapPoint) => ({
     x: snapCoordinate(point.x, effectiveGridStepX),
     y: snapCoordinate(point.y, effectiveGridStepY),
@@ -3289,8 +3314,12 @@ export default function RailwayMapEditor() {
 
                 {nodeContextMenu ? (
                   <div
-                    className="fixed z-30 min-w-[240px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
-                    style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
+                    className="fixed z-30 min-w-[240px] max-w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                    style={{
+                      left: nodeContextMenuPosition?.left ?? nodeContextMenu.x,
+                      top: nodeContextMenuPosition?.top ?? nodeContextMenu.y,
+                      maxHeight: "calc(100vh - 24px)",
+                    }}
                   >
                     {nodeContextMenu.nodeIds.length === 1 ? (
                       <>
@@ -3406,8 +3435,12 @@ export default function RailwayMapEditor() {
 
                 {segmentContextMenu && contextMenuSegment ? (
                   <div
-                    className="fixed z-30 min-w-[240px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
-                    style={{ left: segmentContextMenu.x, top: segmentContextMenu.y }}
+                    className="fixed z-30 min-w-[240px] max-w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                    style={{
+                      left: segmentContextMenuPosition?.left ?? segmentContextMenu.x,
+                      top: segmentContextMenuPosition?.top ?? segmentContextMenu.y,
+                      maxHeight: "calc(100vh - 24px)",
+                    }}
                   >
                     {assignedLineForContextSegment ? (
                       <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
