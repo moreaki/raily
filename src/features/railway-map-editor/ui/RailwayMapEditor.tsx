@@ -1,6 +1,6 @@
 import type { MouseEvent, WheelEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Grip, Hand, Plus, Trash2, Upload } from "lucide-react";
+import { Download, Plus, Trash2, Upload } from "lucide-react";
 import { DEVELOPMENT_BOOTSTRAP_MAP, INITIAL_MAP, LINE_PRESETS } from "@/entities/railway-map/model/constants";
 import { railwayMapSchema } from "@/entities/railway-map/model/schema";
 import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape } from "@/entities/railway-map/model/types";
@@ -461,9 +461,7 @@ export default function RailwayMapEditor() {
   const [newStationName, setNewStationName] = useState("");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
-  const [mode, setMode] = useState<"move" | "pan">("move");
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage">("edit");
-  const [moveAllNodes, setMoveAllNodes] = useState(false);
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
   const [sheetNameDraft, setSheetNameDraft] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -707,19 +705,32 @@ export default function RailwayMapEditor() {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      const isUndo = (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "z";
-      if (!isUndo) return;
       if (isEditableTarget(event.target)) return;
 
-      event.preventDefault();
-      undoLastChange();
+      const key = event.key.toLowerCase();
+      const hasPrimaryModifier = event.metaKey || event.ctrlKey;
+
+      if (hasPrimaryModifier && !event.shiftKey && key === "z") {
+        event.preventDefault();
+        undoLastChange();
+        return;
+      }
+
+      if (hasPrimaryModifier && key === "a") {
+        event.preventDefault();
+        const nextSelectedNodeIds = currentNodes.map((node) => node.id);
+        setSelectedNodeIds(nextSelectedNodeIds);
+        setSelectedNodeId(nextSelectedNodeIds[0] ?? "");
+        const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
+        setSelectedStationId(firstStation?.id ?? "");
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [currentNodes, currentStations]);
 
   useEffect(() => {
     const currentNodeIdSet = new Set(currentNodes.map((node) => node.id));
@@ -869,7 +880,6 @@ export default function RailwayMapEditor() {
     setSelectedSegmentId("");
     setPendingSegmentStartNodeId(null);
     setNodeContextMenu(null);
-    setMoveAllNodes(false);
   }
 
   function selectSingleNode(nodeId: string) {
@@ -1013,7 +1023,6 @@ export default function RailwayMapEditor() {
     });
     setViewportCenter({ x: 510, y: 260 });
     setZoom(1);
-    setMoveAllNodes(false);
     setMarqueeSelection(null);
     setNodeContextMenu(null);
     setPendingSegmentStartNodeId(null);
@@ -1131,7 +1140,6 @@ export default function RailwayMapEditor() {
       return next;
     });
     setCurrentSheetId(nextSheetId);
-    setMoveAllNodes(false);
   }
 
   function ensureLineRun(current: RailwayMap, lineId: string) {
@@ -1407,7 +1415,7 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
     setSidePanel("edit");
-    if (mode === "pan") {
+    if (event.altKey) {
       setPanning(true);
       setPanStart({
         clientX: event.clientX,
@@ -1457,7 +1465,7 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
     setSidePanel("edit");
-    if (mode === "pan") {
+    if (event.altKey) {
       setPanning(true);
       setPanStart({
         clientX: event.clientX,
@@ -1493,7 +1501,7 @@ export default function RailwayMapEditor() {
     const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
     if (!point) return;
 
-    if (mode === "pan" || event.altKey) {
+    if (event.altKey) {
       setPanning(true);
       setPanStart({
         clientX: event.clientX,
@@ -1504,18 +1512,7 @@ export default function RailwayMapEditor() {
       return;
     }
 
-    if (mode === "move") {
-      setMarqueeSelection({ start: { x: point.x, y: point.y }, end: { x: point.x, y: point.y } });
-      return;
-    }
-
-    setPanning(true);
-    setPanStart({
-      clientX: event.clientX,
-      clientY: event.clientY,
-      centerX: viewportCenter.x,
-      centerY: viewportCenter.y,
-    });
+    setMarqueeSelection({ start: { x: point.x, y: point.y }, end: { x: point.x, y: point.y } });
   }
 
   function handleSegmentMouseDown(segmentId: string) {
@@ -1593,23 +1590,17 @@ export default function RailwayMapEditor() {
     const deltaY = Math.round(svgPoint.y - dragLastPoint.y);
     if (deltaX === 0 && deltaY === 0) return;
 
-    const nodeIdsToMove = moveAllNodes
-      ? new Set(currentNodes.map((node) => node.id))
-      : selectedNodeIdsSet.has(draggingNodeId)
-        ? selectedNodeIdsSet
-        : new Set([draggingNodeId]);
+    const nodeIdsToMove = selectedNodeIdsSet.has(draggingNodeId) ? selectedNodeIdsSet : new Set([draggingNodeId]);
 
     updateMap((current) => ({
       ...current,
       nodes: current.nodes.map((node) => {
-        const shouldMove = moveAllNodes ? node.sheetId === currentSheetId : nodeIdsToMove.has(node.id);
+        const shouldMove = nodeIdsToMove.has(node.id);
         return shouldMove ? { ...node, x: node.x + deltaX, y: node.y + deltaY } : node;
       }),
       stations: current.stations.map((station) => {
         const stationNode = station.nodeId ? current.nodes.find((node) => node.id === station.nodeId) : null;
-        const shouldMove = moveAllNodes
-          ? stationNode?.sheetId === currentSheetId
-          : !!station.nodeId && nodeIdsToMove.has(station.nodeId);
+        const shouldMove = !!station.nodeId && nodeIdsToMove.has(station.nodeId);
         if (!shouldMove || !station.label) return station;
         return {
           ...station,
@@ -1642,7 +1633,6 @@ export default function RailwayMapEditor() {
         const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
         setSelectedStationId(firstStation?.id ?? "");
         setSelectedSegmentId("");
-        setMoveAllNodes(false);
       }
     }
 
@@ -1780,14 +1770,6 @@ export default function RailwayMapEditor() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant={mode === "move" ? "default" : "outline"} onClick={() => setMode("move")}>
-              <Grip className="h-4 w-4" />
-              Move
-            </Button>
-            <Button variant={mode === "pan" ? "default" : "outline"} onClick={() => setMode("pan")}>
-              <Hand className="h-4 w-4" />
-              Pan
-            </Button>
             <Button variant={sidePanel === "edit" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "edit" ? "closed" : "edit")}>
               Edit Panel
             </Button>
@@ -1811,7 +1793,7 @@ export default function RailwayMapEditor() {
               <div className="relative min-h-[78vh] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.08),transparent_28%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
                 <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 p-4">
                   <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-ink shadow-sm backdrop-blur">
-                    {mode === "move" ? "Move nodes" : "Pan viewport"}
+                    Canvas editor
                   </div>
                   {pendingSegmentStartNodeId ? (
                     <div className="pointer-events-auto rounded-2xl border border-sky-200 bg-sky-50/95 px-3 py-2 text-xs text-sky-800 shadow-sm">
@@ -1860,16 +1842,6 @@ export default function RailwayMapEditor() {
                     <Button variant="outline" className="bg-white/90 backdrop-blur" onClick={addStation}>
                       <Plus className="h-4 w-4" />
                       Station
-                    </Button>
-                    <Button
-                      variant={moveAllNodes ? "default" : "outline"}
-                      className="bg-white/90 backdrop-blur"
-                      onClick={() => {
-                        setMode("move");
-                        setMoveAllNodes((current) => !current);
-                      }}
-                    >
-                      Move All
                     </Button>
                   </div>
                 </div>
@@ -1952,7 +1924,7 @@ export default function RailwayMapEditor() {
 
                     {currentNodes.map((node) => {
                       const stations = stationsByNodeId.get(node.id) ?? [];
-                      const isSelected = moveAllNodes || selectedNodeIdsSet.has(node.id);
+                      const isSelected = selectedNodeIdsSet.has(node.id);
                       const primaryStation = stations[0];
                       const isTrackPoint = stations.length === 0;
                       const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
@@ -2284,31 +2256,6 @@ export default function RailwayMapEditor() {
                           </Button>
                         </div>
                         <p className="text-xs text-muted">Quick add creates an unassigned station object. Use the canvas to assign it to a track point later.</p>
-                      </section>
-
-                      <section className="space-y-3">
-                        <div className="text-sm font-semibold text-ink">Layout Move</div>
-                        <div className="grid gap-2">
-                          <Button
-                            variant={selectedNodeIds.length === currentNodes.length && currentNodes.length > 0 ? "default" : "outline"}
-                            className="w-full"
-                            onClick={() => {
-                              const nextSelectedNodeIds =
-                                selectedNodeIds.length === currentNodes.length ? [] : currentNodes.map((node) => node.id);
-                              setSelectedNodeIds(nextSelectedNodeIds);
-                              setSelectedNodeId(nextSelectedNodeIds[0] ?? "");
-                              const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
-                              setSelectedStationId(firstStation?.id ?? "");
-                              setMoveAllNodes(false);
-                            }}
-                          >
-                            {selectedNodeIds.length === currentNodes.length && currentNodes.length > 0 ? "Clear node selection" : "Select all nodes on this sheet"}
-                          </Button>
-                          <Button variant={moveAllNodes ? "default" : "outline"} className="w-full" onClick={() => setMoveAllNodes((current) => !current)}>
-                            {moveAllNodes ? "Whole sheet drag enabled" : "Move whole sheet"}
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted">Drag on empty canvas to lasso-select nodes. Use the `Pan` tool, `Alt`-drag, or normal trackpad/wheel scrolling to shift the viewport.</p>
                       </section>
 
                       <section className="space-y-3">
