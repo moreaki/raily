@@ -70,6 +70,20 @@ export function createDefaultStation(map: RailwayMap, nodeId: string, name: stri
   };
 }
 
+export function createDefaultStationAtNode(map: RailwayMap, node: MapNode, name: string): Station {
+  return {
+    id: createStationId(),
+    nodeId: node.id,
+    name: name.trim() || `Station ${map.stations.length + 1}`,
+    kindId: map.stationKinds[0]?.id ?? "",
+    label: {
+      x: node.x + 12,
+      y: node.y - 10,
+      align: "right",
+    },
+  };
+}
+
 export function createDefaultLine(index: number, preset: { id: string; color: string }): Line {
   return {
     id: createLineId(),

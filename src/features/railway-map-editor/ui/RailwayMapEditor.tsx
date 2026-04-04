@@ -11,6 +11,7 @@ import {
   createDefaultNodeForSheet,
   createDefaultSheet,
   createDefaultStation,
+  createDefaultStationAtNode,
   createLineRunId,
   createStationKindId,
   createStraightSegmentForSheet,
@@ -22,6 +23,7 @@ import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
 
 const STORAGE_KEY = "raily:editor-map";
+const SHEET_VIEW_STORAGE_KEY = "raily:sheet-views";
 const CANVAS_WIDTH = 1400;
 const CANVAS_HEIGHT = 900;
 const MIN_ZOOM = 0.5;
@@ -78,8 +80,47 @@ function loadStoredMap() {
   }
 }
 
+function loadStoredSheetViews() {
+  if (typeof window === "undefined") return {} as Record<string, { zoom: number; centerX: number; centerY: number }>;
+
+  const raw = window.localStorage.getItem(SHEET_VIEW_STORAGE_KEY);
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw) as Record<string, { zoom: number; centerX: number; centerY: number }>;
+  } catch {
+    return {};
+  }
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getSheetContentCenter(nodes: MapNode[]) {
+  if (nodes.length === 0) {
+    return { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
+  }
+
+  const bounds = nodes.reduce(
+    (current, node) => ({
+      minX: Math.min(current.minX, node.x),
+      maxX: Math.max(current.maxX, node.x),
+      minY: Math.min(current.minY, node.y),
+      maxY: Math.max(current.maxY, node.y),
+    }),
+    {
+      minX: nodes[0].x,
+      maxX: nodes[0].x,
+      minY: nodes[0].y,
+      maxY: nodes[0].y,
+    },
+  );
+
+  return {
+    x: (bounds.minX + bounds.maxX) / 2,
+    y: (bounds.minY + bounds.maxY) / 2,
+  };
 }
 
 export default function RailwayMapEditor() {
@@ -96,23 +137,29 @@ export default function RailwayMapEditor() {
   const [selectedStationKindId, setSelectedStationKindId] = useState(initialMap.stationKinds[0]?.id ?? "");
   const [currentSheetId, setCurrentSheetId] = useState(initialMap.sheets[0]?.id ?? "");
   const [newStationName, setNewStationName] = useState("");
-  const [newSheetName, setNewSheetName] = useState("");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
   const [mode, setMode] = useState<"move" | "segment" | "assign">("move");
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage">("edit");
+  const [moveAllNodes, setMoveAllNodes] = useState(false);
+  const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
+  const [sheetNameDraft, setSheetNameDraft] = useState("");
   const [zoom, setZoom] = useState(1);
   const [viewportCenter, setViewportCenter] = useState({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
+  const [sheetViews, setSheetViews] = useState<Record<string, { zoom: number; centerX: number; centerY: number }>>(loadStoredSheetViews);
   const [showGrid, setShowGrid] = useState(false);
   const [gridStepX, setGridStepX] = useState(80);
   const [gridStepY, setGridStepY] = useState(80);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [dragLastPoint, setDragLastPoint] = useState<{ x: number; y: number } | null>(null);
   const [panning, setPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; centerX: number; centerY: number } | null>(null);
   const [pendingSegmentStartNodeId, setPendingSegmentStartNodeId] = useState<string | null>(null);
   const [jsonText, setJsonText] = useState(JSON.stringify(initialMap, null, 2));
   const [errorMessage, setErrorMessage] = useState("");
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const canvasViewportRef = useRef<HTMLDivElement | null>(null);
+  const lastRestoredSheetIdRef = useRef<string | null>(null);
 
   const selectedNode = map.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const selectedSegment = map.segments.find((segment) => segment.id === selectedSegmentId) ?? null;
@@ -200,6 +247,12 @@ export default function RailwayMapEditor() {
   }, [map]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SHEET_VIEW_STORAGE_KEY, JSON.stringify(sheetViews));
+    }
+  }, [sheetViews]);
+
+  useEffect(() => {
     if (!selectedNode || !nodesById.has(selectedNode.id)) {
       setSelectedNodeId(currentNodes[0]?.id ?? "");
     }
@@ -230,8 +283,41 @@ export default function RailwayMapEditor() {
   }, [currentSheet, map.sheets]);
 
   useEffect(() => {
-    setViewportCenter({ x: viewBox.centerX, y: viewBox.centerY });
-  }, [viewBox.centerX, viewBox.centerY]);
+    if (!currentSheetId) return;
+    if (lastRestoredSheetIdRef.current === currentSheetId) return;
+
+    lastRestoredSheetIdRef.current = currentSheetId;
+    const savedView = sheetViews[currentSheetId];
+    if (savedView) {
+      setZoom(savedView.zoom);
+      setViewportCenter({ x: savedView.centerX, y: savedView.centerY });
+      return;
+    }
+
+    setZoom(1);
+    setViewportCenter({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
+  }, [currentSheetId, sheetViews]);
+
+  useEffect(() => {
+    if (!currentSheetId) return;
+    setSheetViews((current) => {
+      const nextView = { zoom, centerX: viewportCenter.x, centerY: viewportCenter.y };
+      const previous = current[currentSheetId];
+      if (
+        previous &&
+        previous.zoom === nextView.zoom &&
+        previous.centerX === nextView.centerX &&
+        previous.centerY === nextView.centerY
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [currentSheetId]: nextView,
+      };
+    });
+  }, [currentSheetId, viewportCenter.x, viewportCenter.y, zoom]);
 
   function updateMap(updater: (current: RailwayMap) => RailwayMap) {
     setMap((current) => updater(current));
@@ -246,7 +332,7 @@ export default function RailwayMapEditor() {
         x: Math.round(viewportCenter.x),
         y: Math.round(viewportCenter.y),
       };
-      const station = createDefaultStation(current, node.id, newStationName);
+      const station = createDefaultStationAtNode(current, node, newStationName);
       return {
         ...current,
         nodes: [...current.nodes, node],
@@ -272,15 +358,18 @@ export default function RailwayMapEditor() {
   }
 
   function addSheet() {
-    const nextSheet = createDefaultSheet(map, newSheetName);
+    const nextSheet = createDefaultSheet(map, "");
     updateMap((current) => ({
       ...current,
       sheets: [...current.sheets, nextSheet],
     }));
+    setSheetViews((current) => ({
+      ...current,
+      [nextSheet.id]: { zoom: 1, centerX: CANVAS_WIDTH / 2, centerY: CANVAS_HEIGHT / 2 },
+    }));
     setCurrentSheetId(nextSheet.id);
-    setNewSheetName("");
-    setViewportCenter({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
-    setZoom(1);
+    setRenamingSheetId(nextSheet.id);
+    setSheetNameDraft(nextSheet.name);
   }
 
   function addStationKind() {
@@ -308,6 +397,67 @@ export default function RailwayMapEditor() {
       lineRuns: [...current.lineRuns, { id: `lr-${nextLine.id}`, lineId: nextLine.id, segmentIds: [] }],
     }));
     setSelectedLineId(nextLine.id);
+  }
+
+  function updateCurrentSheetName(name: string) {
+    if (!currentSheet) return;
+
+    updateMap((current) => ({
+      ...current,
+      sheets: current.sheets.map((sheet) => (sheet.id === currentSheet.id ? { ...sheet, name } : sheet)),
+    }));
+  }
+
+  function startRenamingSheet(sheetId: string, currentName: string) {
+    setRenamingSheetId(sheetId);
+    setSheetNameDraft(currentName);
+  }
+
+  function commitSheetRename() {
+    if (!renamingSheetId) return;
+    const nextName = sheetNameDraft.trim();
+    if (!nextName) {
+      setRenamingSheetId(null);
+      setSheetNameDraft("");
+      return;
+    }
+
+    updateMap((current) => ({
+      ...current,
+      sheets: current.sheets.map((sheet) => (sheet.id === renamingSheetId ? { ...sheet, name: nextName } : sheet)),
+    }));
+    setRenamingSheetId(null);
+    setSheetNameDraft("");
+  }
+
+  function deleteCurrentSheet() {
+    if (!currentSheet) return;
+    if (map.sheets.length <= 1) return;
+
+    const nextSheetId = map.sheets.find((sheet) => sheet.id !== currentSheet.id)?.id;
+    if (!nextSheetId) return;
+
+    const nodeIdsToRemove = new Set(map.nodes.filter((node) => node.sheetId === currentSheet.id).map((node) => node.id));
+    const segmentIdsToRemove = new Set(map.segments.filter((segment) => segment.sheetId === currentSheet.id).map((segment) => segment.id));
+
+    updateMap((current) => ({
+      ...current,
+      sheets: current.sheets.filter((sheet) => sheet.id !== currentSheet.id),
+      nodes: current.nodes.filter((node) => node.sheetId !== currentSheet.id),
+      stations: current.stations.filter((station) => !nodeIdsToRemove.has(station.nodeId)),
+      segments: current.segments.filter((segment) => segment.sheetId !== currentSheet.id),
+      lineRuns: current.lineRuns.map((lineRun) => ({
+        ...lineRun,
+        segmentIds: lineRun.segmentIds.filter((segmentId) => !segmentIdsToRemove.has(segmentId)),
+      })),
+    }));
+    setSheetViews((current) => {
+      const next = { ...current };
+      delete next[currentSheet.id];
+      return next;
+    });
+    setCurrentSheetId(nextSheetId);
+    setMoveAllNodes(false);
   }
 
   function ensureLineRun(current: RailwayMap, lineId: string) {
@@ -450,7 +600,7 @@ export default function RailwayMapEditor() {
     setPendingSegmentStartNodeId(null);
   }
 
-  function handleNodeMouseDown(nodeId: string) {
+  function handleNodeMouseDown(event: MouseEvent<SVGGElement>, nodeId: string) {
     setSidePanel("edit");
     if (mode === "segment") {
       setSelectedNodeId(nodeId);
@@ -461,6 +611,12 @@ export default function RailwayMapEditor() {
     if (mode !== "move") return;
     setSelectedNodeId(nodeId);
     setDraggingNodeId(nodeId);
+    if (svgRef.current) {
+      const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+      if (point) {
+        setDragLastPoint({ x: point.x, y: point.y });
+      }
+    }
   }
 
   function handleCanvasMouseDown(event: MouseEvent<SVGSVGElement>) {
@@ -487,6 +643,9 @@ export default function RailwayMapEditor() {
 
   function handleSvgMouseMove(event: MouseEvent<SVGSVGElement>) {
     if (!svgRef.current) return;
+    const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+    if (!svgPoint) return;
+
     if (panning && panStart) {
       const deltaX = ((event.clientX - panStart.clientX) / CANVAS_WIDTH) * viewBox.width;
       const deltaY = ((event.clientY - panStart.clientY) / CANVAS_HEIGHT) * viewBox.height;
@@ -497,33 +656,39 @@ export default function RailwayMapEditor() {
       return;
     }
 
-    if (!draggingNodeId) return;
-    const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-    if (!svgPoint) return;
-    const x = Math.round(svgPoint.x);
-    const y = Math.round(svgPoint.y);
+    if (!draggingNodeId || !dragLastPoint) return;
+    const deltaX = Math.round(svgPoint.x - dragLastPoint.x);
+    const deltaY = Math.round(svgPoint.y - dragLastPoint.y);
+    if (deltaX === 0 && deltaY === 0) return;
 
     updateMap((current) => ({
       ...current,
-      nodes: current.nodes.map((node) => (node.id === draggingNodeId ? { ...node, x, y } : node)),
+      nodes: current.nodes.map((node) => {
+        const shouldMove = moveAllNodes ? node.sheetId === currentSheetId : node.id === draggingNodeId;
+        return shouldMove ? { ...node, x: node.x + deltaX, y: node.y + deltaY } : node;
+      }),
       stations: current.stations.map((station) => {
-        if (station.nodeId !== draggingNodeId || !station.label) return station;
-        const draggedNode = current.nodes.find((node) => node.id === draggingNodeId);
-        if (!draggedNode) return station;
+        const stationNode = current.nodes.find((node) => node.id === station.nodeId);
+        const shouldMove = moveAllNodes
+          ? stationNode?.sheetId === currentSheetId
+          : station.nodeId === draggingNodeId;
+        if (!shouldMove || !station.label) return station;
         return {
           ...station,
           label: {
             ...station.label,
-            x: station.label.x + (x - draggedNode.x),
-            y: station.label.y + (y - draggedNode.y),
+            x: station.label.x + deltaX,
+            y: station.label.y + deltaY,
           },
         };
       }),
     }));
+    setDragLastPoint({ x: svgPoint.x, y: svgPoint.y });
   }
 
   function handleSvgMouseUp() {
     setDraggingNodeId(null);
+    setDragLastPoint(null);
     setPanning(false);
     setPanStart(null);
   }
@@ -559,6 +724,32 @@ export default function RailwayMapEditor() {
     const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
     const nextZoom = event.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
     applyZoom(nextZoom, focusPoint);
+  }
+
+  useEffect(() => {
+    const element = canvasViewportRef.current;
+    if (!element) return;
+
+    function handleNativeWheel(event: globalThis.WheelEvent) {
+      if (!svgRef.current) return;
+      event.preventDefault();
+
+      const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+      const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
+      const nextZoom = event.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
+      applyZoom(nextZoom, focusPoint);
+    }
+
+    element.addEventListener("wheel", handleNativeWheel, { passive: false });
+    return () => {
+      element.removeEventListener("wheel", handleNativeWheel);
+    };
+  }, [zoom, viewBox.centerX, viewBox.centerY, viewBox.x, viewBox.y]);
+
+  function resetViewportToSheet() {
+    const center = getSheetContentCenter(currentNodes);
+    setZoom(1);
+    setViewportCenter(center);
   }
 
   function exportSvg() {
@@ -640,20 +831,6 @@ export default function RailwayMapEditor() {
                     </div>
                   ) : null}
                   <div className="pointer-events-auto ml-auto flex gap-2">
-                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
-                      <span className="font-semibold text-ink">Sheet</span>
-                      <select
-                        value={currentSheetId}
-                        onChange={(event) => setCurrentSheetId(event.target.value)}
-                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-ink outline-none"
-                      >
-                        {map.sheets.map((sheet) => (
-                          <option key={sheet.id} value={sheet.id}>
-                            {sheet.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                     <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm backdrop-blur">
                       <button type="button" className="font-semibold text-ink" onClick={() => applyZoom(zoom / ZOOM_STEP)}>
                         -
@@ -665,10 +842,7 @@ export default function RailwayMapEditor() {
                       <button
                         type="button"
                         className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-muted"
-                        onClick={() => {
-                          setZoom(1);
-                          setViewportCenter({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
-                        }}
+                        onClick={resetViewportToSheet}
                       >
                         Reset
                       </button>
@@ -699,10 +873,20 @@ export default function RailwayMapEditor() {
                       <Plus className="h-4 w-4" />
                       Station
                     </Button>
+                    <Button
+                      variant={moveAllNodes ? "default" : "outline"}
+                      className="bg-white/90 backdrop-blur"
+                      onClick={() => {
+                        setMode("move");
+                        setMoveAllNodes((current) => !current);
+                      }}
+                    >
+                      Move All
+                    </Button>
                   </div>
                 </div>
 
-                <div className="h-[78vh] overflow-auto">
+                <div ref={canvasViewportRef} className="h-[78vh] overflow-auto overscroll-contain touch-none">
                   <svg
                     ref={svgRef}
                     width={CANVAS_WIDTH}
@@ -713,7 +897,6 @@ export default function RailwayMapEditor() {
                     onMouseMove={handleSvgMouseMove}
                     onMouseUp={handleSvgMouseUp}
                     onMouseLeave={handleSvgMouseUp}
-                    onWheel={handleSvgWheel}
                   >
                     <rect x={-WORLD_SIZE / 2} y={-WORLD_SIZE / 2} width={WORLD_SIZE} height={WORLD_SIZE} fill="white" />
 
@@ -778,12 +961,12 @@ export default function RailwayMapEditor() {
 
                     {currentNodes.map((node) => {
                       const stations = stationsByNodeId.get(node.id) ?? [];
-                      const isSelected = selectedNodeId === node.id;
+                      const isSelected = moveAllNodes || selectedNodeId === node.id;
                       const primaryStation = stations[0];
                       const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
 
                       return (
-                        <g key={node.id} onMouseDown={() => handleNodeMouseDown(node.id)} style={{ cursor: "grab" }}>
+                        <g key={node.id} onMouseDown={(event) => handleNodeMouseDown(event, node.id)} style={{ cursor: "grab" }}>
                           {renderNodeSymbol(shape, node, isSelected)}
                         </g>
                       );
@@ -815,6 +998,66 @@ export default function RailwayMapEditor() {
                     {currentSheet?.name ?? "Sheet"}
                   </div>
                 </div>
+
+                <div className="absolute inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/92 px-3 py-2 backdrop-blur">
+                  <div className="flex items-center gap-2 overflow-x-auto">
+                    {map.sheets.map((sheet) => {
+                      const active = currentSheetId === sheet.id;
+                      const renaming = renamingSheetId === sheet.id;
+
+                      return (
+                        <div
+                          key={sheet.id}
+                          className={`flex items-center gap-2 rounded-t-2xl border px-3 py-2 text-sm shadow-sm ${
+                            active ? "border-slate-300 bg-white text-ink" : "border-slate-200 bg-slate-50 text-slate-600"
+                          }`}
+                        >
+                          {renaming ? (
+                            <Input
+                              autoFocus
+                              value={sheetNameDraft}
+                              onChange={(event) => setSheetNameDraft(event.target.value)}
+                              onBlur={commitSheetRename}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") commitSheetRename();
+                                if (event.key === "Escape") {
+                                  setRenamingSheetId(null);
+                                  setSheetNameDraft("");
+                                }
+                              }}
+                              className="h-8 min-w-[10rem] px-2 py-1 text-sm"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              className="whitespace-nowrap font-medium"
+                              onClick={() => setCurrentSheetId(sheet.id)}
+                              onDoubleClick={() => startRenamingSheet(sheet.id, sheet.name)}
+                            >
+                              {sheet.name}
+                            </button>
+                          )}
+                          {active && map.sheets.length > 1 ? (
+                            <button
+                              type="button"
+                              className="rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                              onClick={deleteCurrentSheet}
+                            >
+                              ×
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                      onClick={addSheet}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -844,6 +1087,14 @@ export default function RailwayMapEditor() {
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>
+                      </section>
+
+                      <section className="space-y-3">
+                        <div className="text-sm font-semibold text-ink">Layout Move</div>
+                        <Button variant={moveAllNodes ? "default" : "outline"} className="w-full" onClick={() => setMoveAllNodes((current) => !current)}>
+                          {moveAllNodes ? "Whole sheet selected" : "Select all nodes on this sheet"}
+                        </Button>
+                        <p className="text-xs text-muted">With this enabled in move mode, dragging any node moves the full sheet layout together.</p>
                       </section>
 
                       <section className="space-y-3">
@@ -956,30 +1207,6 @@ export default function RailwayMapEditor() {
                     </>
                   ) : (
                     <>
-                      <section className="space-y-3">
-                        <div className="text-sm font-semibold text-ink">Sheets</div>
-                        <div className="flex gap-2">
-                          <Input value={newSheetName} onChange={(event) => setNewSheetName(event.target.value)} placeholder="New sheet name" />
-                          <Button onClick={addSheet}>
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="max-h-[180px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                          {map.sheets.map((sheet) => (
-                            <button
-                              key={sheet.id}
-                              type="button"
-                              onClick={() => setCurrentSheetId(sheet.id)}
-                              className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
-                                currentSheetId === sheet.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
-                              }`}
-                            >
-                              {sheet.name}
-                            </button>
-                          ))}
-                        </div>
-                      </section>
-
                       <section className="space-y-3">
                         <div className="text-sm font-semibold text-ink">Station Kinds</div>
                         <div className="flex gap-2">
