@@ -685,6 +685,17 @@ export default function RailwayMapEditor() {
     }));
   }
 
+  function attachStationToSelectedNode() {
+    if (!selectedNode) return;
+    if (selectedNodeStations.length > 0) return;
+
+    updateMap((current) => ({
+      ...current,
+      stations: [...current.stations, createDefaultStationAtNode(current, selectedNode, newStationName)],
+    }));
+    setNewStationName("");
+  }
+
   function addSheet() {
     const nextSheet = createDefaultSheet(map, "");
     updateMap((current) => ({
@@ -917,17 +928,19 @@ export default function RailwayMapEditor() {
     }));
   }
 
-  function deleteNode(nodeId: string) {
+  function deleteNodes(nodeIds: string[]) {
+    if (nodeIds.length === 0) return;
+    const nodeIdSet = new Set(nodeIds);
     const connectedSegmentIds = new Set(
       map.segments
-        .filter((segment) => segment.fromNodeId === nodeId || segment.toNodeId === nodeId)
+        .filter((segment) => nodeIdSet.has(segment.fromNodeId) || nodeIdSet.has(segment.toNodeId))
         .map((segment) => segment.id),
     );
 
     updateMap((current) => ({
       ...current,
-      nodes: current.nodes.filter((node) => node.id !== nodeId),
-      stations: current.stations.filter((station) => station.nodeId !== nodeId),
+      nodes: current.nodes.filter((node) => !nodeIdSet.has(node.id)),
+      stations: current.stations.filter((station) => !nodeIdSet.has(station.nodeId)),
       segments: current.segments.filter((segment) => !connectedSegmentIds.has(segment.id)),
       lineRuns: current.lineRuns.map((lineRun) => ({
         ...lineRun,
@@ -935,7 +948,16 @@ export default function RailwayMapEditor() {
       })),
     }));
 
+    setSelectedNodeIds((current) => current.filter((nodeId) => !nodeIdSet.has(nodeId)));
+    if (selectedNodeId && nodeIdSet.has(selectedNodeId)) setSelectedNodeId("");
+    if (selectedStationId && map.stations.find((station) => station.id === selectedStationId && nodeIdSet.has(station.nodeId))) {
+      setSelectedStationId("");
+    }
     setNodeContextMenu(null);
+  }
+
+  function deleteNode(nodeId: string) {
+    deleteNodes([nodeId]);
   }
 
   function deleteSelectedStationKind() {
@@ -1236,9 +1258,12 @@ export default function RailwayMapEditor() {
 
   function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string) {
     event.preventDefault();
-    setSelectedNodeId(nodeId);
+    if (!selectedNodeIdsSet.has(nodeId)) {
+      selectSingleNode(nodeId);
+    }
+    const nodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
     setNodeContextMenu({
-      nodeId,
+      nodeIds,
       x: event.clientX,
       y: event.clientY,
     });
@@ -1418,7 +1443,7 @@ export default function RailwayMapEditor() {
                     </div>
                     <Button variant="outline" className="bg-white/90 backdrop-blur" onClick={addNode}>
                       <Plus className="h-4 w-4" />
-                      Node
+                      Track Point
                     </Button>
                     <Button variant="outline" className="bg-white/90 backdrop-blur" onClick={addStation}>
                       <Plus className="h-4 w-4" />
@@ -1616,10 +1641,10 @@ export default function RailwayMapEditor() {
                     <button
                       type="button"
                       className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
-                      onClick={() => deleteNode(nodeContextMenu.nodeId)}
+                      onClick={() => deleteNodes(nodeContextMenu.nodeIds)}
                     >
                       <Trash2 className="h-4 w-4" />
-                      Delete node
+                      {nodeContextMenu.nodeIds.length > 1 ? "Delete nodes" : "Delete node"}
                     </button>
                   </div>
                 ) : null}
@@ -1707,11 +1732,12 @@ export default function RailwayMapEditor() {
                       <section className="space-y-3">
                         <div className="text-sm font-semibold text-ink">Quick Add</div>
                         <div className="flex gap-2">
-                          <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="New station name" />
+                          <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
                           <Button onClick={addStation}>
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>
+                        <p className="text-xs text-muted">`Station` creates a named station with its own node. `Track Point` creates an unlabeled geometry point.</p>
                       </section>
 
                       <section className="space-y-3">
@@ -1784,6 +1810,25 @@ export default function RailwayMapEditor() {
                               <Input type="number" value={selectedNode.x} onChange={(event) => updateNode({ x: Number(event.target.value) })} />
                               <Input type="number" value={selectedNode.y} onChange={(event) => updateNode({ y: Number(event.target.value) })} />
                             </div>
+                            {selectedNodeStations.length === 0 ? (
+                              <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3">
+                                <div className="space-y-2">
+                                  <p className="text-sm font-medium text-ink">This track point has no station yet.</p>
+                                  <p className="text-xs text-muted">Attach a station here to give it a name, kind, and label.</p>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      value={newStationName}
+                                      onChange={(event) => setNewStationName(event.target.value)}
+                                      placeholder="Station name"
+                                    />
+                                    <Button onClick={attachStationToSelectedNode}>
+                                      <Plus className="h-4 w-4" />
+                                      Attach station
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
                             <div className="space-y-2">
                               {selectedNodeStations.map((station) => (
                                 <div key={station.id} className="rounded-xl bg-white px-3 py-2 text-sm text-ink">
