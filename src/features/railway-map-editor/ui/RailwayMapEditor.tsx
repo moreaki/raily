@@ -42,6 +42,20 @@ const DEFAULT_STATION_FONT_WEIGHT: StationLabelFontWeight = "600";
 const DEFAULT_STATION_FONT_SIZE = 14;
 const STATION_FONT_WEIGHT_OPTIONS: StationLabelFontWeight[] = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
 const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12l-3 3-3-3'/><path d='M2 12l3-3 3 3'/><path d='M19.016 14v-1.95A7.05 7.05 0 0 0 8 6.22'/><path d='M16.016 17.845A7.05 7.05 0 0 1 5 12.015V10'/><path d='M5 10V9'/><path d='M19 15v-1'/></svg>") 12 12, crosshair`;
+const AUTO_LABEL_ROTATIONS = [0, 45, -45, 90, -90, 135, -135, 180] as const;
+
+type LabelBox = {
+  localMinX: number;
+  localMaxX: number;
+  localMinY: number;
+  localMaxY: number;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  center: MapPoint;
+  corners: MapPoint[];
+};
 
 function downloadFile(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -136,22 +150,74 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function estimateLabelBox(label: string, x: number, y: number, fontSize = LABEL_FONT_SIZE) {
+function rotatePoint(point: MapPoint, center: MapPoint, rotation: number) {
+  if (rotation === 0) return point;
+  const angle = (rotation * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const deltaX = point.x - center.x;
+  const deltaY = point.y - center.y;
+
+  return {
+    x: center.x + deltaX * cos - deltaY * sin,
+    y: center.y + deltaX * sin + deltaY * cos,
+  };
+}
+
+function estimateLabelBox(label: string, x: number, y: number, fontSize = LABEL_FONT_SIZE, rotation = 0): LabelBox {
   const width = Math.max(38, label.length * (fontSize * 0.54));
   const height = fontSize + 8;
+  const localMinX = x - LABEL_PADDING_X / 2;
+  const localMaxX = x + width + LABEL_PADDING_X / 2;
+  const localMinY = y - height + LABEL_PADDING_Y / 2;
+  const localMaxY = y + LABEL_PADDING_Y / 2;
+  const center = {
+    x: (localMinX + localMaxX) / 2,
+    y: (localMinY + localMaxY) / 2,
+  };
+  const corners = [
+    rotatePoint({ x: localMinX, y: localMinY }, center, rotation),
+    rotatePoint({ x: localMaxX, y: localMinY }, center, rotation),
+    rotatePoint({ x: localMaxX, y: localMaxY }, center, rotation),
+    rotatePoint({ x: localMinX, y: localMaxY }, center, rotation),
+  ];
+
   return {
-    minX: x - LABEL_PADDING_X / 2,
-    maxX: x + width + LABEL_PADDING_X / 2,
-    minY: y - height + LABEL_PADDING_Y / 2,
-    maxY: y + LABEL_PADDING_Y / 2,
+    localMinX,
+    localMaxX,
+    localMinY,
+    localMaxY,
+    minX: Math.min(...corners.map((corner) => corner.x)),
+    maxX: Math.max(...corners.map((corner) => corner.x)),
+    minY: Math.min(...corners.map((corner) => corner.y)),
+    maxY: Math.max(...corners.map((corner) => corner.y)),
+    center,
+    corners,
   };
 }
 
 function boxesOverlap(
-  left: ReturnType<typeof estimateLabelBox>,
-  right: ReturnType<typeof estimateLabelBox>,
+  left: LabelBox,
+  right: LabelBox,
 ) {
-  return left.minX < right.maxX && left.maxX > right.minX && left.minY < right.maxY && left.maxY > right.minY;
+  const polygons = [left.corners, right.corners];
+  for (const polygon of polygons) {
+    for (let index = 0; index < polygon.length; index += 1) {
+      const current = polygon[index];
+      const next = polygon[(index + 1) % polygon.length];
+      const axis = { x: -(next.y - current.y), y: next.x - current.x };
+      const projections = [left.corners, right.corners].map((corners) =>
+        corners.map((corner) => corner.x * axis.x + corner.y * axis.y),
+      );
+      const [leftMin, leftMax] = [Math.min(...projections[0]), Math.max(...projections[0])];
+      const [rightMin, rightMax] = [Math.min(...projections[1]), Math.max(...projections[1])];
+      if (leftMax < rightMin || rightMax < leftMin) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 function pointToSegmentDistance(point: MapPoint, start: MapPoint, end: MapPoint) {
@@ -170,7 +236,7 @@ function pointToSegmentDistance(point: MapPoint, start: MapPoint, end: MapPoint)
 
 function pointInBox(
   point: MapPoint,
-  box: ReturnType<typeof estimateLabelBox>,
+  box: LabelBox,
   padding = 0,
 ) {
   return (
@@ -179,6 +245,23 @@ function pointInBox(
     point.y >= box.minY - padding &&
     point.y <= box.maxY + padding
   );
+}
+
+function pointInPolygon(point: MapPoint, polygon: MapPoint[]) {
+  let sign = 0;
+  for (let index = 0; index < polygon.length; index += 1) {
+    const current = polygon[index];
+    const next = polygon[(index + 1) % polygon.length];
+    const cross = (next.x - current.x) * (point.y - current.y) - (next.y - current.y) * (point.x - current.x);
+    if (Math.abs(cross) < 0.0001) continue;
+    const nextSign = Math.sign(cross);
+    if (sign === 0) {
+      sign = nextSign;
+      continue;
+    }
+    if (nextSign !== sign) return false;
+  }
+  return true;
 }
 
 function orientation(a: MapPoint, b: MapPoint, c: MapPoint) {
@@ -213,35 +296,35 @@ function segmentsIntersect(a1: MapPoint, a2: MapPoint, b1: MapPoint, b2: MapPoin
 function segmentIntersectsLabelBox(
   start: MapPoint,
   end: MapPoint,
-  box: ReturnType<typeof estimateLabelBox>,
+  box: LabelBox,
   padding = 8,
 ) {
-  const expandedBox = {
-    minX: box.minX - padding,
-    maxX: box.maxX + padding,
-    minY: box.minY - padding,
-    maxY: box.maxY + padding,
-  };
-
-  if (pointInBox(start, expandedBox) || pointInBox(end, expandedBox)) {
+  if (pointInPolygon(start, box.corners) || pointInPolygon(end, box.corners)) {
     return true;
   }
 
-  const topLeft = { x: expandedBox.minX, y: expandedBox.minY };
-  const topRight = { x: expandedBox.maxX, y: expandedBox.minY };
-  const bottomRight = { x: expandedBox.maxX, y: expandedBox.maxY };
-  const bottomLeft = { x: expandedBox.minX, y: expandedBox.maxY };
+  for (let index = 0; index < box.corners.length; index += 1) {
+    const corner = box.corners[index];
+    const nextCorner = box.corners[(index + 1) % box.corners.length];
+    if (segmentsIntersect(start, end, corner, nextCorner)) {
+      return true;
+    }
+  }
 
-  return (
-    segmentsIntersect(start, end, topLeft, topRight) ||
-    segmentsIntersect(start, end, topRight, bottomRight) ||
-    segmentsIntersect(start, end, bottomRight, bottomLeft) ||
-    segmentsIntersect(start, end, bottomLeft, topLeft)
-  );
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < box.corners.length; index += 1) {
+    const corner = box.corners[index];
+    const nextCorner = box.corners[(index + 1) % box.corners.length];
+    minDistance = Math.min(minDistance, pointToSegmentDistance(corner, start, end));
+    minDistance = Math.min(minDistance, pointToSegmentDistance(start, corner, nextCorner));
+    minDistance = Math.min(minDistance, pointToSegmentDistance(end, corner, nextCorner));
+  }
+
+  return minDistance < padding;
 }
 
 function candidateLabelPositions(node: MapNode) {
-  return [
+  const basePositions = [
     { x: node.x + 14, y: node.y - 12, align: "right" as const },
     { x: node.x + 14, y: node.y + 22, align: "right" as const },
     { x: node.x - 78, y: node.y - 12, align: "left" as const },
@@ -249,6 +332,13 @@ function candidateLabelPositions(node: MapNode) {
     { x: node.x - 18, y: node.y - 22, align: "top" as const },
     { x: node.x - 18, y: node.y + 34, align: "bottom" as const },
   ];
+
+  return basePositions.flatMap((position) =>
+    AUTO_LABEL_ROTATIONS.map((rotation) => ({
+      ...position,
+      rotation,
+    })),
+  );
 }
 
 function getStationLabelPosition(station: Station, node: MapNode) {
@@ -308,15 +398,15 @@ function pointOnPathAtHalf(points: MapPoint[]) {
 function computeLabelPenalty(
   current: RailwayMap,
   station: Station,
-  position: { x: number; y: number; align?: "left" | "right" | "top" | "bottom" },
-  placedBoxes: ReturnType<typeof estimateLabelBox>[],
+  position: { x: number; y: number; align?: "left" | "right" | "top" | "bottom"; rotation?: number },
+  placedBoxes: LabelBox[],
   nodesById: Map<string, MapNode>,
   stationKindsById: Map<string, StationKind>,
 ) {
   if (!station.nodeId) {
     return {
       score: Number.POSITIVE_INFINITY,
-      box: estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId))),
+      box: estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId)), position.rotation ?? 0),
     };
   }
 
@@ -324,11 +414,17 @@ function computeLabelPenalty(
   if (!node) {
     return {
       score: Number.POSITIVE_INFINITY,
-      box: estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId))),
+      box: estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId)), position.rotation ?? 0),
     };
   }
 
-  const box = estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId)));
+  const box = estimateLabelBox(
+    station.name,
+    position.x,
+    position.y,
+    getStationKindFontSize(stationKindsById.get(station.kindId)),
+    position.rotation ?? 0,
+  );
   const sheetSegments = current.model.segments.filter((segment) => segment.sheetId === node.sheetId);
 
   let overlapPenalty = 0;
@@ -347,13 +443,7 @@ function computeLabelPenalty(
         continue;
       }
 
-      const boxCorners = [
-        { x: box.minX, y: box.minY },
-        { x: box.maxX, y: box.minY },
-        { x: box.minX, y: box.maxY },
-        { x: box.maxX, y: box.maxY },
-        { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 },
-      ];
+      const boxCorners = [...box.corners, box.center];
       const minDistance = Math.min(...boxCorners.map((corner) => pointToSegmentDistance(corner, start, end)));
       if (minDistance < 18) {
         segmentPenalty += 120;
@@ -362,13 +452,14 @@ function computeLabelPenalty(
   }
 
   const offsetPenalty = Math.hypot(position.x - node.x, position.y - node.y) * 0.2;
-  return { score: overlapPenalty + segmentPenalty + offsetPenalty, box };
+  const rotationPenalty = position.rotation && position.rotation !== 0 ? 8 : 0;
+  return { score: overlapPenalty + segmentPenalty + offsetPenalty + rotationPenalty, box };
 }
 
 function autoPlaceLabels(current: RailwayMap) {
   const nodesById = new Map(current.model.nodes.map((node) => [node.id, node]));
   const stationKindsById = new Map(current.config.stationKinds.map((kind) => [kind.id, kind]));
-  const resolvedBoxes: ReturnType<typeof estimateLabelBox>[] = [];
+  const resolvedBoxes: LabelBox[] = [];
 
   return current.model.stations.map((station) => {
     if (!station.nodeId) return station;
@@ -391,7 +482,7 @@ function autoPlaceLabels(current: RailwayMap) {
         x: candidate.position.x,
         y: candidate.position.y,
         align: candidate.position.align,
-        rotation: station.label?.rotation ?? 0,
+        rotation: candidate.position.rotation ?? 0,
       },
     };
   });
@@ -451,6 +542,7 @@ function findNearbyFreePoint(map: RailwayMap, sheetId: string, preferredCenter: 
         position.x,
         position.y,
         getStationKindFontSize(stationKindsById.get(station.kindId)),
+        position.rotation,
       );
       if (pointInBox(candidate, labelBox, 14)) {
         return false;
@@ -648,7 +740,13 @@ export default function RailwayMapEditor() {
       const node = nodesById.get(station.nodeId);
       if (!node) continue;
       const position = getStationLabelPosition(station, node);
-      const box = estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId)));
+      const box = estimateLabelBox(
+        station.name,
+        position.x,
+        position.y,
+        getStationKindFontSize(stationKindsById.get(station.kindId)),
+        position.rotation,
+      );
       let overlapsLabel = false;
       let overlapsSegment = false;
 
@@ -662,6 +760,7 @@ export default function RailwayMapEditor() {
           otherPosition.x,
           otherPosition.y,
           getStationKindFontSize(stationKindsById.get(otherStation.kindId)),
+          otherPosition.rotation,
         );
         if (boxesOverlap(box, otherBox)) {
           overlapsLabel = true;
@@ -679,13 +778,7 @@ export default function RailwayMapEditor() {
             break;
           }
 
-          const boxCorners = [
-            { x: box.minX, y: box.minY },
-            { x: box.maxX, y: box.minY },
-            { x: box.minX, y: box.maxY },
-            { x: box.maxX, y: box.maxY },
-            { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 },
-          ];
+          const boxCorners = [...box.corners, box.center];
           const minDistance = Math.min(...boxCorners.map((corner) => pointToSegmentDistance(corner, start, end)));
           if (minDistance < 8) {
             overlapsSegment = true;
@@ -1204,7 +1297,13 @@ export default function RailwayMapEditor() {
         const node = nodesById.get(candidate.nodeId);
         if (!node) return null;
         const position = getStationLabelPosition(candidate, node);
-        return estimateLabelBox(candidate.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(candidate.kindId)));
+        return estimateLabelBox(
+          candidate.name,
+          position.x,
+          position.y,
+          getStationKindFontSize(stationKindsById.get(candidate.kindId)),
+          position.rotation,
+        );
       })
       .filter((box): box is ReturnType<typeof estimateLabelBox> => box !== null);
 
@@ -1222,7 +1321,7 @@ export default function RailwayMapEditor() {
         x: bestCandidate.position.x,
         y: bestCandidate.position.y,
         align: bestCandidate.position.align,
-        rotation: station.label?.rotation ?? 0,
+        rotation: bestCandidate.position.rotation ?? 0,
       },
     });
   }
@@ -2301,11 +2400,11 @@ export default function RailwayMapEditor() {
                       const diagnostics = labelDiagnostics.get(station.id);
                       const box =
                         diagnostics?.box ??
-                        estimateLabelBox(station.name, labelX, labelY, getStationKindFontSize(stationKind));
+                        estimateLabelBox(station.name, labelX, labelY, getStationKindFontSize(stationKind), labelRotation);
                       const shouldShowLeader = isDragging && (diagnostics?.leaderLine ?? false);
                       const labelAnchorY = labelY - 6;
-                      const labelCenterX = (box.minX + box.maxX) / 2;
-                      const labelCenterY = (box.minY + box.maxY) / 2;
+                      const labelCenterX = box.center.x;
+                      const labelCenterY = box.center.y;
                       const labelTransform = labelRotation
                         ? `rotate(${labelRotation} ${labelCenterX} ${labelCenterY})`
                         : undefined;
@@ -2333,10 +2432,10 @@ export default function RailwayMapEditor() {
                           <g transform={labelTransform}>
                             {diagnostics?.colliding || isDragging || isRotating || isSelected ? (
                               <rect
-                                x={box.minX}
-                                y={box.minY}
-                                width={box.maxX - box.minX}
-                                height={box.maxY - box.minY}
+                                x={box.localMinX}
+                                y={box.localMinY}
+                                width={box.localMaxX - box.localMinX}
+                                height={box.localMaxY - box.localMinY}
                                 rx="6"
                                 fill={diagnostics?.colliding ? "#fff1f2" : "white"}
                                 fillOpacity="0.92"
@@ -2346,10 +2445,10 @@ export default function RailwayMapEditor() {
                             ) : null}
                             {isSelected ? (
                               <rect
-                                x={box.minX}
-                                y={box.minY}
-                                width={box.maxX - box.minX}
-                                height={box.maxY - box.minY}
+                                x={box.localMinX}
+                                y={box.localMinY}
+                                width={box.localMaxX - box.localMinX}
+                                height={box.localMaxY - box.localMinY}
                                 rx="6"
                                 fill="none"
                                 stroke="transparent"
