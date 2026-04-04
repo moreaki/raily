@@ -319,6 +319,15 @@ function cloneMap(map: RailwayMap) {
   return JSON.parse(JSON.stringify(map)) as RailwayMap;
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
+function mapsEqual(left: RailwayMap, right: RailwayMap) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function normalizeRect(start: MapPoint, end: MapPoint) {
   return {
     minX: Math.min(start.x, end.x),
@@ -403,6 +412,10 @@ export default function RailwayMapEditor() {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const lastRestoredSheetIdRef = useRef<string | null>(null);
+  const mapRef = useRef(map);
+  const undoStackRef = useRef<RailwayMap[]>([]);
+  const redoStackRef = useRef<RailwayMap[]>([]);
+  const transientHistoryStartRef = useRef<RailwayMap | null>(null);
 
   const selectedNode = map.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const selectedStation = map.stations.find((station) => station.id === selectedStationId) ?? null;
@@ -577,6 +590,7 @@ export default function RailwayMapEditor() {
   }, [gridStepX, gridStepY, showGrid, viewBox.height, viewBox.width, viewBox.x, viewBox.y]);
 
   useEffect(() => {
+    mapRef.current = map;
     setJsonText(JSON.stringify(map, null, 2));
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
@@ -588,6 +602,22 @@ export default function RailwayMapEditor() {
       window.localStorage.setItem(SHEET_VIEW_STORAGE_KEY, JSON.stringify(sheetViews));
     }
   }, [sheetViews]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const isUndo = (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "z";
+      if (!isUndo) return;
+      if (isEditableTarget(event.target)) return;
+
+      event.preventDefault();
+      undoLastChange();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     const currentNodeIdSet = new Set(currentNodes.map((node) => node.id));
@@ -668,9 +698,66 @@ export default function RailwayMapEditor() {
     });
   }, [currentSheetId, viewportCenter.x, viewportCenter.y, zoom]);
 
-  function updateMap(updater: (current: RailwayMap) => RailwayMap) {
-    setMap((current) => updater(current));
+  function pushUndoSnapshot(snapshot: RailwayMap) {
+    undoStackRef.current = [...undoStackRef.current.slice(-99), cloneMap(snapshot)];
+    redoStackRef.current = [];
+  }
+
+  function updateMap(updater: (current: RailwayMap) => RailwayMap, options?: { trackHistory?: boolean }) {
+    setMap((current) => {
+      const next = updater(current);
+      if (next === current || mapsEqual(next, current)) {
+        return current;
+      }
+
+      if (options?.trackHistory !== false && !transientHistoryStartRef.current) {
+        pushUndoSnapshot(current);
+      }
+
+      return next;
+    });
     setErrorMessage("");
+  }
+
+  function replaceMap(nextMap: RailwayMap, options?: { trackHistory?: boolean }) {
+    setMap((current) => {
+      if (mapsEqual(current, nextMap)) {
+        return current;
+      }
+
+      if (options?.trackHistory !== false && !transientHistoryStartRef.current) {
+        pushUndoSnapshot(current);
+      }
+
+      return cloneMap(nextMap);
+    });
+    setErrorMessage("");
+  }
+
+  function beginTransientMapChange() {
+    if (!transientHistoryStartRef.current) {
+      transientHistoryStartRef.current = cloneMap(mapRef.current);
+    }
+  }
+
+  function completeTransientMapChange() {
+    const snapshot = transientHistoryStartRef.current;
+    transientHistoryStartRef.current = null;
+    if (!snapshot) return;
+    if (mapsEqual(snapshot, mapRef.current)) return;
+    pushUndoSnapshot(snapshot);
+  }
+
+  function undoLastChange() {
+    completeTransientMapChange();
+    const previous = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!previous) return;
+
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    redoStackRef.current = [...redoStackRef.current, cloneMap(mapRef.current)];
+    setMap(cloneMap(previous));
+    setErrorMessage("");
+    setNodeContextMenu(null);
   }
 
   function clearCanvasSelections() {
@@ -798,7 +885,7 @@ export default function RailwayMapEditor() {
 
   function bootstrapDevelopmentModel() {
     const nextMap = cloneMap(DEVELOPMENT_BOOTSTRAP_MAP);
-    setMap(nextMap);
+    replaceMap(nextMap);
     setSelectedNodeId(nextMap.nodes[0]?.id ?? "");
     setSelectedNodeIds(nextMap.nodes[0]?.id ? [nextMap.nodes[0].id] : []);
     setSelectedStationId(nextMap.stations[0]?.id ?? "");
@@ -1153,6 +1240,7 @@ export default function RailwayMapEditor() {
     }
 
     setDraggingNodeId(nodeId);
+    beginTransientMapChange();
     if (svgRef.current) {
       const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
       if (point) {
@@ -1181,6 +1269,7 @@ export default function RailwayMapEditor() {
     setSelectedSegmentId("");
     setDraggingNodeId(null);
     setDraggingLabelStationId(stationId);
+    beginTransientMapChange();
     if (svgRef.current) {
       const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
       if (point) {
@@ -1276,7 +1365,7 @@ export default function RailwayMapEditor() {
             },
           };
         }),
-      }));
+      }), { trackHistory: false });
       setDragLastPoint({ x: svgPoint.x, y: svgPoint.y });
       return;
     }
@@ -1313,11 +1402,12 @@ export default function RailwayMapEditor() {
           },
         };
       }),
-    }));
+    }), { trackHistory: false });
     setDragLastPoint({ x: svgPoint.x, y: svgPoint.y });
   }
 
   function handleSvgMouseUp() {
+    completeTransientMapChange();
     if (marqueeSelection) {
       const rect = normalizeRect(marqueeSelection.start, marqueeSelection.end);
       setMarqueeSelection(null);
@@ -1447,7 +1537,7 @@ export default function RailwayMapEditor() {
   function importJson() {
     try {
       const parsed = railwayMapSchema.parse(JSON.parse(jsonText));
-      setMap(parsed);
+      replaceMap(parsed);
       setErrorMessage("");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Could not import the map JSON.");
