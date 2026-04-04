@@ -930,6 +930,10 @@ export default function RailwayMapEditor() {
   const lastRestoredSheetIdRef = useRef<string | null>(null);
   const mapRef = useRef(map);
   const zoomRef = useRef(zoom);
+  const viewBoxRef = useRef({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, centerX: CANVAS_WIDTH / 2, centerY: CANVAS_HEIGHT / 2 });
+  const wheelZoomDeltaRef = useRef(0);
+  const wheelZoomFocusRef = useRef<MapPoint | null>(null);
+  const wheelZoomFrameRef = useRef<number | null>(null);
   const undoStackRef = useRef<RailwayMap[]>([]);
   const redoStackRef = useRef<RailwayMap[]>([]);
   const transientHistoryStartRef = useRef<RailwayMap | null>(null);
@@ -1403,6 +1407,10 @@ export default function RailwayMapEditor() {
   useEffect(() => {
     zoomRef.current = zoom;
   }, [zoom]);
+
+  useEffect(() => {
+    viewBoxRef.current = viewBox;
+  }, [viewBox]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2770,6 +2778,21 @@ export default function RailwayMapEditor() {
     });
   }
 
+  function flushQueuedWheelZoom() {
+    wheelZoomFrameRef.current = null;
+    const delta = wheelZoomDeltaRef.current;
+    const focusPoint = wheelZoomFocusRef.current ?? undefined;
+    wheelZoomDeltaRef.current = 0;
+    wheelZoomFocusRef.current = null;
+
+    if (Math.abs(delta) < 0.5) return;
+
+    const magnitude = clamp(Math.abs(delta) * 0.0125, 0.06, 0.45);
+    const currentZoom = zoomRef.current;
+    const nextZoom = delta < 0 ? currentZoom * (1 + magnitude) : currentZoom / (1 + magnitude);
+    applyZoom(nextZoom, focusPoint);
+  }
+
   useEffect(() => {
     const element = canvasViewportRef.current;
     if (!element) return;
@@ -2780,12 +2803,13 @@ export default function RailwayMapEditor() {
 
       if (event.ctrlKey || event.metaKey) {
         const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-        const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
         const normalizedDeltaY = normalizeWheelDelta(event.deltaY, event.deltaMode);
         if (Math.abs(normalizedDeltaY) < 0.25) return;
-        const zoomFactor = Math.exp(-normalizedDeltaY * 0.006);
-        const nextZoom = zoomRef.current * zoomFactor;
-        applyZoom(nextZoom, focusPoint);
+        wheelZoomDeltaRef.current += normalizedDeltaY;
+        wheelZoomFocusRef.current = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : null;
+        if (wheelZoomFrameRef.current === null) {
+          wheelZoomFrameRef.current = window.requestAnimationFrame(flushQueuedWheelZoom);
+        }
         return;
       }
 
@@ -2798,6 +2822,12 @@ export default function RailwayMapEditor() {
     element.addEventListener("wheel", handleNativeWheel, { passive: false });
     return () => {
       element.removeEventListener("wheel", handleNativeWheel);
+      if (wheelZoomFrameRef.current !== null) {
+        window.cancelAnimationFrame(wheelZoomFrameRef.current);
+        wheelZoomFrameRef.current = null;
+      }
+      wheelZoomDeltaRef.current = 0;
+      wheelZoomFocusRef.current = null;
     };
   }, []);
 
