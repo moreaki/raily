@@ -738,6 +738,12 @@ export default function RailwayMapEditor() {
       .map((lineRun) => linesById.get(lineRun.lineId))
       .filter((line): line is Line => !!line);
   }, [contextMenuSegment, linesById, model.lineRuns]);
+  const assignableLinesForContextSegment = useMemo(() => {
+    if (!contextMenuSegment) return [];
+
+    const assignedLineIds = new Set(assignedLinesForContextSegment.map((line) => line.id));
+    return config.lines.filter((line) => !assignedLineIds.has(line.id));
+  }, [assignedLinesForContextSegment, config.lines, contextMenuSegment]);
   const viewBox = useMemo(() => {
     const { width, height } = viewBoxDimensions;
     const centerX = viewportCenter.x;
@@ -2421,7 +2427,7 @@ export default function RailwayMapEditor() {
                     <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Line</div>
                       <div className="mt-2 max-h-40 space-y-1 overflow-auto">
-                        {config.lines.map((line) => (
+                        {assignableLinesForContextSegment.map((line) => (
                           <button
                             key={line.id}
                             type="button"
@@ -2435,6 +2441,9 @@ export default function RailwayMapEditor() {
                             />
                           </button>
                         ))}
+                        {assignableLinesForContextSegment.length === 0 ? (
+                          <div className="px-2 py-2 text-xs text-slate-500">All available lines are already assigned to this segment.</div>
+                        ) : null}
                       </div>
                     </div>
                     <button
