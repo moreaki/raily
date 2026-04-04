@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, Trash2, Upload } from "lucide-react";
 import { DEVELOPMENT_BOOTSTRAP_MAP, INITIAL_MAP, LINE_PRESETS } from "@/entities/railway-map/model/constants";
 import { railwayMapSchema } from "@/entities/railway-map/model/schema";
-import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape } from "@/entities/railway-map/model/types";
+import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape, StationLabelFontWeight } from "@/entities/railway-map/model/types";
 import {
   buildSegmentPoints,
   buildLineRunPath,
@@ -37,6 +37,9 @@ const LABEL_FONT_SIZE = 14;
 const LABEL_PADDING_X = 10;
 const LABEL_PADDING_Y = 8;
 const MIN_GRID_STEP = 4;
+const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, sans-serif';
+const DEFAULT_STATION_FONT_WEIGHT: StationLabelFontWeight = "600";
+const STATION_FONT_WEIGHT_OPTIONS: StationLabelFontWeight[] = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
 
 function downloadFile(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -83,6 +86,22 @@ function renderNodeSymbol(shape: StationKindShape, node: MapNode, isSelected: bo
       {isSelected ? <circle cx={node.x} cy={node.y} r={isTrackPoint ? "12" : "14"} fill="none" stroke="#0f172a" strokeDasharray="4 3" /> : null}
     </>
   );
+}
+
+function renderStationKindPreview(shape: StationKindShape) {
+  const previewNode = { id: "preview", sheetId: "preview", x: 18, y: 18 };
+
+  return (
+    <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+      {renderNodeSymbol(shape, previewNode, false, false)}
+    </svg>
+  );
+}
+
+function stationKindShapeGlyph(shape: StationKindShape) {
+  if (shape === "interchange") return "□";
+  if (shape === "terminal") return "▭";
+  return "○";
 }
 
 function loadStoredMap() {
@@ -461,6 +480,8 @@ export default function RailwayMapEditor() {
   const [newStationName, setNewStationName] = useState("");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
+  const [newStationKindFontFamily, setNewStationKindFontFamily] = useState(DEFAULT_STATION_FONT_FAMILY);
+  const [newStationKindFontWeight, setNewStationKindFontWeight] = useState<StationLabelFontWeight>(DEFAULT_STATION_FONT_WEIGHT);
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage">("edit");
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
   const [sheetNameDraft, setSheetNameDraft] = useState("");
@@ -988,6 +1009,8 @@ export default function RailwayMapEditor() {
       id: createStationKindId(),
       name: newStationKindName.trim() || `Kind ${map.stationKinds.length + 1}`,
       shape: newStationKindShape,
+      fontFamily: newStationKindFontFamily.trim() || DEFAULT_STATION_FONT_FAMILY,
+      fontWeight: newStationKindFontWeight,
     };
 
     updateMap((current) => ({
@@ -997,6 +1020,8 @@ export default function RailwayMapEditor() {
     setSelectedStationKindId(stationKind.id);
     setNewStationKindName("");
     setNewStationKindShape("circle");
+    setNewStationKindFontFamily(DEFAULT_STATION_FONT_FAMILY);
+    setNewStationKindFontWeight(DEFAULT_STATION_FONT_WEIGHT);
   }
 
   function addLine() {
@@ -1974,6 +1999,7 @@ export default function RailwayMapEditor() {
                     {currentStations.map((station) => {
                       const node = nodesById.get(station.nodeId);
                       if (!node) return null;
+                      const stationKind = stationKindsById.get(station.kindId);
                       const position = getStationLabelPosition(station, node);
                       const labelX = position.x;
                       const labelY = position.y;
@@ -2015,7 +2041,14 @@ export default function RailwayMapEditor() {
                               strokeDasharray={diagnostics?.colliding || isDragging || isSelected ? "4 3" : undefined}
                             />
                           ) : null}
-                          <text x={labelX} y={labelY} fontSize="14" fontWeight="600" fill={diagnostics?.colliding ? "#991b1b" : "#111827"}>
+                          <text
+                            x={labelX}
+                            y={labelY}
+                            fontSize="14"
+                            fontFamily={stationKind?.fontFamily ?? DEFAULT_STATION_FONT_FAMILY}
+                            fontWeight={stationKind?.fontWeight ?? DEFAULT_STATION_FONT_WEIGHT}
+                            fill={diagnostics?.colliding ? "#991b1b" : "#111827"}
+                          >
                             {station.name}
                           </text>
                         </g>
@@ -2081,7 +2114,7 @@ export default function RailwayMapEditor() {
                             >
                               {map.stationKinds.map((kind) => (
                                 <option key={kind.id} value={kind.id}>
-                                  {kind.name}
+                                  {kind.name} {stationKindShapeGlyph(kind.shape)}
                                 </option>
                               ))}
                             </select>
@@ -2415,7 +2448,7 @@ export default function RailwayMapEditor() {
                                   >
                                     {map.stationKinds.map((kind) => (
                                       <option key={kind.id} value={kind.id}>
-                                        {kind.name}
+                                        {kind.name} {stationKindShapeGlyph(kind.shape)}
                                       </option>
                                     ))}
                                   </select>
@@ -2547,20 +2580,38 @@ export default function RailwayMapEditor() {
 
                       <section className="space-y-3">
                         <div className="text-sm font-semibold text-ink">Station Kinds</div>
-                        <div className="flex gap-2">
+                        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                           <Input value={newStationKindName} onChange={(event) => setNewStationKindName(event.target.value)} placeholder="New station kind" />
-                          <select
-                            value={newStationKindShape}
-                            onChange={(event) => setNewStationKindShape(event.target.value as StationKindShape)}
-                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                          >
-                            <option value="circle">Circle</option>
-                            <option value="interchange">Interchange</option>
-                            <option value="terminal">Terminal</option>
-                          </select>
-                          <Button onClick={addStationKind}>
-                            <Plus className="h-4 w-4" />
-                          </Button>
+                          <Input
+                            value={newStationKindFontFamily}
+                            onChange={(event) => setNewStationKindFontFamily(event.target.value)}
+                            placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
+                          />
+                          <div className="flex gap-2">
+                            <select
+                              value={newStationKindShape}
+                              onChange={(event) => setNewStationKindShape(event.target.value as StationKindShape)}
+                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                            >
+                              <option value="circle">Circle</option>
+                              <option value="interchange">Interchange</option>
+                              <option value="terminal">Terminal</option>
+                            </select>
+                            <select
+                              value={newStationKindFontWeight}
+                              onChange={(event) => setNewStationKindFontWeight(event.target.value as StationLabelFontWeight)}
+                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                            >
+                              {STATION_FONT_WEIGHT_OPTIONS.map((weight) => (
+                                <option key={weight} value={weight}>
+                                  {weight}
+                                </option>
+                              ))}
+                            </select>
+                            <Button onClick={addStationKind}>
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                         <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
                           {map.stationKinds.map((kind) => (
@@ -2572,14 +2623,31 @@ export default function RailwayMapEditor() {
                                 selectedStationKindId === kind.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
                               }`}
                             >
-                              <div className="font-medium">{kind.name}</div>
-                              <div className="text-xs opacity-80">{kind.shape}</div>
+                              <div className="flex items-center gap-3">
+                                <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                                  {renderStationKindPreview(kind.shape)}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="font-medium">{kind.name}</div>
+                                  <div
+                                    className="mt-1 truncate text-sm opacity-90"
+                                    style={{ fontFamily: kind.fontFamily, fontWeight: kind.fontWeight }}
+                                  >
+                                    Sample label ({kind.fontWeight})
+                                  </div>
+                                </div>
+                              </div>
                             </button>
                           ))}
                         </div>
                         {selectedStationKind ? (
                           <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                             <Input value={selectedStationKind.name} onChange={(event) => updateStationKind(selectedStationKind.id, { name: event.target.value })} />
+                            <Input
+                              value={selectedStationKind.fontFamily}
+                              onChange={(event) => updateStationKind(selectedStationKind.id, { fontFamily: event.target.value || DEFAULT_STATION_FONT_FAMILY })}
+                              placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
+                            />
                             <select
                               value={selectedStationKind.shape}
                               onChange={(event) => updateStationKind(selectedStationKind.id, { shape: event.target.value as StationKindShape })}
@@ -2589,6 +2657,23 @@ export default function RailwayMapEditor() {
                               <option value="interchange">Interchange</option>
                               <option value="terminal">Terminal</option>
                             </select>
+                            <select
+                              value={selectedStationKind.fontWeight}
+                              onChange={(event) => updateStationKind(selectedStationKind.id, { fontWeight: event.target.value as StationLabelFontWeight })}
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                            >
+                              {STATION_FONT_WEIGHT_OPTIONS.map((weight) => (
+                                <option key={weight} value={weight}>
+                                  {weight}
+                                </option>
+                              ))}
+                            </select>
+                            <div
+                              className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-ink"
+                              style={{ fontFamily: selectedStationKind.fontFamily, fontWeight: selectedStationKind.fontWeight }}
+                            >
+                              Preview label for {selectedStationKind.name}
+                            </div>
                             <Button variant="destructive" className="w-full" onClick={deleteSelectedStationKind} disabled={map.stationKinds.length <= 1}>
                               <Trash2 className="h-4 w-4" />
                               Delete station kind

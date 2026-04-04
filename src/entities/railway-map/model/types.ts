@@ -5,6 +5,7 @@ export interface MapPoint {
 
 export type LabelAlignment = "left" | "right" | "top" | "bottom";
 export type StationKindShape = "circle" | "interchange" | "terminal";
+export type StationLabelFontWeight = "100" | "200" | "300" | "400" | "500" | "600" | "700" | "800" | "900";
 export type LineStrokeStyle = "solid" | "dashed" | "dotted";
 
 export interface Sheet {
@@ -16,6 +17,8 @@ export interface StationKind {
   id: string;
   name: string;
   shape: StationKindShape;
+  fontFamily: string;
+  fontWeight: StationLabelFontWeight;
 }
 
 export interface MapNode extends MapPoint {
