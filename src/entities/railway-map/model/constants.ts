@@ -2,6 +2,7 @@ import type { RailwayMap } from "./types";
 
 const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, sans-serif';
 const DEFAULT_STATION_FONT_WEIGHT = "600" as const;
+const DEFAULT_STATION_FONT_SIZE = 14;
 
 export const LINE_PRESETS = [
   { id: "C1", color: "#e11d48", strokeWidth: 10, strokeStyle: "solid" as const },
@@ -34,9 +35,9 @@ export const INITIAL_MAP: RailwayMap = {
     { id: "n14", sheetId: "sh2", x: 440, y: 340 },
   ],
   stationKinds: [
-    { id: "sk1", name: "Stop", shape: "circle", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT },
-    { id: "sk2", name: "Hub", shape: "interchange", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700" },
-    { id: "sk3", name: "Terminal", shape: "terminal", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT },
+    { id: "sk1", name: "Stop", shape: "circle", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
+    { id: "sk2", name: "Hub", shape: "interchange", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700", fontSize: 15 },
+    { id: "sk3", name: "Terminal", shape: "terminal", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
   ],
   stations: [
     { id: "s1", nodeId: "n1", name: "Westside", kindId: "sk3", label: { x: 170, y: 196, align: "top" } },
@@ -116,9 +117,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
     { id: "n-north-4", sheetId: "sh-north", x: 400, y: 320 },
   ],
   stationKinds: [
-    { id: "sk-stop", name: "Stop", shape: "circle", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT },
-    { id: "sk-hub", name: "Hub", shape: "interchange", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700" },
-    { id: "sk-terminal", name: "Terminal", shape: "terminal", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT },
+    { id: "sk-stop", name: "Stop", shape: "circle", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
+    { id: "sk-hub", name: "Hub", shape: "interchange", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700", fontSize: 15 },
+    { id: "sk-terminal", name: "Terminal", shape: "terminal", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
   ],
   stations: [
     { id: "s-ov-1", nodeId: "n-ov-1", name: "West Junction", kindId: "sk-terminal", label: { x: 106, y: 236, align: "top" } },

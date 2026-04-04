@@ -19,6 +19,7 @@ export interface StationKind {
   shape: StationKindShape;
   fontFamily: string;
   fontWeight: StationLabelFontWeight;
+  fontSize: number;
 }
 
 export interface MapNode extends MapPoint {

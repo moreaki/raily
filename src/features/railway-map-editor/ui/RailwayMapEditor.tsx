@@ -39,6 +39,7 @@ const LABEL_PADDING_Y = 8;
 const MIN_GRID_STEP = 4;
 const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, sans-serif';
 const DEFAULT_STATION_FONT_WEIGHT: StationLabelFontWeight = "600";
+const DEFAULT_STATION_FONT_SIZE = 14;
 const STATION_FONT_WEIGHT_OPTIONS: StationLabelFontWeight[] = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
 
 function downloadFile(filename: string, content: string, mime: string) {
@@ -134,9 +135,9 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function estimateLabelBox(label: string, x: number, y: number) {
-  const width = Math.max(38, label.length * 7.6);
-  const height = LABEL_FONT_SIZE + 8;
+function estimateLabelBox(label: string, x: number, y: number, fontSize = LABEL_FONT_SIZE) {
+  const width = Math.max(38, label.length * (fontSize * 0.54));
+  const height = fontSize + 8;
   return {
     minX: x - LABEL_PADDING_X / 2,
     maxX: x + width + LABEL_PADDING_X / 2,
@@ -257,23 +258,34 @@ function getStationLabelPosition(station: Station, node: MapNode) {
   };
 }
 
+function getStationKindFontSize(stationKind?: StationKind) {
+  return stationKind?.fontSize ?? DEFAULT_STATION_FONT_SIZE;
+}
+
 function computeLabelPenalty(
   current: RailwayMap,
   station: Station,
   position: { x: number; y: number; align?: "left" | "right" | "top" | "bottom" },
   placedBoxes: ReturnType<typeof estimateLabelBox>[],
   nodesById: Map<string, MapNode>,
+  stationKindsById: Map<string, StationKind>,
 ) {
   if (!station.nodeId) {
-    return { score: Number.POSITIVE_INFINITY, box: estimateLabelBox(station.name, position.x, position.y) };
+    return {
+      score: Number.POSITIVE_INFINITY,
+      box: estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId))),
+    };
   }
 
   const node = nodesById.get(station.nodeId);
   if (!node) {
-    return { score: Number.POSITIVE_INFINITY, box: estimateLabelBox(station.name, position.x, position.y) };
+    return {
+      score: Number.POSITIVE_INFINITY,
+      box: estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId))),
+    };
   }
 
-  const box = estimateLabelBox(station.name, position.x, position.y);
+  const box = estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId)));
   const sheetSegments = current.segments.filter((segment) => segment.sheetId === node.sheetId);
 
   let overlapPenalty = 0;
@@ -312,6 +324,7 @@ function computeLabelPenalty(
 
 function autoPlaceLabels(current: RailwayMap) {
   const nodesById = new Map(current.nodes.map((node) => [node.id, node]));
+  const stationKindsById = new Map(current.stationKinds.map((kind) => [kind.id, kind]));
   const resolvedBoxes: ReturnType<typeof estimateLabelBox>[] = [];
 
   return current.stations.map((station) => {
@@ -321,7 +334,7 @@ function autoPlaceLabels(current: RailwayMap) {
 
     const candidate = candidateLabelPositions(node)
       .map((position) => {
-        const analysis = computeLabelPenalty(current, station, position, resolvedBoxes, nodesById);
+        const analysis = computeLabelPenalty(current, station, position, resolvedBoxes, nodesById, stationKindsById);
         return { position, box: analysis.box, score: analysis.score };
       })
       .sort((left, right) => left.score - right.score)[0];
@@ -372,6 +385,7 @@ function findNearbyFreePoint(map: RailwayMap, sheetId: string, preferredCenter: 
   const sheetNodes = map.nodes.filter((node) => node.sheetId === sheetId);
   const sheetNodeIds = new Set(sheetNodes.map((node) => node.id));
   const nodesById = new Map(sheetNodes.map((node) => [node.id, node]));
+  const stationKindsById = new Map(map.stationKinds.map((kind) => [kind.id, kind]));
   const sheetSegments = map.segments.filter((segment) => segment.sheetId === sheetId);
   const spacing = 56;
   const maxRadius = 8;
@@ -388,7 +402,12 @@ function findNearbyFreePoint(map: RailwayMap, sheetId: string, preferredCenter: 
       const stationNode = nodesById.get(station.nodeId);
       if (!stationNode) continue;
       const position = getStationLabelPosition(station, stationNode);
-      const labelBox = estimateLabelBox(station.name, position.x, position.y);
+      const labelBox = estimateLabelBox(
+        station.name,
+        position.x,
+        position.y,
+        getStationKindFontSize(stationKindsById.get(station.kindId)),
+      );
       if (pointInBox(candidate, labelBox, 14)) {
         return false;
       }
@@ -482,6 +501,7 @@ export default function RailwayMapEditor() {
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
   const [newStationKindFontFamily, setNewStationKindFontFamily] = useState(DEFAULT_STATION_FONT_FAMILY);
   const [newStationKindFontWeight, setNewStationKindFontWeight] = useState<StationLabelFontWeight>(DEFAULT_STATION_FONT_WEIGHT);
+  const [newStationKindFontSize, setNewStationKindFontSize] = useState(DEFAULT_STATION_FONT_SIZE);
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage">("edit");
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
   const [sheetNameDraft, setSheetNameDraft] = useState("");
@@ -577,7 +597,7 @@ export default function RailwayMapEditor() {
       const node = nodesById.get(station.nodeId);
       if (!node) continue;
       const position = getStationLabelPosition(station, node);
-      const box = estimateLabelBox(station.name, position.x, position.y);
+      const box = estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId)));
       let overlapsLabel = false;
       let overlapsSegment = false;
 
@@ -586,7 +606,12 @@ export default function RailwayMapEditor() {
         const otherNode = nodesById.get(otherStation.nodeId);
         if (!otherNode) continue;
         const otherPosition = getStationLabelPosition(otherStation, otherNode);
-        const otherBox = estimateLabelBox(otherStation.name, otherPosition.x, otherPosition.y);
+        const otherBox = estimateLabelBox(
+          otherStation.name,
+          otherPosition.x,
+          otherPosition.y,
+          getStationKindFontSize(stationKindsById.get(otherStation.kindId)),
+        );
         if (boxesOverlap(box, otherBox)) {
           overlapsLabel = true;
           break;
@@ -1011,6 +1036,7 @@ export default function RailwayMapEditor() {
       shape: newStationKindShape,
       fontFamily: newStationKindFontFamily.trim() || DEFAULT_STATION_FONT_FAMILY,
       fontWeight: newStationKindFontWeight,
+      fontSize: clamp(newStationKindFontSize, 8, 72),
     };
 
     updateMap((current) => ({
@@ -1022,6 +1048,7 @@ export default function RailwayMapEditor() {
     setNewStationKindShape("circle");
     setNewStationKindFontFamily(DEFAULT_STATION_FONT_FAMILY);
     setNewStationKindFontWeight(DEFAULT_STATION_FONT_WEIGHT);
+    setNewStationKindFontSize(DEFAULT_STATION_FONT_SIZE);
   }
 
   function addLine() {
@@ -1085,14 +1112,14 @@ export default function RailwayMapEditor() {
         const node = nodesById.get(candidate.nodeId);
         if (!node) return null;
         const position = getStationLabelPosition(candidate, node);
-        return estimateLabelBox(candidate.name, position.x, position.y);
+        return estimateLabelBox(candidate.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(candidate.kindId)));
       })
       .filter((box): box is ReturnType<typeof estimateLabelBox> => box !== null);
 
     const allNodesById = new Map(map.nodes.map((node) => [node.id, node]));
     const bestCandidate = candidateLabelPositions(stationNode)
       .map((position) => {
-        const analysis = computeLabelPenalty(map, station, position, occupiedBoxes, allNodesById);
+        const analysis = computeLabelPenalty(map, station, position, occupiedBoxes, allNodesById, stationKindsById);
         return { position, score: analysis.score };
       })
       .sort((left, right) => left.score - right.score)[0];
@@ -2006,7 +2033,9 @@ export default function RailwayMapEditor() {
                       const isDragging = draggingLabelStationId === station.id;
                       const isSelected = selectedStationId === station.id;
                       const diagnostics = labelDiagnostics.get(station.id);
-                      const box = diagnostics?.box ?? estimateLabelBox(station.name, labelX, labelY);
+                      const box =
+                        diagnostics?.box ??
+                        estimateLabelBox(station.name, labelX, labelY, getStationKindFontSize(stationKind));
                       const shouldShowLeader = isDragging && (diagnostics?.leaderLine ?? false);
                       const labelAnchorY = labelY - 6;
 
@@ -2044,7 +2073,7 @@ export default function RailwayMapEditor() {
                           <text
                             x={labelX}
                             y={labelY}
-                            fontSize="14"
+                            fontSize={getStationKindFontSize(stationKind)}
                             fontFamily={stationKind?.fontFamily ?? DEFAULT_STATION_FONT_FAMILY}
                             fontWeight={stationKind?.fontWeight ?? DEFAULT_STATION_FONT_WEIGHT}
                             fill={diagnostics?.colliding ? "#991b1b" : "#111827"}
@@ -2608,6 +2637,16 @@ export default function RailwayMapEditor() {
                                 </option>
                               ))}
                             </select>
+                            <Input
+                              type="number"
+                              min={8}
+                              max={72}
+                              step={1}
+                              value={newStationKindFontSize}
+                              onChange={(event) => setNewStationKindFontSize(Number(event.target.value) || DEFAULT_STATION_FONT_SIZE)}
+                              className="w-24"
+                              placeholder="Size"
+                            />
                             <Button onClick={addStationKind}>
                               <Plus className="h-4 w-4" />
                             </Button>
@@ -2631,9 +2670,9 @@ export default function RailwayMapEditor() {
                                   <div className="font-medium">{kind.name}</div>
                                   <div
                                     className="mt-1 truncate text-sm opacity-90"
-                                    style={{ fontFamily: kind.fontFamily, fontWeight: kind.fontWeight }}
+                                    style={{ fontFamily: kind.fontFamily, fontWeight: kind.fontWeight, fontSize: `${kind.fontSize}px` }}
                                   >
-                                    Sample label ({kind.fontWeight})
+                                    Sample label ({kind.fontWeight}, {kind.fontSize}px)
                                   </div>
                                 </div>
                               </div>
@@ -2647,6 +2686,19 @@ export default function RailwayMapEditor() {
                               value={selectedStationKind.fontFamily}
                               onChange={(event) => updateStationKind(selectedStationKind.id, { fontFamily: event.target.value || DEFAULT_STATION_FONT_FAMILY })}
                               placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
+                            />
+                            <Input
+                              type="number"
+                              min={8}
+                              max={72}
+                              step={1}
+                              value={selectedStationKind.fontSize}
+                              onChange={(event) =>
+                                updateStationKind(selectedStationKind.id, {
+                                  fontSize: clamp(Number(event.target.value) || DEFAULT_STATION_FONT_SIZE, 8, 72),
+                                })
+                              }
+                              placeholder="Font size"
                             />
                             <select
                               value={selectedStationKind.shape}
@@ -2670,9 +2722,13 @@ export default function RailwayMapEditor() {
                             </select>
                             <div
                               className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-ink"
-                              style={{ fontFamily: selectedStationKind.fontFamily, fontWeight: selectedStationKind.fontWeight }}
+                              style={{
+                                fontFamily: selectedStationKind.fontFamily,
+                                fontWeight: selectedStationKind.fontWeight,
+                                fontSize: `${selectedStationKind.fontSize}px`,
+                              }}
                             >
-                              Preview label for {selectedStationKind.name}
+                              Preview label for {selectedStationKind.name} ({selectedStationKind.fontSize}px)
                             </div>
                             <Button variant="destructive" className="w-full" onClick={deleteSelectedStationKind} disabled={map.stationKinds.length <= 1}>
                               <Trash2 className="h-4 w-4" />
