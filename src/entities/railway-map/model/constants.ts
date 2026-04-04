@@ -14,6 +14,19 @@ export const LINE_PRESETS = [
 ];
 
 export const INITIAL_MAP: RailwayMap = {
+  config: {
+    stationKinds: [
+      { id: "sk1", name: "Stop", shape: "circle", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
+      { id: "sk2", name: "Hub", shape: "interchange", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700", fontSize: 15 },
+      { id: "sk3", name: "Terminal", shape: "terminal", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
+    ],
+    lines: [
+      { id: "l1", name: "C1", color: "#e11d48", strokeWidth: 10, strokeStyle: "solid" },
+      { id: "l2", name: "C2", color: "#2563eb", strokeWidth: 10, strokeStyle: "dashed" },
+      { id: "l3", name: "C3", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" },
+    ],
+  },
+  model: {
   sheets: [
     { id: "sh1", name: "Regional Overview" },
     { id: "sh2", name: "Urban Detail" },
@@ -33,11 +46,6 @@ export const INITIAL_MAP: RailwayMap = {
     { id: "n12", sheetId: "sh2", x: 560, y: 220 },
     { id: "n13", sheetId: "sh2", x: 320, y: 340 },
     { id: "n14", sheetId: "sh2", x: 440, y: 340 },
-  ],
-  stationKinds: [
-    { id: "sk1", name: "Stop", shape: "circle", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
-    { id: "sk2", name: "Hub", shape: "interchange", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700", fontSize: 15 },
-    { id: "sk3", name: "Terminal", shape: "terminal", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
   ],
   stations: [
     { id: "s1", nodeId: "n1", name: "Westside", kindId: "sk3", label: { x: 170, y: 196, align: "top" } },
@@ -68,19 +76,30 @@ export const INITIAL_MAP: RailwayMap = {
     { id: "sg11", sheetId: "sh2", fromNodeId: "n10", toNodeId: "n13", geometry: { kind: "straight" } },
     { id: "sg12", sheetId: "sh2", fromNodeId: "n13", toNodeId: "n14", geometry: { kind: "straight" } },
   ],
-  lines: [
-    { id: "l1", name: "C1", color: "#e11d48", strokeWidth: 10, strokeStyle: "solid" },
-    { id: "l2", name: "C2", color: "#2563eb", strokeWidth: 10, strokeStyle: "dashed" },
-    { id: "l3", name: "C3", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" },
-  ],
   lineRuns: [
     { id: "lr1", lineId: "l1", segmentIds: ["sg1", "sg2", "sg3"] },
     { id: "lr2", lineId: "l2", segmentIds: ["sg1", "sg2", "sg6", "sg7", "sg8", "sg9", "sg10"] },
     { id: "lr3", lineId: "l3", segmentIds: ["sg2", "sg4", "sg5", "sg9", "sg11", "sg12"] },
   ],
+  },
 };
 
 export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
+  config: {
+  stationKinds: [
+    { id: "sk-stop", name: "Stop", shape: "circle", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
+    { id: "sk-hub", name: "Hub", shape: "interchange", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700", fontSize: 15 },
+    { id: "sk-terminal", name: "Terminal", shape: "terminal", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
+  ],
+  lines: [
+    { id: "l-red", name: "Red", color: "#dc2626", strokeWidth: 10, strokeStyle: "solid" },
+    { id: "l-blue", name: "Blue", color: "#2563eb", strokeWidth: 10, strokeStyle: "dashed" },
+    { id: "l-green", name: "Green", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" },
+    { id: "l-gold", name: "Gold", color: "#d97706", strokeWidth: 8, strokeStyle: "dotted" },
+    { id: "l-teal", name: "Teal", color: "#0f766e", strokeWidth: 12, strokeStyle: "solid" },
+  ],
+  },
+  model: {
   sheets: [
     { id: "sh-ov", name: "Regional Overview" },
     { id: "sh-mid", name: "Mid Distance" },
@@ -115,11 +134,6 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
     { id: "n-north-2", sheetId: "sh-north", x: 400, y: 180 },
     { id: "n-north-3", sheetId: "sh-north", x: 580, y: 180 },
     { id: "n-north-4", sheetId: "sh-north", x: 400, y: 320 },
-  ],
-  stationKinds: [
-    { id: "sk-stop", name: "Stop", shape: "circle", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
-    { id: "sk-hub", name: "Hub", shape: "interchange", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700", fontSize: 15 },
-    { id: "sk-terminal", name: "Terminal", shape: "terminal", fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
   ],
   stations: [
     { id: "s-ov-1", nodeId: "n-ov-1", name: "West Junction", kindId: "sk-terminal", label: { x: 106, y: 236, align: "top" } },
@@ -178,13 +192,6 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
     { id: "sg-north-2", sheetId: "sh-north", fromNodeId: "n-north-2", toNodeId: "n-north-3", geometry: { kind: "straight" } },
     { id: "sg-north-3", sheetId: "sh-north", fromNodeId: "n-north-2", toNodeId: "n-north-4", geometry: { kind: "straight" } },
   ],
-  lines: [
-    { id: "l-red", name: "Red", color: "#dc2626", strokeWidth: 10, strokeStyle: "solid" },
-    { id: "l-blue", name: "Blue", color: "#2563eb", strokeWidth: 10, strokeStyle: "dashed" },
-    { id: "l-green", name: "Green", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" },
-    { id: "l-gold", name: "Gold", color: "#d97706", strokeWidth: 8, strokeStyle: "dotted" },
-    { id: "l-teal", name: "Teal", color: "#0f766e", strokeWidth: 12, strokeStyle: "solid" },
-  ],
   lineRuns: [
     { id: "lr-red", lineId: "l-red", segmentIds: ["sg-ov-1", "sg-ov-2", "sg-ov-3", "sg-ov-4", "sg-mid-1", "sg-mid-2", "sg-mid-3", "sg-mid-4", "sg-urban-1", "sg-urban-2", "sg-urban-3", "sg-urban-4"] },
     { id: "lr-blue", lineId: "l-blue", segmentIds: ["sg-ov-2", "sg-ov-5", "sg-mid-2", "sg-mid-8", "sg-urban-2", "sg-urban-8", "sg-north-1", "sg-north-2"] },
@@ -192,4 +199,5 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
     { id: "lr-gold", lineId: "l-gold", segmentIds: ["sg-mid-3", "sg-mid-4", "sg-north-3"] },
     { id: "lr-teal", lineId: "l-teal", segmentIds: ["sg-urban-3", "sg-urban-9"] },
   ],
+  },
 };

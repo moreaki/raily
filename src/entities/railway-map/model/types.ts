@@ -80,12 +80,20 @@ export interface LineRun {
   segmentIds: string[];
 }
 
-export interface RailwayMap {
+export interface RailwayMapConfig {
+  stationKinds: StationKind[];
+  lines: Line[];
+}
+
+export interface RailwayMapModel {
   sheets: Sheet[];
   nodes: MapNode[];
-  stationKinds: StationKind[];
   stations: Station[];
   segments: Segment[];
-  lines: Line[];
   lineRuns: LineRun[];
+}
+
+export interface RailwayMap {
+  config: RailwayMapConfig;
+  model: RailwayMapModel;
 }

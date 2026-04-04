@@ -73,11 +73,15 @@ const lineRunSchema = z.object({
 });
 
 export const railwayMapSchema = z.object({
-  sheets: z.array(sheetSchema).min(1),
-  nodes: z.array(nodeSchema),
-  stationKinds: z.array(stationKindSchema),
-  stations: z.array(stationSchema),
-  segments: z.array(segmentSchema),
-  lines: z.array(lineSchema),
-  lineRuns: z.array(lineRunSchema),
+  config: z.object({
+    stationKinds: z.array(stationKindSchema),
+    lines: z.array(lineSchema),
+  }),
+  model: z.object({
+    sheets: z.array(sheetSchema).min(1),
+    nodes: z.array(nodeSchema),
+    stations: z.array(stationSchema),
+    segments: z.array(segmentSchema),
+    lineRuns: z.array(lineRunSchema),
+  }),
 });

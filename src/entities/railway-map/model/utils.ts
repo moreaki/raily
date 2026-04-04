@@ -38,11 +38,11 @@ export function pathFromPoints(points: MapPoint[]) {
 }
 
 export function createDefaultNode(map: RailwayMap): MapNode {
-  const sheetId = map.sheets[0]?.id ?? "";
+  const sheetId = map.model.sheets[0]?.id ?? "";
   return {
     id: createNodeId(),
     sheetId,
-    x: 160 + (map.nodes.length % 5) * 90,
+    x: 160 + (map.model.nodes.length % 5) * 90,
     y: 520,
   };
 }
@@ -55,12 +55,12 @@ export function createDefaultNodeForSheet(map: RailwayMap, sheetId: string): Map
 }
 
 export function createDefaultStation(map: RailwayMap, nodeId: string | null, name: string): Station {
-  const node = nodeId ? map.nodes.find((candidate) => candidate.id === nodeId) : null;
+  const node = nodeId ? map.model.nodes.find((candidate) => candidate.id === nodeId) : null;
   return {
     id: createStationId(),
     nodeId,
-    name: name.trim() || `Station ${map.stations.length + 1}`,
-    kindId: map.stationKinds[0]?.id ?? "",
+    name: name.trim() || `Station ${map.model.stations.length + 1}`,
+    kindId: map.config.stationKinds[0]?.id ?? "",
     label: node
       ? {
           x: node.x,
@@ -75,8 +75,8 @@ export function createDefaultStationAtNode(map: RailwayMap, node: MapNode, name:
   return {
     id: createStationId(),
     nodeId: node.id,
-    name: name.trim() || `Station ${map.stations.length + 1}`,
-    kindId: map.stationKinds[0]?.id ?? "",
+    name: name.trim() || `Station ${map.model.stations.length + 1}`,
+    kindId: map.config.stationKinds[0]?.id ?? "",
     label: {
       x: node.x + 12,
       y: node.y - 10,
@@ -130,7 +130,7 @@ export function createStraightSegmentForSheet(sheetId: string, fromNodeId: strin
 export function createDefaultSheet(map: RailwayMap, name: string): Sheet {
   return {
     id: createSheetId(),
-    name: name.trim() || `Sheet ${map.sheets.length + 1}`,
+    name: name.trim() || `Sheet ${map.model.sheets.length + 1}`,
   };
 }
 
