@@ -28,6 +28,12 @@ export interface MapNode extends MapPoint {
   sheetId: string;
 }
 
+export interface NodeLane {
+  id: string;
+  nodeId: string;
+  order: number;
+}
+
 export interface StationLabel extends MapPoint {
   align?: LabelAlignment;
   rotation?: number;
@@ -65,6 +71,8 @@ export interface Segment {
   sheetId: string;
   fromNodeId: string;
   toNodeId: string;
+  fromLaneId?: string;
+  toLaneId?: string;
   geometry: SegmentGeometry;
 }
 
@@ -90,6 +98,7 @@ export interface RailwayMapConfig {
 export interface RailwayMapModel {
   sheets: Sheet[];
   nodes: MapNode[];
+  nodeLanes: NodeLane[];
   stations: Station[];
   segments: Segment[];
   lineRuns: LineRun[];

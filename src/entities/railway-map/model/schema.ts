@@ -15,6 +15,12 @@ const nodeSchema = pointSchema.extend({
   sheetId: z.string().min(1),
 });
 
+const nodeLaneSchema = z.object({
+  id: z.string().min(1),
+  nodeId: z.string().min(1),
+  order: z.number().int().min(0),
+});
+
 const stationLabelSchema = pointSchema.extend({
   align: z.enum(["left", "right", "top", "bottom"]).optional(),
   rotation: z.number().min(-360).max(360).optional(),
@@ -57,6 +63,8 @@ const segmentSchema = z.object({
   sheetId: z.string().min(1),
   fromNodeId: z.string().min(1),
   toNodeId: z.string().min(1),
+  fromLaneId: z.string().min(1).optional(),
+  toLaneId: z.string().min(1).optional(),
   geometry: z.union([straightSegmentSchema, orthogonalSegmentSchema, polylineSegmentSchema]),
 });
 
@@ -82,6 +90,7 @@ export const railwayMapSchema = z.object({
   model: z.object({
     sheets: z.array(sheetSchema).min(1),
     nodes: z.array(nodeSchema),
+    nodeLanes: z.array(nodeLaneSchema).default([]),
     stations: z.array(stationSchema),
     segments: z.array(segmentSchema),
     lineRuns: z.array(lineRunSchema),

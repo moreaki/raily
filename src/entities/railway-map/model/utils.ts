@@ -1,4 +1,4 @@
-import type { LineRun, Line, MapNode, MapPoint, RailwayMap, Segment, Sheet, Station } from "./types";
+import type { LineRun, Line, MapNode, MapPoint, NodeLane, RailwayMap, Segment, Sheet, Station } from "./types";
 
 let idCounter = 0;
 
@@ -236,13 +236,15 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
   const sheetIds = new Set(map.model.sheets.map((sheet) => sheet.id));
   const nodes = map.model.nodes.filter((node) => sheetIds.has(node.sheetId));
   const nodeIds = new Set(nodes.map((node) => node.id));
-  const segments = map.model.segments.filter(
+  const segments = map.model.segments
+    .filter(
     (segment) =>
       sheetIds.has(segment.sheetId) &&
       nodeIds.has(segment.fromNodeId) &&
       nodeIds.has(segment.toNodeId) &&
       segment.fromNodeId !== segment.toNodeId,
-  );
+    )
+    .map((segment) => ({ ...segment }));
   const segmentIds = new Set(segments.map((segment) => segment.id));
   const lineIds = new Set(map.config.lines.map((line) => line.id));
   const claimedSegmentIds = new Set<string>();
@@ -267,6 +269,7 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
     }
   }
 
+  const lineOrderById = new Map(map.config.lines.map((line, index) => [line.id, index]));
   const segmentsByNodeId = new Map<string, Segment[]>();
   for (const segment of segments) {
     const fromSegments = segmentsByNodeId.get(segment.fromNodeId) ?? [];
@@ -308,11 +311,109 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
     assignSegmentToLine(secondSegment.id, preferredLineId);
   }
 
+  const existingNodeLanes = (map.model.nodeLanes ?? []).filter((lane) => nodeIds.has(lane.nodeId));
+  const existingNodeLanesByNodeId = new Map<string, NodeLane[]>();
+  for (const lane of existingNodeLanes) {
+    const current = existingNodeLanesByNodeId.get(lane.nodeId) ?? [];
+    current.push(lane);
+    existingNodeLanesByNodeId.set(lane.nodeId, current);
+  }
+
+  const nextNodeLanes: NodeLane[] = [];
+  const laneIdsByNodeIdAndKey = new Map<string, string>();
+
+  for (const node of nodes) {
+    const connectedSegments = segmentsByNodeId.get(node.id) ?? [];
+    const existingForNode = [...(existingNodeLanesByNodeId.get(node.id) ?? [])].sort((left, right) => left.order - right.order);
+
+    const laneGroups = new Map<
+      string,
+      {
+        existingLaneId: string | null;
+        lineId: string | null;
+      }
+    >();
+
+    for (const segment of connectedSegments) {
+      const existingLaneId =
+        segment.fromNodeId === node.id
+          ? existingForNode.some((lane) => lane.id === segment.fromLaneId)
+            ? segment.fromLaneId ?? null
+            : null
+          : existingForNode.some((lane) => lane.id === segment.toLaneId)
+            ? segment.toLaneId ?? null
+            : null;
+      const lineId = owningLineIdBySegmentId.get(segment.id) ?? null;
+      const groupKey = existingLaneId ?? `auto:${lineId ?? `segment:${segment.id}`}`;
+
+      if (!laneGroups.has(groupKey)) {
+        laneGroups.set(groupKey, {
+          existingLaneId,
+          lineId,
+        });
+      }
+    }
+
+    const orderedLaneGroups = [...laneGroups.entries()].sort((left, right) => {
+      const leftExistingIndex = left[1].existingLaneId ? existingForNode.findIndex((lane) => lane.id === left[1].existingLaneId) : -1;
+      const rightExistingIndex = right[1].existingLaneId ? existingForNode.findIndex((lane) => lane.id === right[1].existingLaneId) : -1;
+
+      if (leftExistingIndex >= 0 || rightExistingIndex >= 0) {
+        if (leftExistingIndex < 0) return 1;
+        if (rightExistingIndex < 0) return -1;
+        return leftExistingIndex - rightExistingIndex;
+      }
+
+      const leftLineOrder = left[1].lineId ? (lineOrderById.get(left[1].lineId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      const rightLineOrder = right[1].lineId ? (lineOrderById.get(right[1].lineId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      if (leftLineOrder !== rightLineOrder) return leftLineOrder - rightLineOrder;
+      return left[0].localeCompare(right[0]);
+    });
+
+    for (let index = 0; index < orderedLaneGroups.length; index += 1) {
+      const [groupKey, group] = orderedLaneGroups[index];
+      const safeSuffix = (group.lineId ?? groupKey)
+        .replace(/[^a-zA-Z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .toLowerCase() || `lane-${index + 1}`;
+      const laneId = group.existingLaneId ?? `nl-${node.id}-${safeSuffix}`;
+
+      nextNodeLanes.push({
+        id: laneId,
+        nodeId: node.id,
+        order: index,
+      });
+      laneIdsByNodeIdAndKey.set(`${node.id}:${groupKey}`, laneId);
+    }
+
+    for (const segment of connectedSegments) {
+      const groupKeyBase =
+        node.id === segment.fromNodeId
+          ? segment.fromLaneId && existingForNode.some((lane) => lane.id === segment.fromLaneId)
+            ? segment.fromLaneId
+            : null
+          : segment.toLaneId && existingForNode.some((lane) => lane.id === segment.toLaneId)
+            ? segment.toLaneId
+            : null;
+      const lineId = owningLineIdBySegmentId.get(segment.id) ?? null;
+      const groupKey = groupKeyBase ?? `auto:${lineId ?? `segment:${segment.id}`}`;
+      const laneId = laneIdsByNodeIdAndKey.get(`${node.id}:${groupKey}`);
+      if (!laneId) continue;
+
+      if (segment.fromNodeId === node.id) {
+        segment.fromLaneId = laneId;
+      } else if (segment.toNodeId === node.id) {
+        segment.toLaneId = laneId;
+      }
+    }
+  }
+
   return {
     ...map,
     model: {
       ...map.model,
       nodes,
+      nodeLanes: nextNodeLanes,
       stations: map.model.stations.map((station) => {
         if (!station.nodeId || nodeIds.has(station.nodeId)) return station;
         return {

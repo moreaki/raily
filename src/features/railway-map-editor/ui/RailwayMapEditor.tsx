@@ -74,6 +74,7 @@ type NodeMarker = {
   key: string;
   center: MapPoint;
   segmentIds: string[];
+  laneId: string | null;
 };
 
 type NodeSide = "left" | "right" | "up" | "down";
@@ -277,12 +278,12 @@ function loadStoredMap() {
   if (typeof window === "undefined") return INITIAL_MAP;
 
   const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) return INITIAL_MAP;
+  if (!raw) return sanitizeRailwayMap(INITIAL_MAP);
 
   try {
     return sanitizeRailwayMap(railwayMapSchema.parse(JSON.parse(raw)));
   } catch {
-    return INITIAL_MAP;
+    return sanitizeRailwayMap(INITIAL_MAP);
   }
 }
 
@@ -905,12 +906,13 @@ export default function RailwayMapEditor() {
   const [panning, setPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; centerX: number; centerY: number } | null>(null);
   const [marqueeSelection, setMarqueeSelection] = useState<{ start: MapPoint; end: MapPoint } | null>(null);
-  const [pendingSegmentStartNodeId, setPendingSegmentStartNodeId] = useState<string | null>(null);
+  const [pendingSegmentStart, setPendingSegmentStart] = useState<{ nodeId: string; laneId: string | null; markerKey: string | null } | null>(null);
   const [nodeContextMenu, setNodeContextMenu] = useState<{
     nodeIds: string[];
     x: number;
     y: number;
     markerKey: string | null;
+    laneId: string | null;
     segmentId: string | null;
   } | null>(null);
   const [segmentContextMenu, setSegmentContextMenu] = useState<{ segmentId: string; x: number; y: number } | null>(null);
@@ -929,6 +931,7 @@ export default function RailwayMapEditor() {
   const selectedLine = config.lines.find((line) => line.id === selectedLineId) ?? null;
   const selectedStationKind = config.stationKinds.find((kind) => kind.id === selectedStationKindId) ?? null;
   const currentSheet = model.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
+  const pendingSegmentStartNodeId = pendingSegmentStart?.nodeId ?? null;
   const contextMenuNodeId = nodeContextMenu?.nodeIds.length === 1 ? nodeContextMenu.nodeIds[0] : null;
   const contextMenuNode = contextMenuNodeId ? model.nodes.find((node) => node.id === contextMenuNodeId) ?? null : null;
   const contextMenuSegment = segmentContextMenu ? model.segments.find((segment) => segment.id === segmentContextMenu.segmentId) ?? null : null;
@@ -977,13 +980,14 @@ export default function RailwayMapEditor() {
     return offsets;
   }, [currentSegments]);
   const { nodeMarkerCentersById, anchoredEndpointBySegmentNodeKey } = useMemo(() => {
-    const lineIdBySegmentId = new Map<string, string>();
-    for (const lineRun of model.lineRuns) {
-      for (const segmentId of lineRun.segmentIds) {
-        if (!lineIdBySegmentId.has(segmentId)) {
-          lineIdBySegmentId.set(segmentId, lineRun.lineId);
-        }
-      }
+    const nodeLanesByNodeId = new Map<string, { id: string; order: number }[]>();
+    for (const lane of model.nodeLanes) {
+      const current = nodeLanesByNodeId.get(lane.nodeId) ?? [];
+      current.push({ id: lane.id, order: lane.order });
+      nodeLanesByNodeId.set(lane.nodeId, current);
+    }
+    for (const lanes of nodeLanesByNodeId.values()) {
+      lanes.sort((left, right) => left.order - right.order);
     }
 
     const endpointsByNodeId = new Map<
@@ -1011,12 +1015,14 @@ export default function RailwayMapEditor() {
           otherNodeId: segment.toNodeId,
           point: offsetSegmentPoints[0],
           side: getNodeSide(nodesById.get(segment.fromNodeId)!, nodesById.get(segment.toNodeId)!),
+          laneId: segment.fromLaneId ?? null,
         },
         {
           nodeId: segment.toNodeId,
           otherNodeId: segment.fromNodeId,
           point: offsetSegmentPoints[offsetSegmentPoints.length - 1],
           side: getNodeSide(nodesById.get(segment.toNodeId)!, nodesById.get(segment.fromNodeId)!),
+          laneId: segment.toLaneId ?? null,
         },
       ];
 
@@ -1027,6 +1033,7 @@ export default function RailwayMapEditor() {
           key: `${endpoint.nodeId}:${endpoint.otherNodeId}:${segment.id}`,
           center: endpoint.point,
           segmentIds: [segment.id],
+          laneId: endpoint.laneId,
         });
         groupsForNode.set(endpoint.otherNodeId, group);
         endpointsByNodeId.set(endpoint.nodeId, groupsForNode);
@@ -1035,12 +1042,17 @@ export default function RailwayMapEditor() {
 
     const byNodeId = new Map<string, NodeMarker[]>();
     const endpointAnchors = new Map<string, MapPoint>();
+    const markerSpacing = 18;
 
     for (const node of currentNodes) {
       const groups = endpointsByNodeId.get(node.id);
+      const allMarkers = [...(groups?.values() ?? [])].flatMap((group) => group.markers);
       const dominantGroup =
         groups
           ? [...groups.values()].sort((left, right) => {
+              const leftLaneCount = new Set(left.markers.map((marker) => marker.laneId ?? marker.key)).size;
+              const rightLaneCount = new Set(right.markers.map((marker) => marker.laneId ?? marker.key)).size;
+              if (rightLaneCount !== leftLaneCount) return rightLaneCount - leftLaneCount;
               if (right.markers.length !== left.markers.length) return right.markers.length - left.markers.length;
               const leftMinX = Math.min(...left.markers.map((marker) => marker.center.x));
               const rightMinX = Math.min(...right.markers.map((marker) => marker.center.x));
@@ -1051,87 +1063,54 @@ export default function RailwayMapEditor() {
             })[0]
           : null;
 
-      if (!dominantGroup || dominantGroup.markers.length === 0) {
-        const fallbackMarker = [
-          {
-            key: `${node.id}:base`,
-            center: { x: node.x, y: node.y },
-            segmentIds: [],
-          },
-        ];
-        byNodeId.set(node.id, fallbackMarker);
+      const knownLaneIds = (nodeLanesByNodeId.get(node.id) ?? []).map((lane) => lane.id);
+      const dominantLaneIds = dominantGroup
+        ? sortPointsForSide(
+            dominantGroup.markers.map((marker) => marker.center),
+            dominantGroup.side,
+          )
+            .map((point) => dominantGroup.markers.find((marker) => marker.center.x === point.x && marker.center.y === point.y)!)
+            .map((marker) => marker.laneId)
+            .filter((laneId, index, source): laneId is string => Boolean(laneId) && source.indexOf(laneId) === index)
+        : [];
+      const orderedLaneIds = [...dominantLaneIds, ...knownLaneIds.filter((laneId) => !dominantLaneIds.includes(laneId))];
+
+      if (orderedLaneIds.length === 0 && allMarkers.length === 0) {
+        byNodeId.set(node.id, [{ key: `${node.id}:base`, center: { x: node.x, y: node.y }, segmentIds: [], laneId: null }]);
         continue;
       }
 
-      const sortedMarkers = sortPointsForSide(
-        dominantGroup.markers.map((marker) => marker.center),
-        dominantGroup.side,
-      ).map((point) => dominantGroup.markers.find((marker) => marker.center.x === point.x && marker.center.y === point.y)!)
-        .filter(Boolean);
+      const effectiveLaneIds = orderedLaneIds.length > 0 ? orderedLaneIds : [allMarkers[0]?.laneId ?? `${node.id}:base`];
+      const dominantSide = dominantGroup?.side ?? "right";
+      const centerOffset = (effectiveLaneIds.length - 1) / 2;
+      const slotCenterByLaneId = new Map<string, MapPoint>();
 
-      const slotCenters = sortedMarkers.map((marker) => marker.center);
-      const slotLineIds = sortedMarkers.map((marker) => {
-        const segmentId = marker.segmentIds[0];
-        return segmentId ? lineIdBySegmentId.get(segmentId) ?? null : null;
-      });
+      for (let index = 0; index < effectiveLaneIds.length; index += 1) {
+        const laneId = effectiveLaneIds[index];
+        const delta = (index - centerOffset) * markerSpacing;
+        const center =
+          dominantSide === "left" || dominantSide === "right"
+            ? { x: node.x, y: node.y + delta }
+            : { x: node.x + delta, y: node.y };
+        slotCenterByLaneId.set(laneId, center);
+      }
 
-      for (const [otherNodeId, group] of groups?.entries() ?? []) {
-        const rawSortedPoints = sortPointsForSide(group.markers.map((marker) => marker.center), group.side);
-        const sortedGroup = rawSortedPoints
-          .map((point) => group.markers.find((marker) => marker.center.x === point.x && marker.center.y === point.y)!)
-          .filter(Boolean);
-        const assignedIndices = new Array<number | null>(sortedGroup.length).fill(null);
-        const usedIndices = new Set<number>();
-
-        for (let index = 0; index < sortedGroup.length; index += 1) {
-          const marker = sortedGroup[index];
-          const segmentId = marker.segmentIds[0];
-          const lineId = segmentId ? lineIdBySegmentId.get(segmentId) ?? null : null;
-          if (!lineId) continue;
-
-          const matchingSlotIndex = slotLineIds.findIndex((candidateLineId, slotIndex) => candidateLineId === lineId && !usedIndices.has(slotIndex));
-          if (matchingSlotIndex >= 0) {
-            assignedIndices[index] = matchingSlotIndex;
-            usedIndices.add(matchingSlotIndex);
-          }
-        }
-
-        const remainingMarkerIndices = assignedIndices
-          .map((slotIndex, index) => (slotIndex === null ? index : -1))
-          .filter((index) => index >= 0);
-
-        if (remainingMarkerIndices.length > 0) {
-          const remainingSlotIndices = slotCenters
-            .map((_, index) => index)
-            .filter((index) => !usedIndices.has(index));
-
-          const chosenIndices = chooseSlotIndices(
-            remainingMarkerIndices.map((index) => sortedGroup[index].center),
-            slotCenters,
-            remainingSlotIndices,
-            group.side,
-          );
-
-          for (let index = 0; index < remainingMarkerIndices.length; index += 1) {
-            assignedIndices[remainingMarkerIndices[index]] = chosenIndices[index] ?? remainingSlotIndices[index] ?? 0;
-          }
-        }
-
-        for (let index = 0; index < sortedGroup.length; index += 1) {
-          const marker = sortedGroup[index];
-          const slotIndex = assignedIndices[index] ?? 0;
-          const slotCenter = slotCenters[slotIndex] ?? marker.center;
-          for (const segmentId of marker.segmentIds) {
-            endpointAnchors.set(`${node.id}:${segmentId}`, slotCenter);
-          }
+      for (const marker of allMarkers) {
+        const laneId = marker.laneId ?? effectiveLaneIds[0] ?? null;
+        if (!laneId) continue;
+        const slotCenter = slotCenterByLaneId.get(laneId) ?? marker.center;
+        for (const segmentId of marker.segmentIds) {
+          endpointAnchors.set(`${node.id}:${segmentId}`, slotCenter);
         }
       }
 
       byNodeId.set(
         node.id,
-        sortedMarkers.map((marker, index) => ({
-          ...marker,
-          key: `${node.id}:slot:${index}:${marker.segmentIds[0] ?? "base"}`,
+        effectiveLaneIds.map((laneId, index) => ({
+          key: `${node.id}:slot:${index}:${laneId}`,
+          center: slotCenterByLaneId.get(laneId) ?? { x: node.x, y: node.y },
+          segmentIds: allMarkers.flatMap((marker) => (marker.laneId === laneId ? marker.segmentIds : [])),
+          laneId,
         })),
       );
     }
@@ -1140,7 +1119,7 @@ export default function RailwayMapEditor() {
       nodeMarkerCentersById: byNodeId,
       anchoredEndpointBySegmentNodeKey: endpointAnchors,
     };
-  }, [currentNodes, currentSegments, nodesById, segmentOffsetById]);
+  }, [currentNodes, currentSegments, model.nodeLanes, nodesById, segmentOffsetById]);
   const linesById = useMemo(() => new Map(config.lines.map((line) => [line.id, line])), [config.lines]);
   const stationKindsById = useMemo(() => new Map(config.stationKinds.map((kind) => [kind.id, kind])), [config.stationKinds]);
   const stationsByNodeId = useMemo(() => {
@@ -1259,6 +1238,47 @@ export default function RailwayMapEditor() {
     }
     return ids;
   }, [model.lineRuns]);
+  const laneDisplayNameById = useMemo(() => {
+    const next = new Map<string, string>();
+
+    for (const lane of model.nodeLanes) {
+      const segmentIds = currentSegments
+        .filter((segment) => segment.fromLaneId === lane.id || segment.toLaneId === lane.id)
+        .map((segment) => segment.id);
+      const lineNames = [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))]
+        .map((lineId) => config.lines.find((line) => line.id === lineId)?.name ?? lineId)
+        .filter(Boolean);
+
+      next.set(lane.id, lineNames.length > 0 ? lineNames.join(", ") : "Unassigned lane");
+    }
+
+    return next;
+  }, [config.lines, currentSegments, lineIdBySegmentId, model.nodeLanes]);
+  const selectedNodeLanes = useMemo(() => {
+    if (!selectedNodeId) return [];
+
+    return model.nodeLanes
+      .filter((lane) => lane.nodeId === selectedNodeId)
+      .sort((left, right) => left.order - right.order)
+      .map((lane) => {
+        const segmentIds = currentSegments
+          .filter((segment) => segment.fromLaneId === lane.id || segment.toLaneId === lane.id)
+          .map((segment) => segment.id);
+        const lineNames = [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))]
+          .map((lineId) => config.lines.find((line) => line.id === lineId)?.name ?? lineId)
+          .filter(Boolean);
+
+        return {
+          ...lane,
+          segmentIds,
+          lineNames,
+        };
+      });
+  }, [config.lines, currentSegments, lineIdBySegmentId, model.nodeLanes, selectedNodeId]);
+  const selectedNodeMarkerLaneId = useMemo(() => {
+    if (!selectedNodeId || !selectedNodeMarkerKey) return null;
+    return nodeMarkerCentersById.get(selectedNodeId)?.find((marker) => marker.key === selectedNodeMarkerKey)?.laneId ?? null;
+  }, [nodeMarkerCentersById, selectedNodeId, selectedNodeMarkerKey]);
   const viewBoxDimensions = useMemo(() => {
     const width = CANVAS_WIDTH / zoom;
     const height = CANVAS_HEIGHT / zoom;
@@ -1532,7 +1552,7 @@ export default function RailwayMapEditor() {
     setSelectedNodeMarkerKey(null);
     setSelectedStationId("");
     setSelectedSegmentId("");
-    setPendingSegmentStartNodeId(null);
+    setPendingSegmentStart(null);
     setNodeContextMenu(null);
     setRotatingLabelState(null);
   }
@@ -1722,7 +1742,7 @@ export default function RailwayMapEditor() {
     setZoom(0.5);
     setMarqueeSelection(null);
     setNodeContextMenu(null);
-    setPendingSegmentStartNodeId(null);
+    setPendingSegmentStart(null);
   }
 
   function autoPlaceCurrentSheetLabels() {
@@ -1966,6 +1986,8 @@ export default function RailwayMapEditor() {
     const duplicated = {
       ...JSON.parse(JSON.stringify(source)),
       id: createSegmentId(),
+      fromLaneId: undefined,
+      toLaneId: undefined,
     };
 
     updateMap((current) => ({
@@ -2183,6 +2205,34 @@ export default function RailwayMapEditor() {
     }));
   }
 
+  function moveLaneOrder(nodeId: string, laneId: string, direction: -1 | 1) {
+    updateMap((current) => {
+      const nodeLanes = current.model.nodeLanes
+        .filter((lane) => lane.nodeId === nodeId)
+        .sort((left, right) => left.order - right.order);
+      const currentIndex = nodeLanes.findIndex((lane) => lane.id === laneId);
+      const nextIndex = currentIndex + direction;
+      if (currentIndex < 0 || nextIndex < 0 || nextIndex >= nodeLanes.length) {
+        return current;
+      }
+
+      const reordered = [...nodeLanes];
+      const [moved] = reordered.splice(currentIndex, 1);
+      reordered.splice(nextIndex, 0, moved);
+      const orderByLaneId = new Map(reordered.map((lane, index) => [lane.id, index]));
+
+      return {
+        ...current,
+        model: {
+          ...current.model,
+          nodeLanes: current.model.nodeLanes.map((lane) =>
+            lane.nodeId !== nodeId ? lane : { ...lane, order: orderByLaneId.get(lane.id) ?? lane.order },
+          ),
+        },
+      };
+    });
+  }
+
   function updateLine(patch: Partial<Line>) {
     if (!selectedLine) return;
 
@@ -2215,26 +2265,39 @@ export default function RailwayMapEditor() {
     }));
   }
 
-  function createSegmentFromPendingNode(nextNodeId: string) {
+  function createSegmentFromPendingNode(nextNodeId: string, nextLaneId: string | null) {
     if (!currentSheet) return;
-    if (!pendingSegmentStartNodeId || pendingSegmentStartNodeId === nextNodeId) {
-      setPendingSegmentStartNodeId(nextNodeId);
+    if (!pendingSegmentStart) {
+      setPendingSegmentStart({ nodeId: nextNodeId, laneId: nextLaneId, markerKey: null });
       return;
     }
-
+    if (pendingSegmentStart.nodeId === nextNodeId) {
+      setPendingSegmentStart({ nodeId: nextNodeId, laneId: nextLaneId, markerKey: null });
+      return;
+    }
     const existingSegment = currentSegments.find(
       (segment) =>
-        (segment.fromNodeId === pendingSegmentStartNodeId && segment.toNodeId === nextNodeId) ||
-        (segment.fromNodeId === nextNodeId && segment.toNodeId === pendingSegmentStartNodeId),
+        ((segment.fromNodeId === pendingSegmentStart.nodeId &&
+          segment.toNodeId === nextNodeId &&
+          (segment.fromLaneId ?? null) === (pendingSegmentStart.laneId ?? null) &&
+          (segment.toLaneId ?? null) === (nextLaneId ?? null)) ||
+          (segment.fromNodeId === nextNodeId &&
+            segment.toNodeId === pendingSegmentStart.nodeId &&
+            (segment.fromLaneId ?? null) === (nextLaneId ?? null) &&
+            (segment.toLaneId ?? null) === (pendingSegmentStart.laneId ?? null))),
     );
 
     if (existingSegment) {
       setSelectedSegmentId(existingSegment.id);
-      setPendingSegmentStartNodeId(null);
+      setPendingSegmentStart(null);
       return;
     }
 
-    const segment = createStraightSegmentForSheet(currentSheet.id, pendingSegmentStartNodeId, nextNodeId);
+    const segment = {
+      ...createStraightSegmentForSheet(currentSheet.id, pendingSegmentStart.nodeId, nextNodeId),
+      fromLaneId: pendingSegmentStart.laneId ?? undefined,
+      toLaneId: nextLaneId ?? undefined,
+    };
     updateMap((current) => ({
       ...current,
       model: {
@@ -2243,25 +2306,26 @@ export default function RailwayMapEditor() {
       },
     }));
     setSelectedSegmentId(segment.id);
-    setPendingSegmentStartNodeId(null);
+    setPendingSegmentStart(null);
   }
 
-  function startSegmentFromNode(nodeId: string) {
+  function startSegmentFromNode(nodeId: string, laneId: string | null, markerKey: string | null) {
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
-    setSelectedNodeMarkerKey(null);
-    setPendingSegmentStartNodeId(nodeId);
+    setSelectedNodeMarkerKey(markerKey);
+    setPendingSegmentStart({ nodeId, laneId, markerKey });
     setNodeContextMenu(null);
   }
 
   function cancelPendingSegment() {
-    setPendingSegmentStartNodeId(null);
+    setPendingSegmentStart(null);
     setNodeContextMenu(null);
   }
 
-  function completeSegmentAtNode(nodeId: string) {
+  function completeSegmentAtNode(nodeId: string, laneId: string | null, markerKey: string | null) {
     selectSingleNode(nodeId);
-    createSegmentFromPendingNode(nodeId);
+    setSelectedNodeMarkerKey(markerKey);
+    createSegmentFromPendingNode(nodeId, laneId);
     setNodeContextMenu(null);
   }
 
@@ -2406,6 +2470,7 @@ export default function RailwayMapEditor() {
       x: event.clientX,
       y: event.clientY,
       markerKey: null,
+      laneId: null,
       segmentId: null,
     });
   }
@@ -2417,7 +2482,7 @@ export default function RailwayMapEditor() {
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
     setRotatingLabelState(null);
-    setPendingSegmentStartNodeId(null);
+    setPendingSegmentStart(null);
     if (!svgRef.current) return;
     const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
     if (!point) return;
@@ -2602,7 +2667,7 @@ export default function RailwayMapEditor() {
     setPanStart(null);
   }
 
-  function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string, markerKey: string, segmentIds: string[]) {
+  function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string, markerKey: string, segmentIds: string[], laneId: string | null) {
     event.preventDefault();
     event.stopPropagation();
     setSegmentContextMenu(null);
@@ -2624,6 +2689,7 @@ export default function RailwayMapEditor() {
       x: event.clientX,
       y: event.clientY,
       markerKey,
+      laneId,
       segmentId: segmentIds.length === 1 ? segmentIds[0] : null,
     });
   }
@@ -2755,9 +2821,10 @@ export default function RailwayMapEditor() {
                   <div className="pointer-events-auto text-xl font-semibold text-ink">
                     Canvas Editor
                   </div>
-                  {pendingSegmentStartNodeId ? (
+                  {pendingSegmentStart ? (
                     <div className="pointer-events-auto rounded-2xl border border-sky-200 bg-sky-50/95 px-3 py-2 text-xs text-sky-800 shadow-sm">
-                      Segment start: {pendingSegmentStartNodeId}. Right-click another track point to connect it.
+                      Segment start: {pendingSegmentStart.nodeId}
+                      {pendingSegmentStart.laneId ? ` (${laneDisplayNameById.get(pendingSegmentStart.laneId) ?? "Unassigned lane"})` : ""}. Right-click another track point to connect it.
                     </div>
                   ) : null}
                   <div className="pointer-events-auto ml-auto flex gap-2">
@@ -2905,7 +2972,7 @@ export default function RailwayMapEditor() {
                       const primaryStation = stations[0];
                       const isTrackPoint = stations.length === 0;
                       const markers = nodeMarkerCentersById.get(node.id) ?? [
-                        { key: `${node.id}:base`, center: { x: node.x, y: node.y }, segmentIds: [] },
+                        { key: `${node.id}:base`, center: { x: node.x, y: node.y }, segmentIds: [], laneId: null },
                       ];
                       const hasSelectedMarker = markers.some((marker) => marker.key === selectedNodeMarkerKey);
                       const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
@@ -2920,7 +2987,7 @@ export default function RailwayMapEditor() {
                             <g
                               key={marker.key}
                               onMouseDown={(event) => handleNodeMouseDown(event, node.id, marker.key, marker.segmentIds)}
-                              onContextMenu={(event) => handleNodeContextMenu(event, node.id, marker.key, marker.segmentIds)}
+                              onContextMenu={(event) => handleNodeContextMenu(event, node.id, marker.key, marker.segmentIds, marker.laneId)}
                             >
                               {renderNodeSymbol(shape, marker.center, isTrackPoint, symbolSize)}
                               {selectedNodeMarkerKey === marker.key ? (
@@ -3122,15 +3189,20 @@ export default function RailwayMapEditor() {
                         ) : null}
                         <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Track</div>
-                          {pendingSegmentStartNodeId && pendingSegmentStartNodeId !== nodeContextMenu.nodeIds[0] ? (
+                          {nodeContextMenu.laneId ? (
+                            <div className="mt-1 text-xs text-muted">
+                              Lane: {laneDisplayNameById.get(nodeContextMenu.laneId) ?? "Unassigned lane"}
+                            </div>
+                          ) : null}
+                          {pendingSegmentStart && (pendingSegmentStart.nodeId !== nodeContextMenu.nodeIds[0] || pendingSegmentStart.laneId !== nodeContextMenu.laneId) ? (
                             <button
                               type="button"
                               className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                              onClick={() => completeSegmentAtNode(nodeContextMenu.nodeIds[0])}
+                              onClick={() => completeSegmentAtNode(nodeContextMenu.nodeIds[0], nodeContextMenu.laneId, nodeContextMenu.markerKey)}
                             >
                               Create segment to here
                             </button>
-                          ) : pendingSegmentStartNodeId === nodeContextMenu.nodeIds[0] ? (
+                          ) : pendingSegmentStart && pendingSegmentStart.nodeId === nodeContextMenu.nodeIds[0] && pendingSegmentStart.laneId === nodeContextMenu.laneId ? (
                             <button
                               type="button"
                               className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
@@ -3142,7 +3214,7 @@ export default function RailwayMapEditor() {
                             <button
                               type="button"
                               className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                              onClick={() => startSegmentFromNode(nodeContextMenu.nodeIds[0])}
+                              onClick={() => startSegmentFromNode(nodeContextMenu.nodeIds[0], nodeContextMenu.laneId, nodeContextMenu.markerKey)}
                             >
                               Start segment here
                             </button>
@@ -3405,6 +3477,49 @@ export default function RailwayMapEditor() {
                               <Input type="number" value={selectedNode.x} onChange={(event) => updateNode({ x: Number(event.target.value) })} />
                               <Input type="number" value={selectedNode.y} onChange={(event) => updateNode({ y: Number(event.target.value) })} />
                             </div>
+                            {selectedNodeLanes.length > 1 ? (
+                              <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
+                                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Lane Order</div>
+                                <div className="space-y-2">
+                                  {selectedNodeLanes.map((lane, index) => (
+                                    <div
+                                      key={lane.id}
+                                      className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
+                                        selectedNodeMarkerLaneId === lane.id ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200" : "bg-slate-50 text-ink"
+                                      }`}
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="font-medium">{lane.lineNames.length > 0 ? lane.lineNames.join(", ") : lane.id}</div>
+                                        <div className="text-xs text-muted">
+                                          {lane.segmentIds.length} segment{lane.segmentIds.length === 1 ? "" : "s"}
+                                        </div>
+                                      </div>
+                                      <div className="flex gap-1">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          className="h-8 px-2"
+                                          disabled={index === 0}
+                                          onClick={() => moveLaneOrder(selectedNode.id, lane.id, -1)}
+                                        >
+                                          Up
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          className="h-8 px-2"
+                                          disabled={index === selectedNodeLanes.length - 1}
+                                          onClick={() => moveLaneOrder(selectedNode.id, lane.id, 1)}
+                                        >
+                                          Down
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <p className="text-xs text-muted">Use this when parallel tracks at this node need a different visual ordering.</p>
+                              </div>
+                            ) : null}
                             {selectedNodeStations.length === 0 ? (
                               <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3">
                                 <div className="space-y-2">
