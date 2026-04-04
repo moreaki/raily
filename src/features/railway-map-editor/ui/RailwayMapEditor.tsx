@@ -58,17 +58,28 @@ function getSvgPoint(svg: SVGSVGElement, clientX: number, clientY: number) {
   return point.matrixTransform(ctm.inverse());
 }
 
-function renderNodeSymbol(shape: StationKindShape, node: MapNode, isSelected: boolean) {
+function renderNodeSymbol(shape: StationKindShape, node: MapNode, isSelected: boolean, isTrackPoint: boolean) {
   return (
     <>
-      {shape === "interchange" ? (
+      {isTrackPoint ? (
+        <rect
+          x={node.x - 4}
+          y={node.y - 4}
+          width="8"
+          height="8"
+          transform={`rotate(45 ${node.x} ${node.y})`}
+          fill="#e2e8f0"
+          stroke="#475569"
+          strokeWidth="2"
+        />
+      ) : shape === "interchange" ? (
         <rect x={node.x - 8} y={node.y - 8} width="16" height="16" rx="3" fill="white" stroke="#111827" strokeWidth="3" />
       ) : shape === "terminal" ? (
         <rect x={node.x - 10} y={node.y - 6} width="20" height="12" rx="4" fill="white" stroke="#111827" strokeWidth="3" />
       ) : (
         <circle cx={node.x} cy={node.y} r="6" fill="white" stroke="#111827" strokeWidth="3" />
       )}
-      {isSelected ? <circle cx={node.x} cy={node.y} r="14" fill="none" stroke="#0f172a" strokeDasharray="4 3" /> : null}
+      {isSelected ? <circle cx={node.x} cy={node.y} r={isTrackPoint ? "12" : "14"} fill="none" stroke="#0f172a" strokeDasharray="4 3" /> : null}
     </>
   );
 }
@@ -319,6 +330,10 @@ function normalizeRect(start: MapPoint, end: MapPoint) {
   };
 }
 
+function normalizeSearchValue(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function getSheetContentCenter(nodes: MapNode[]) {
   if (nodes.length === 0) {
     return { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
@@ -384,6 +399,7 @@ export default function RailwayMapEditor() {
   const [jsonText, setJsonText] = useState(JSON.stringify(initialMap, null, 2));
   const [errorMessage, setErrorMessage] = useState("");
   const [nodeContextMenu, setNodeContextMenu] = useState<{ nodeIds: string[]; x: number; y: number } | null>(null);
+  const [nodeAssignmentQuery, setNodeAssignmentQuery] = useState("");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const lastRestoredSheetIdRef = useRef<string | null>(null);
@@ -394,6 +410,8 @@ export default function RailwayMapEditor() {
   const selectedLine = map.lines.find((line) => line.id === selectedLineId) ?? null;
   const selectedStationKind = map.stationKinds.find((kind) => kind.id === selectedStationKindId) ?? null;
   const currentSheet = map.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
+  const contextMenuNodeId = nodeContextMenu?.nodeIds.length === 1 ? nodeContextMenu.nodeIds[0] : null;
+  const contextMenuNode = contextMenuNodeId ? map.nodes.find((node) => node.id === contextMenuNodeId) ?? null : null;
 
   const currentNodes = useMemo(() => map.nodes.filter((node) => node.sheetId === currentSheetId), [currentSheetId, map.nodes]);
   const selectedNodeIdsSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
@@ -500,6 +518,27 @@ export default function RailwayMapEditor() {
     const height = CANVAS_HEIGHT / zoom;
     return { width, height };
   }, [zoom]);
+  const stationAssignmentResults = useMemo(() => {
+    if (!contextMenuNode) return [];
+
+    const query = normalizeSearchValue(nodeAssignmentQuery);
+    const results = currentStations.filter((station) => station.nodeId !== contextMenuNode.id).filter((station) => {
+      if (!query) return true;
+      const kindName = stationKindsById.get(station.kindId)?.name ?? "";
+      const haystack = normalizeSearchValue(`${station.name} ${kindName} ${station.id}`);
+      return haystack.includes(query);
+    });
+
+    return [...results].sort((left, right) => {
+      const leftName = normalizeSearchValue(left.name);
+      const rightName = normalizeSearchValue(right.name);
+      const queryValue = normalizeSearchValue(nodeAssignmentQuery);
+      const leftStarts = queryValue ? leftName.startsWith(queryValue) : false;
+      const rightStarts = queryValue ? rightName.startsWith(queryValue) : false;
+      if (leftStarts !== rightStarts) return leftStarts ? -1 : 1;
+      return left.name.localeCompare(right.name);
+    });
+  }, [contextMenuNode, currentStations, nodeAssignmentQuery, stationKindsById]);
   const viewBox = useMemo(() => {
     const { width, height } = viewBoxDimensions;
     const centerX = viewportCenter.x;
@@ -694,6 +733,25 @@ export default function RailwayMapEditor() {
       stations: [...current.stations, createDefaultStationAtNode(current, selectedNode, newStationName)],
     }));
     setNewStationName("");
+  }
+
+  function assignStationToNode(stationId: string, nodeId: string) {
+    const node = map.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+
+    updateStation(stationId, {
+      nodeId,
+      label: {
+        x: node.x + 12,
+        y: node.y - 10,
+        align: "right",
+      },
+    });
+    setSelectedNodeId(nodeId);
+    setSelectedNodeIds([nodeId]);
+    setSelectedStationId(stationId);
+    setNodeAssignmentQuery("");
+    setNodeContextMenu(null);
   }
 
   function addSheet() {
@@ -1262,6 +1320,7 @@ export default function RailwayMapEditor() {
       selectSingleNode(nodeId);
     }
     const nodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
+    setNodeAssignmentQuery("");
     setNodeContextMenu({
       nodeIds,
       x: event.clientX,
@@ -1540,6 +1599,7 @@ export default function RailwayMapEditor() {
                       const stations = stationsByNodeId.get(node.id) ?? [];
                       const isSelected = moveAllNodes || selectedNodeIdsSet.has(node.id);
                       const primaryStation = stations[0];
+                      const isTrackPoint = stations.length === 0;
                       const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
 
                       return (
@@ -1549,7 +1609,7 @@ export default function RailwayMapEditor() {
                           onContextMenu={(event) => handleNodeContextMenu(event, node.id)}
                           style={{ cursor: "grab" }}
                         >
-                          {renderNodeSymbol(shape, node, isSelected)}
+                          {renderNodeSymbol(shape, node, isSelected, isTrackPoint)}
                         </g>
                       );
                     })}
@@ -1635,9 +1695,38 @@ export default function RailwayMapEditor() {
 
                 {nodeContextMenu ? (
                   <div
-                    className="fixed z-30 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                    className="fixed z-30 min-w-[240px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
                     style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
                   >
+                    {nodeContextMenu.nodeIds.length === 1 ? (
+                      <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Station</div>
+                        <Input
+                          value={nodeAssignmentQuery}
+                          onChange={(event) => setNodeAssignmentQuery(event.target.value)}
+                          placeholder="Search stations"
+                          className="h-9"
+                        />
+                        <div className="max-h-40 space-y-1 overflow-auto">
+                          {stationAssignmentResults.slice(0, 8).map((station) => (
+                            <button
+                              key={station.id}
+                              type="button"
+                              className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                              onClick={() => assignStationToNode(station.id, nodeContextMenu.nodeIds[0])}
+                            >
+                              <span className="truncate">{station.name}</span>
+                              <span className="ml-3 shrink-0 text-xs text-slate-500">
+                                {stationKindsById.get(station.kindId)?.name ?? "Unknown"}
+                              </span>
+                            </button>
+                          ))}
+                          {stationAssignmentResults.length === 0 ? (
+                            <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
