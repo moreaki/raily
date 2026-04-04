@@ -231,3 +231,41 @@ export function buildLineRunPath(
     .filter(Boolean)
     .join(" ");
 }
+
+export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
+  const sheetIds = new Set(map.model.sheets.map((sheet) => sheet.id));
+  const nodes = map.model.nodes.filter((node) => sheetIds.has(node.sheetId));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const segments = map.model.segments.filter(
+    (segment) =>
+      sheetIds.has(segment.sheetId) &&
+      nodeIds.has(segment.fromNodeId) &&
+      nodeIds.has(segment.toNodeId) &&
+      segment.fromNodeId !== segment.toNodeId,
+  );
+  const segmentIds = new Set(segments.map((segment) => segment.id));
+  const lineIds = new Set(map.config.lines.map((line) => line.id));
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodes,
+      stations: map.model.stations.map((station) => {
+        if (!station.nodeId || nodeIds.has(station.nodeId)) return station;
+        return {
+          ...station,
+          nodeId: null,
+          label: undefined,
+        };
+      }),
+      segments,
+      lineRuns: map.model.lineRuns
+        .filter((lineRun) => lineIds.has(lineRun.lineId))
+        .map((lineRun) => ({
+          ...lineRun,
+          segmentIds: lineRun.segmentIds.filter((segmentId) => segmentIds.has(segmentId)),
+        })),
+    },
+  };
+}

@@ -18,6 +18,7 @@ import {
   createStationKindId,
   createStraightSegmentForSheet,
   lineStrokeDasharray,
+  sanitizeRailwayMap,
 } from "@/entities/railway-map/model/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -111,7 +112,7 @@ function loadStoredMap() {
   if (!raw) return INITIAL_MAP;
 
   try {
-    return railwayMapSchema.parse(JSON.parse(raw));
+    return sanitizeRailwayMap(railwayMapSchema.parse(JSON.parse(raw)));
   } catch {
     return INITIAL_MAP;
   }
@@ -902,7 +903,7 @@ export default function RailwayMapEditor() {
 
   function updateMap(updater: (current: RailwayMap) => RailwayMap, options?: { trackHistory?: boolean }) {
     setMap((current) => {
-      const next = updater(current);
+      const next = sanitizeRailwayMap(updater(current));
       if (next === current || mapsEqual(next, current)) {
         return current;
       }
@@ -917,7 +918,8 @@ export default function RailwayMapEditor() {
 
   function replaceMap(nextMap: RailwayMap, options?: { trackHistory?: boolean }) {
     setMap((current) => {
-      if (mapsEqual(current, nextMap)) {
+      const sanitizedNextMap = sanitizeRailwayMap(nextMap);
+      if (mapsEqual(current, sanitizedNextMap)) {
         return current;
       }
 
@@ -925,7 +927,7 @@ export default function RailwayMapEditor() {
         pushUndoSnapshot(current);
       }
 
-      return cloneMap(nextMap);
+      return cloneMap(sanitizedNextMap);
     });
   }
 
