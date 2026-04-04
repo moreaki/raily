@@ -8,11 +8,12 @@ import {
   buildLineRunPath,
   buildSegmentPath,
   createDefaultLine,
-  createDefaultNode,
+  createDefaultNodeForSheet,
+  createDefaultSheet,
   createDefaultStation,
   createLineRunId,
   createStationKindId,
-  createStraightSegment,
+  createStraightSegmentForSheet,
 } from "@/entities/railway-map/model/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -25,6 +26,8 @@ const CANVAS_WIDTH = 1400;
 const CANVAS_HEIGHT = 900;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
+const ZOOM_STEP = 1.04;
+const WORLD_SIZE = 200000;
 
 function downloadFile(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -91,7 +94,9 @@ export default function RailwayMapEditor() {
   const [selectedSegmentId, setSelectedSegmentId] = useState(initialMap.segments[0]?.id ?? "");
   const [selectedLineId, setSelectedLineId] = useState(initialMap.lines[0]?.id ?? "");
   const [selectedStationKindId, setSelectedStationKindId] = useState(initialMap.stationKinds[0]?.id ?? "");
+  const [currentSheetId, setCurrentSheetId] = useState(initialMap.sheets[0]?.id ?? "");
   const [newStationName, setNewStationName] = useState("");
+  const [newSheetName, setNewSheetName] = useState("");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
   const [mode, setMode] = useState<"move" | "segment" | "assign">("move");
@@ -102,6 +107,8 @@ export default function RailwayMapEditor() {
   const [gridStepX, setGridStepX] = useState(80);
   const [gridStepY, setGridStepY] = useState(80);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [panning, setPanning] = useState(false);
+  const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; centerX: number; centerY: number } | null>(null);
   const [pendingSegmentStartNodeId, setPendingSegmentStartNodeId] = useState<string | null>(null);
   const [jsonText, setJsonText] = useState(JSON.stringify(initialMap, null, 2));
   const [errorMessage, setErrorMessage] = useState("");
@@ -111,22 +118,34 @@ export default function RailwayMapEditor() {
   const selectedSegment = map.segments.find((segment) => segment.id === selectedSegmentId) ?? null;
   const selectedLine = map.lines.find((line) => line.id === selectedLineId) ?? null;
   const selectedStationKind = map.stationKinds.find((kind) => kind.id === selectedStationKindId) ?? null;
+  const currentSheet = map.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
 
-  const nodesById = useMemo(() => new Map(map.nodes.map((node) => [node.id, node])), [map.nodes]);
-  const segmentsById = useMemo(() => new Map(map.segments.map((segment) => [segment.id, segment])), [map.segments]);
+  const currentNodes = useMemo(() => map.nodes.filter((node) => node.sheetId === currentSheetId), [currentSheetId, map.nodes]);
+  const currentNodeIds = useMemo(() => new Set(currentNodes.map((node) => node.id)), [currentNodes]);
+  const currentStations = useMemo(
+    () => map.stations.filter((station) => currentNodeIds.has(station.nodeId)),
+    [currentNodeIds, map.stations],
+  );
+  const currentSegments = useMemo(
+    () => map.segments.filter((segment) => segment.sheetId === currentSheetId),
+    [currentSheetId, map.segments],
+  );
+
+  const nodesById = useMemo(() => new Map(currentNodes.map((node) => [node.id, node])), [currentNodes]);
+  const segmentsById = useMemo(() => new Map(currentSegments.map((segment) => [segment.id, segment])), [currentSegments]);
   const linesById = useMemo(() => new Map(map.lines.map((line) => [line.id, line])), [map.lines]);
   const stationKindsById = useMemo(() => new Map(map.stationKinds.map((kind) => [kind.id, kind])), [map.stationKinds]);
   const stationsByNodeId = useMemo(() => {
     const next = new Map<string, Station[]>();
 
-    for (const station of map.stations) {
+    for (const station of currentStations) {
       const current = next.get(station.nodeId) ?? [];
       current.push(station);
       next.set(station.nodeId, current);
     }
 
     return next;
-  }, [map.stations]);
+  }, [currentStations]);
   const selectedLineRun = useMemo(
     () => map.lineRuns.find((lineRun) => lineRun.lineId === selectedLineId) ?? null,
     [map.lineRuns, selectedLineId],
@@ -138,12 +157,8 @@ export default function RailwayMapEditor() {
   }, [zoom]);
   const viewBox = useMemo(() => {
     const { width, height } = viewBoxDimensions;
-    const minCenterX = width / 2;
-    const maxCenterX = CANVAS_WIDTH - width / 2;
-    const minCenterY = height / 2;
-    const maxCenterY = CANVAS_HEIGHT - height / 2;
-    const centerX = clamp(viewportCenter.x, minCenterX, maxCenterX);
-    const centerY = clamp(viewportCenter.y, minCenterY, maxCenterY);
+    const centerX = viewportCenter.x;
+    const centerY = viewportCenter.y;
     return {
       x: centerX - width / 2,
       y: centerY - height / 2,
@@ -161,16 +176,21 @@ export default function RailwayMapEditor() {
     const vertical: number[] = [];
     const horizontal: number[] = [];
 
-    for (let x = safeStepX; x < CANVAS_WIDTH; x += safeStepX) {
+    const startX = Math.floor(viewBox.x / safeStepX) * safeStepX;
+    const endX = Math.ceil((viewBox.x + viewBox.width) / safeStepX) * safeStepX;
+    const startY = Math.floor(viewBox.y / safeStepY) * safeStepY;
+    const endY = Math.ceil((viewBox.y + viewBox.height) / safeStepY) * safeStepY;
+
+    for (let x = startX; x <= endX; x += safeStepX) {
       vertical.push(x);
     }
 
-    for (let y = safeStepY; y < CANVAS_HEIGHT; y += safeStepY) {
+    for (let y = startY; y <= endY; y += safeStepY) {
       horizontal.push(y);
     }
 
     return { vertical, horizontal };
-  }, [gridStepX, gridStepY, showGrid]);
+  }, [gridStepX, gridStepY, showGrid, viewBox.height, viewBox.width, viewBox.x, viewBox.y]);
 
   useEffect(() => {
     setJsonText(JSON.stringify(map, null, 2));
@@ -181,9 +201,9 @@ export default function RailwayMapEditor() {
 
   useEffect(() => {
     if (!selectedNode || !nodesById.has(selectedNode.id)) {
-      setSelectedNodeId(map.nodes[0]?.id ?? "");
+      setSelectedNodeId(currentNodes[0]?.id ?? "");
     }
-  }, [map.nodes, nodesById, selectedNode]);
+  }, [currentNodes, nodesById, selectedNode]);
 
   useEffect(() => {
     if (!selectedLine || !map.lines.some((line) => line.id === selectedLine.id)) {
@@ -192,16 +212,22 @@ export default function RailwayMapEditor() {
   }, [map.lines, selectedLine]);
 
   useEffect(() => {
-    if (!selectedSegment || !map.segments.some((segment) => segment.id === selectedSegment.id)) {
-      setSelectedSegmentId(map.segments[0]?.id ?? "");
+    if (!selectedSegment || !segmentsById.has(selectedSegment.id)) {
+      setSelectedSegmentId(currentSegments[0]?.id ?? "");
     }
-  }, [map.segments, selectedSegment]);
+  }, [currentSegments, segmentsById, selectedSegment]);
 
   useEffect(() => {
     if (!selectedStationKind || !map.stationKinds.some((kind) => kind.id === selectedStationKind.id)) {
       setSelectedStationKindId(map.stationKinds[0]?.id ?? "");
     }
   }, [map.stationKinds, selectedStationKind]);
+
+  useEffect(() => {
+    if (!currentSheet || !map.sheets.some((sheet) => sheet.id === currentSheet.id)) {
+      setCurrentSheetId(map.sheets[0]?.id ?? "");
+    }
+  }, [currentSheet, map.sheets]);
 
   useEffect(() => {
     setViewportCenter({ x: viewBox.centerX, y: viewBox.centerY });
@@ -213,8 +239,13 @@ export default function RailwayMapEditor() {
   }
 
   function addStation() {
+    if (!currentSheet) return;
     updateMap((current) => {
-      const node = createDefaultNode(current, "station");
+      const node = {
+        ...createDefaultNodeForSheet(current, currentSheet.id, "station"),
+        x: Math.round(viewportCenter.x),
+        y: Math.round(viewportCenter.y),
+      };
       const station = createDefaultStation(current, node.id, newStationName);
       return {
         ...current,
@@ -226,10 +257,30 @@ export default function RailwayMapEditor() {
   }
 
   function addJunction() {
+    if (!currentSheet) return;
     updateMap((current) => ({
       ...current,
-      nodes: [...current.nodes, createDefaultNode(current, "junction")],
+      nodes: [
+        ...current.nodes,
+        {
+          ...createDefaultNodeForSheet(current, currentSheet.id, "junction"),
+          x: Math.round(viewportCenter.x),
+          y: Math.round(viewportCenter.y),
+        },
+      ],
     }));
+  }
+
+  function addSheet() {
+    const nextSheet = createDefaultSheet(map, newSheetName);
+    updateMap((current) => ({
+      ...current,
+      sheets: [...current.sheets, nextSheet],
+    }));
+    setCurrentSheetId(nextSheet.id);
+    setNewSheetName("");
+    setViewportCenter({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
+    setZoom(1);
   }
 
   function addStationKind() {
@@ -372,12 +423,13 @@ export default function RailwayMapEditor() {
   }
 
   function createSegmentFromPendingNode(nextNodeId: string) {
+    if (!currentSheet) return;
     if (!pendingSegmentStartNodeId || pendingSegmentStartNodeId === nextNodeId) {
       setPendingSegmentStartNodeId(nextNodeId);
       return;
     }
 
-    const existingSegment = map.segments.find(
+    const existingSegment = currentSegments.find(
       (segment) =>
         (segment.fromNodeId === pendingSegmentStartNodeId && segment.toNodeId === nextNodeId) ||
         (segment.fromNodeId === nextNodeId && segment.toNodeId === pendingSegmentStartNodeId),
@@ -389,7 +441,7 @@ export default function RailwayMapEditor() {
       return;
     }
 
-    const segment = createStraightSegment(pendingSegmentStartNodeId, nextNodeId);
+    const segment = createStraightSegmentForSheet(currentSheet.id, pendingSegmentStartNodeId, nextNodeId);
     updateMap((current) => ({
       ...current,
       segments: [...current.segments, segment],
@@ -411,6 +463,19 @@ export default function RailwayMapEditor() {
     setDraggingNodeId(nodeId);
   }
 
+  function handleCanvasMouseDown(event: MouseEvent<SVGSVGElement>) {
+    if (event.target !== event.currentTarget) return;
+    setDraggingNodeId(null);
+    setPendingSegmentStartNodeId(null);
+    setPanning(true);
+    setPanStart({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      centerX: viewportCenter.x,
+      centerY: viewportCenter.y,
+    });
+  }
+
   function handleSegmentMouseDown(segmentId: string) {
     setSidePanel("edit");
     setSelectedSegmentId(segmentId);
@@ -421,7 +486,18 @@ export default function RailwayMapEditor() {
   }
 
   function handleSvgMouseMove(event: MouseEvent<SVGSVGElement>) {
-    if (!draggingNodeId || !svgRef.current) return;
+    if (!svgRef.current) return;
+    if (panning && panStart) {
+      const deltaX = ((event.clientX - panStart.clientX) / CANVAS_WIDTH) * viewBox.width;
+      const deltaY = ((event.clientY - panStart.clientY) / CANVAS_HEIGHT) * viewBox.height;
+      setViewportCenter({
+        x: panStart.centerX - deltaX,
+        y: panStart.centerY - deltaY,
+      });
+      return;
+    }
+
+    if (!draggingNodeId) return;
     const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
     if (!svgPoint) return;
     const x = Math.round(svgPoint.x);
@@ -448,6 +524,8 @@ export default function RailwayMapEditor() {
 
   function handleSvgMouseUp() {
     setDraggingNodeId(null);
+    setPanning(false);
+    setPanStart(null);
   }
 
   function applyZoom(nextZoom: number, focusPoint?: { x: number; y: number }) {
@@ -479,7 +557,7 @@ export default function RailwayMapEditor() {
     event.preventDefault();
     const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
     const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
-    const nextZoom = event.deltaY < 0 ? zoom * 1.1 : zoom / 1.1;
+    const nextZoom = event.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
     applyZoom(nextZoom, focusPoint);
   }
 
@@ -562,12 +640,26 @@ export default function RailwayMapEditor() {
                     </div>
                   ) : null}
                   <div className="pointer-events-auto ml-auto flex gap-2">
+                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
+                      <span className="font-semibold text-ink">Sheet</span>
+                      <select
+                        value={currentSheetId}
+                        onChange={(event) => setCurrentSheetId(event.target.value)}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-ink outline-none"
+                      >
+                        {map.sheets.map((sheet) => (
+                          <option key={sheet.id} value={sheet.id}>
+                            {sheet.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm backdrop-blur">
-                      <button type="button" className="font-semibold text-ink" onClick={() => applyZoom(zoom / 1.2)}>
+                      <button type="button" className="font-semibold text-ink" onClick={() => applyZoom(zoom / ZOOM_STEP)}>
                         -
                       </button>
                       <span className="min-w-[3.5rem] text-center text-xs font-semibold text-ink">{Math.round(zoom * 100)}%</span>
-                      <button type="button" className="font-semibold text-ink" onClick={() => applyZoom(zoom * 1.2)}>
+                      <button type="button" className="font-semibold text-ink" onClick={() => applyZoom(zoom * ZOOM_STEP)}>
                         +
                       </button>
                       <button
@@ -617,25 +709,44 @@ export default function RailwayMapEditor() {
                     height={CANVAS_HEIGHT}
                     viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
                     className="h-full w-full"
+                    onMouseDown={handleCanvasMouseDown}
                     onMouseMove={handleSvgMouseMove}
                     onMouseUp={handleSvgMouseUp}
                     onMouseLeave={handleSvgMouseUp}
                     onWheel={handleSvgWheel}
                   >
-                    <rect x="0" y="0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="white" />
+                    <rect x={-WORLD_SIZE / 2} y={-WORLD_SIZE / 2} width={WORLD_SIZE} height={WORLD_SIZE} fill="white" />
 
                     {showGrid ? (
                       <g pointerEvents="none">
                         {gridLines.vertical.map((x) => (
-                          <line key={`grid-x-${x}`} x1={x} y1={0} x2={x} y2={CANVAS_HEIGHT} stroke="#cbd5e1" strokeOpacity="0.45" strokeWidth="1" />
+                          <line
+                            key={`grid-x-${x}`}
+                            x1={x}
+                            y1={viewBox.y - viewBox.height}
+                            x2={x}
+                            y2={viewBox.y + viewBox.height * 2}
+                            stroke="#cbd5e1"
+                            strokeOpacity="0.45"
+                            strokeWidth="1"
+                          />
                         ))}
                         {gridLines.horizontal.map((y) => (
-                          <line key={`grid-y-${y}`} x1={0} y1={y} x2={CANVAS_WIDTH} y2={y} stroke="#cbd5e1" strokeOpacity="0.45" strokeWidth="1" />
+                          <line
+                            key={`grid-y-${y}`}
+                            x1={viewBox.x - viewBox.width}
+                            y1={y}
+                            x2={viewBox.x + viewBox.width * 2}
+                            y2={y}
+                            stroke="#cbd5e1"
+                            strokeOpacity="0.45"
+                            strokeWidth="1"
+                          />
                         ))}
                       </g>
                     ) : null}
 
-                    {map.segments.map((segment) => (
+                    {currentSegments.map((segment) => (
                       <path
                         key={segment.id}
                         d={buildSegmentPath(segment, nodesById)}
@@ -665,7 +776,7 @@ export default function RailwayMapEditor() {
                       );
                     })}
 
-                    {map.nodes.map((node) => {
+                    {currentNodes.map((node) => {
                       const stations = stationsByNodeId.get(node.id) ?? [];
                       const isSelected = selectedNodeId === node.id;
                       const primaryStation = stations[0];
@@ -678,7 +789,7 @@ export default function RailwayMapEditor() {
                       );
                     })}
 
-                    {map.stations.map((station) => {
+                    {currentStations.map((station) => {
                       const node = nodesById.get(station.nodeId);
                       if (!node) return null;
                       const labelX = station.label?.x ?? node.x + 12;
@@ -695,13 +806,13 @@ export default function RailwayMapEditor() {
 
                 <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-wrap gap-2">
                   <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
-                    {map.stations.length} stations
+                    {currentStations.length} stations
                   </div>
                   <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
-                    {map.segments.length} segments
+                    {currentSegments.length} segments
                   </div>
                   <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
-                    {map.lines.length} lines
+                    {currentSheet?.name ?? "Sheet"}
                   </div>
                 </div>
               </div>
@@ -738,7 +849,7 @@ export default function RailwayMapEditor() {
                       <section className="space-y-3">
                         <div className="text-sm font-semibold text-ink">Stations</div>
                         <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                          {map.stations.map((station) => (
+                          {currentStations.map((station) => (
                             <button
                               key={station.id}
                               type="button"
@@ -829,7 +940,7 @@ export default function RailwayMapEditor() {
                             <Input value={selectedLine.name} onChange={(event) => updateLine({ name: event.target.value })} />
                             <Input type="color" value={selectedLine.color} onChange={(event) => updateLine({ color: event.target.value })} />
                             <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-white p-2">
-                              {map.segments.map((segment) => {
+                              {currentSegments.map((segment) => {
                                 const active = selectedLineRun?.segmentIds.includes(segment.id) ?? false;
                                 return (
                                   <label key={segment.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm text-ink">
@@ -845,6 +956,30 @@ export default function RailwayMapEditor() {
                     </>
                   ) : (
                     <>
+                      <section className="space-y-3">
+                        <div className="text-sm font-semibold text-ink">Sheets</div>
+                        <div className="flex gap-2">
+                          <Input value={newSheetName} onChange={(event) => setNewSheetName(event.target.value)} placeholder="New sheet name" />
+                          <Button onClick={addSheet}>
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="max-h-[180px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                          {map.sheets.map((sheet) => (
+                            <button
+                              key={sheet.id}
+                              type="button"
+                              onClick={() => setCurrentSheetId(sheet.id)}
+                              className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                                currentSheetId === sheet.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
+                              }`}
+                            >
+                              {sheet.name}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+
                       <section className="space-y-3">
                         <div className="text-sm font-semibold text-ink">Station Kinds</div>
                         <div className="flex gap-2">
