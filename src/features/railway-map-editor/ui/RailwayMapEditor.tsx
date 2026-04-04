@@ -1,6 +1,6 @@
 import type { MouseEvent, WheelEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Grip, Link2, Plus, Trash2, Upload } from "lucide-react";
+import { Download, Grip, Hand, Link2, Plus, Trash2, Upload } from "lucide-react";
 import { DEVELOPMENT_BOOTSTRAP_MAP, INITIAL_MAP, LINE_PRESETS } from "@/entities/railway-map/model/constants";
 import { railwayMapSchema } from "@/entities/railway-map/model/schema";
 import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape } from "@/entities/railway-map/model/types";
@@ -378,7 +378,7 @@ export default function RailwayMapEditor() {
   const [newStationName, setNewStationName] = useState("");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
-  const [mode, setMode] = useState<"move" | "segment" | "assign">("move");
+  const [mode, setMode] = useState<"move" | "pan" | "segment" | "assign">("move");
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage">("edit");
   const [moveAllNodes, setMoveAllNodes] = useState(false);
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
@@ -1110,6 +1110,16 @@ export default function RailwayMapEditor() {
     event.stopPropagation();
     setNodeContextMenu(null);
     setSidePanel("edit");
+    if (mode === "pan") {
+      setPanning(true);
+      setPanStart({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        centerX: viewportCenter.x,
+        centerY: viewportCenter.y,
+      });
+      return;
+    }
     if (mode === "segment") {
       selectSingleNode(nodeId);
       createSegmentFromPendingNode(nodeId);
@@ -1155,6 +1165,16 @@ export default function RailwayMapEditor() {
     event.stopPropagation();
     setNodeContextMenu(null);
     setSidePanel("edit");
+    if (mode === "pan") {
+      setPanning(true);
+      setPanStart({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        centerX: viewportCenter.x,
+        centerY: viewportCenter.y,
+      });
+      return;
+    }
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
     setSelectedStationId(stationId);
@@ -1179,7 +1199,18 @@ export default function RailwayMapEditor() {
     const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
     if (!point) return;
 
-    if (mode === "move" && !event.altKey) {
+    if (mode === "pan" || event.altKey) {
+      setPanning(true);
+      setPanStart({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        centerX: viewportCenter.x,
+        centerY: viewportCenter.y,
+      });
+      return;
+    }
+
+    if (mode === "move") {
       setMarqueeSelection({ start: { x: point.x, y: point.y }, end: { x: point.x, y: point.y } });
       return;
     }
@@ -1328,6 +1359,13 @@ export default function RailwayMapEditor() {
     });
   }
 
+  function panViewportByPixels(deltaX: number, deltaY: number) {
+    setViewportCenter((current) => ({
+      x: current.x + (deltaX / CANVAS_WIDTH) * viewBox.width,
+      y: current.y + (deltaY / CANVAS_HEIGHT) * viewBox.height,
+    }));
+  }
+
   function applyZoom(nextZoom: number, focusPoint?: { x: number; y: number }) {
     const clampedZoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
     if (clampedZoom === zoom) return;
@@ -1355,10 +1393,15 @@ export default function RailwayMapEditor() {
   function handleSvgWheel(event: WheelEvent<SVGSVGElement>) {
     if (!svgRef.current) return;
     event.preventDefault();
-    const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-    const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
-    const nextZoom = event.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
-    applyZoom(nextZoom, focusPoint);
+    if (event.ctrlKey || event.metaKey) {
+      const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+      const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
+      const nextZoom = event.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
+      applyZoom(nextZoom, focusPoint);
+      return;
+    }
+
+    panViewportByPixels(event.deltaX, event.deltaY);
   }
 
   useEffect(() => {
@@ -1369,10 +1412,15 @@ export default function RailwayMapEditor() {
       if (!svgRef.current) return;
       event.preventDefault();
 
-      const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-      const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
-      const nextZoom = event.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
-      applyZoom(nextZoom, focusPoint);
+      if (event.ctrlKey || event.metaKey) {
+        const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+        const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
+        const nextZoom = event.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
+        applyZoom(nextZoom, focusPoint);
+        return;
+      }
+
+      panViewportByPixels(event.deltaX, event.deltaY);
     }
 
     element.addEventListener("wheel", handleNativeWheel, { passive: false });
@@ -1426,6 +1474,10 @@ export default function RailwayMapEditor() {
               <Grip className="h-4 w-4" />
               Move
             </Button>
+            <Button variant={mode === "pan" ? "default" : "outline"} onClick={() => setMode("pan")}>
+              <Hand className="h-4 w-4" />
+              Pan
+            </Button>
             <Button variant={mode === "segment" ? "default" : "outline"} onClick={() => setMode("segment")}>
               <Link2 className="h-4 w-4" />
               Segment
@@ -1457,7 +1509,13 @@ export default function RailwayMapEditor() {
               <div className="relative min-h-[78vh] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.08),transparent_28%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
                 <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 p-4">
                   <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-ink shadow-sm backdrop-blur">
-                    {mode === "move" ? "Move nodes" : mode === "segment" ? "Draw segments" : "Assign segments to the selected line"}
+                    {mode === "move"
+                      ? "Move nodes"
+                      : mode === "pan"
+                        ? "Pan viewport"
+                        : mode === "segment"
+                          ? "Draw segments"
+                          : "Assign segments to the selected line"}
                   </div>
                   {mode === "segment" ? (
                     <div className="pointer-events-auto rounded-2xl border border-sky-200 bg-sky-50/95 px-3 py-2 text-xs text-sky-800 shadow-sm">
@@ -1851,7 +1909,7 @@ export default function RailwayMapEditor() {
                             {moveAllNodes ? "Whole sheet drag enabled" : "Move whole sheet"}
                           </Button>
                         </div>
-                        <p className="text-xs text-muted">Drag on empty canvas to lasso-select nodes. Alt-drag on empty canvas pans instead.</p>
+                        <p className="text-xs text-muted">Drag on empty canvas to lasso-select nodes. Use the `Pan` tool, `Alt`-drag, or normal trackpad/wheel scrolling to shift the viewport.</p>
                       </section>
 
                       <section className="space-y-3">
