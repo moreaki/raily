@@ -535,6 +535,11 @@ export default function RailwayMapEditor() {
 
     return next;
   }, [currentStations]);
+  const contextMenuStations = useMemo(
+    () => (contextMenuNodeId ? stationsByNodeId.get(contextMenuNodeId) ?? [] : []),
+    [contextMenuNodeId, stationsByNodeId],
+  );
+  const contextMenuStation = contextMenuStations[0] ?? null;
   const labelDiagnostics = useMemo(() => {
     const diagnostics = new Map<
       string,
@@ -1490,6 +1495,23 @@ export default function RailwayMapEditor() {
     }
   }
 
+  function handleStationContextMenu(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    setSegmentContextMenu(null);
+    setSidePanel("edit");
+    setSelectedNodeId(nodeId);
+    setSelectedNodeIds([nodeId]);
+    setSelectedStationId(stationId);
+    setSelectedSegmentId("");
+    setNodeAssignmentQuery("");
+    setNodeContextMenu({
+      nodeIds: [nodeId],
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
   function handleCanvasMouseDown(event: MouseEvent<SVGSVGElement>) {
     if (event.target !== event.currentTarget) return;
     setNodeContextMenu(null);
@@ -1645,9 +1667,17 @@ export default function RailwayMapEditor() {
 
   function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string) {
     event.preventDefault();
+    event.stopPropagation();
     setSegmentContextMenu(null);
+    const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
     if (!selectedNodeIdsSet.has(nodeId)) {
       selectSingleNode(nodeId);
+      setSelectedStationId(station?.id ?? "");
+    }
+    if (selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length <= 1) {
+      setSelectedNodeId(nodeId);
+      setSelectedStationId(station?.id ?? "");
+      setSelectedSegmentId("");
     }
     const nodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
     setNodeAssignmentQuery("");
@@ -1958,6 +1988,7 @@ export default function RailwayMapEditor() {
                         <g
                           key={station.id}
                           onMouseDown={(event) => handleLabelMouseDown(event, station.id, node.id)}
+                          onContextMenu={(event) => handleStationContextMenu(event, station.id, node.id)}
                           style={{ cursor: "grab" }}
                         >
                           {shouldShowLeader ? (
@@ -2027,6 +2058,35 @@ export default function RailwayMapEditor() {
                   >
                     {nodeContextMenu.nodeIds.length === 1 ? (
                       <>
+                        {contextMenuStation ? (
+                          <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Station</div>
+                            <Input
+                              value={contextMenuStation.name}
+                              onFocus={() => setSelectedStationId(contextMenuStation.id)}
+                              onChange={(event) => {
+                                setSelectedStationId(contextMenuStation.id);
+                                updateStation(contextMenuStation.id, { name: event.target.value });
+                              }}
+                              placeholder="Station name"
+                              className="h-9"
+                            />
+                            <select
+                              value={contextMenuStation.kindId}
+                              onChange={(event) => {
+                                setSelectedStationId(contextMenuStation.id);
+                                updateStation(contextMenuStation.id, { kindId: event.target.value });
+                              }}
+                              className="h-9 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                            >
+                              {map.stationKinds.map((kind) => (
+                                <option key={kind.id} value={kind.id}>
+                                  {kind.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : null}
                         <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Track</div>
                           {pendingSegmentStartNodeId && pendingSegmentStartNodeId !== nodeContextMenu.nodeIds[0] ? (
