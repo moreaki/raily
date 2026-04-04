@@ -57,6 +57,18 @@ type LabelBox = {
   corners: MapPoint[];
 };
 
+type ResolvedLabelPlacement = {
+  stationId: string;
+  nodeId: string;
+  box: LabelBox;
+  position: {
+    x: number;
+    y: number;
+    align?: "left" | "right" | "top" | "bottom";
+    rotation?: number;
+  };
+};
+
 function downloadFile(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -341,6 +353,48 @@ function candidateLabelPositions(node: MapNode) {
   );
 }
 
+function buildStationLineIdsByStationId(map: RailwayMap) {
+  const segmentIdsByNodeId = new Map<string, Set<string>>();
+
+  for (const segment of map.model.segments) {
+    const fromSet = segmentIdsByNodeId.get(segment.fromNodeId) ?? new Set<string>();
+    fromSet.add(segment.id);
+    segmentIdsByNodeId.set(segment.fromNodeId, fromSet);
+
+    const toSet = segmentIdsByNodeId.get(segment.toNodeId) ?? new Set<string>();
+    toSet.add(segment.id);
+    segmentIdsByNodeId.set(segment.toNodeId, toSet);
+  }
+
+  const lineIdsBySegmentId = new Map<string, Set<string>>();
+  for (const lineRun of map.model.lineRuns) {
+    for (const segmentId of lineRun.segmentIds) {
+      const lineIds = lineIdsBySegmentId.get(segmentId) ?? new Set<string>();
+      lineIds.add(lineRun.lineId);
+      lineIdsBySegmentId.set(segmentId, lineIds);
+    }
+  }
+
+  const stationLineIdsByStationId = new Map<string, Set<string>>();
+  for (const station of map.model.stations) {
+    if (!station.nodeId) {
+      stationLineIdsByStationId.set(station.id, new Set());
+      continue;
+    }
+
+    const segmentIds = segmentIdsByNodeId.get(station.nodeId) ?? new Set<string>();
+    const lineIds = new Set<string>();
+    for (const segmentId of segmentIds) {
+      for (const lineId of lineIdsBySegmentId.get(segmentId) ?? []) {
+        lineIds.add(lineId);
+      }
+    }
+    stationLineIdsByStationId.set(station.id, lineIds);
+  }
+
+  return stationLineIdsByStationId;
+}
+
 function getStationLabelPosition(station: Station, node: MapNode) {
   return {
     x: station.label?.x ?? node.x + 12,
@@ -399,9 +453,10 @@ function computeLabelPenalty(
   current: RailwayMap,
   station: Station,
   position: { x: number; y: number; align?: "left" | "right" | "top" | "bottom"; rotation?: number },
-  placedBoxes: LabelBox[],
+  resolvedPlacements: ResolvedLabelPlacement[],
   nodesById: Map<string, MapNode>,
   stationKindsById: Map<string, StationKind>,
+  stationLineIdsByStationId: Map<string, Set<string>>,
 ) {
   if (!station.nodeId) {
     return {
@@ -426,10 +481,11 @@ function computeLabelPenalty(
     position.rotation ?? 0,
   );
   const sheetSegments = current.model.segments.filter((segment) => segment.sheetId === node.sheetId);
+  const currentLineIds = stationLineIdsByStationId.get(station.id) ?? new Set<string>();
 
   let overlapPenalty = 0;
-  for (const placedBox of placedBoxes) {
-    if (boxesOverlap(box, placedBox)) overlapPenalty += 300;
+  for (const placement of resolvedPlacements) {
+    if (boxesOverlap(box, placement.box)) overlapPenalty += 300;
   }
 
   let segmentPenalty = 0;
@@ -453,13 +509,44 @@ function computeLabelPenalty(
 
   const offsetPenalty = Math.hypot(position.x - node.x, position.y - node.y) * 0.2;
   const rotationPenalty = position.rotation && position.rotation !== 0 ? 8 : 0;
-  return { score: overlapPenalty + segmentPenalty + offsetPenalty + rotationPenalty, box };
+  let alignmentPenalty = 0;
+
+  for (const placement of resolvedPlacements) {
+    const otherNode = nodesById.get(placement.nodeId);
+    if (!otherNode) continue;
+
+    const otherLineIds = stationLineIdsByStationId.get(placement.stationId) ?? new Set<string>();
+    const sharesLine = [...currentLineIds].some((lineId) => otherLineIds.has(lineId));
+    if (!sharesLine) continue;
+
+    const deltaX = Math.abs(node.x - otherNode.x);
+    const deltaY = Math.abs(node.y - otherNode.y);
+
+    if (deltaX >= 40 && deltaY <= 24) {
+      const currentOffsetY = position.y - node.y;
+      const otherOffsetY = placement.position.y - otherNode.y;
+      alignmentPenalty += Math.min(48, Math.abs(currentOffsetY - otherOffsetY) * 1.4);
+      if ((position.rotation ?? 0) !== (placement.position.rotation ?? 0)) {
+        alignmentPenalty += 18;
+      }
+    } else if (deltaY >= 40 && deltaX <= 24) {
+      const currentOffsetX = position.x - node.x;
+      const otherOffsetX = placement.position.x - otherNode.x;
+      alignmentPenalty += Math.min(48, Math.abs(currentOffsetX - otherOffsetX) * 1.4);
+      if ((position.rotation ?? 0) !== (placement.position.rotation ?? 0)) {
+        alignmentPenalty += 18;
+      }
+    }
+  }
+
+  return { score: overlapPenalty + segmentPenalty + offsetPenalty + rotationPenalty + alignmentPenalty, box };
 }
 
 function autoPlaceLabels(current: RailwayMap) {
   const nodesById = new Map(current.model.nodes.map((node) => [node.id, node]));
   const stationKindsById = new Map(current.config.stationKinds.map((kind) => [kind.id, kind]));
-  const resolvedBoxes: LabelBox[] = [];
+  const stationLineIdsByStationId = buildStationLineIdsByStationId(current);
+  const resolvedPlacements: ResolvedLabelPlacement[] = [];
 
   return current.model.stations.map((station) => {
     if (!station.nodeId) return station;
@@ -468,14 +555,27 @@ function autoPlaceLabels(current: RailwayMap) {
 
     const candidate = candidateLabelPositions(node)
       .map((position) => {
-        const analysis = computeLabelPenalty(current, station, position, resolvedBoxes, nodesById, stationKindsById);
+        const analysis = computeLabelPenalty(
+          current,
+          station,
+          position,
+          resolvedPlacements,
+          nodesById,
+          stationKindsById,
+          stationLineIdsByStationId,
+        );
         return { position, box: analysis.box, score: analysis.score };
       })
       .sort((left, right) => left.score - right.score)[0];
 
     if (!candidate) return station;
 
-    resolvedBoxes.push(candidate.box);
+    resolvedPlacements.push({
+      stationId: station.id,
+      nodeId: station.nodeId,
+      box: candidate.box,
+      position: candidate.position,
+    });
     return {
       ...station,
       label: {
@@ -1291,26 +1391,40 @@ export default function RailwayMapEditor() {
     const stationNode = model.nodes.find((node) => node.id === station.nodeId);
     if (!stationNode) return;
 
-    const occupiedBoxes = currentStations
+    const allNodesById = new Map(model.nodes.map((node) => [node.id, node]));
+    const stationLineIdsByStationId = buildStationLineIdsByStationId(map);
+    const resolvedPlacements = currentStations
       .filter((candidate) => candidate.id !== station.id)
       .map((candidate) => {
         const node = nodesById.get(candidate.nodeId);
         if (!node) return null;
         const position = getStationLabelPosition(candidate, node);
-        return estimateLabelBox(
-          candidate.name,
-          position.x,
-          position.y,
-          getStationKindFontSize(stationKindsById.get(candidate.kindId)),
-          position.rotation,
-        );
+        const placementPosition: ResolvedLabelPlacement["position"] = position;
+        return {
+          stationId: candidate.id,
+          nodeId: candidate.nodeId,
+          box: estimateLabelBox(
+            candidate.name,
+            placementPosition.x,
+            placementPosition.y,
+            getStationKindFontSize(stationKindsById.get(candidate.kindId)),
+            placementPosition.rotation,
+          ),
+          position: placementPosition,
+        };
       })
-      .filter((box): box is ReturnType<typeof estimateLabelBox> => box !== null);
-
-    const allNodesById = new Map(model.nodes.map((node) => [node.id, node]));
+      .filter((placement): placement is ResolvedLabelPlacement => placement !== null);
     const bestCandidate = candidateLabelPositions(stationNode)
       .map((position) => {
-        const analysis = computeLabelPenalty(map, station, position, occupiedBoxes, allNodesById, stationKindsById);
+        const analysis = computeLabelPenalty(
+          map,
+          station,
+          position,
+          resolvedPlacements,
+          allNodesById,
+          stationKindsById,
+          stationLineIdsByStationId,
+        );
         return { position, score: analysis.score };
       })
       .sort((left, right) => left.score - right.score)[0];
