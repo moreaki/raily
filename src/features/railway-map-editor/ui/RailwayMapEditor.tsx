@@ -343,6 +343,74 @@ function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
 }
 
+function findNearbyFreePoint(map: RailwayMap, sheetId: string, preferredCenter: MapPoint) {
+  const sheetNodes = map.nodes.filter((node) => node.sheetId === sheetId);
+  const sheetNodeIds = new Set(sheetNodes.map((node) => node.id));
+  const nodesById = new Map(sheetNodes.map((node) => [node.id, node]));
+  const sheetSegments = map.segments.filter((segment) => segment.sheetId === sheetId);
+  const spacing = 56;
+  const maxRadius = 8;
+
+  function isClear(candidate: MapPoint) {
+    for (const node of sheetNodes) {
+      if (Math.hypot(node.x - candidate.x, node.y - candidate.y) < 52) {
+        return false;
+      }
+    }
+
+    for (const station of map.stations) {
+      if (!sheetNodeIds.has(station.nodeId)) continue;
+      const stationNode = nodesById.get(station.nodeId);
+      if (!stationNode) continue;
+      const position = getStationLabelPosition(station, stationNode);
+      const labelBox = estimateLabelBox(station.name, position.x, position.y);
+      if (pointInBox(candidate, labelBox, 14)) {
+        return false;
+      }
+    }
+
+    for (const segment of sheetSegments) {
+      const points = buildSegmentPoints(segment, nodesById);
+      for (let index = 0; index < points.length - 1; index += 1) {
+        if (pointToSegmentDistance(candidate, points[index], points[index + 1]) < 24) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  const roundedCenter = {
+    x: Math.round(preferredCenter.x / 8) * 8,
+    y: Math.round(preferredCenter.y / 8) * 8,
+  };
+
+  if (isClear(roundedCenter)) {
+    return roundedCenter;
+  }
+
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let x = -radius; x <= radius; x += 1) {
+      for (let y = -radius; y <= radius; y += 1) {
+        if (Math.abs(x) !== radius && Math.abs(y) !== radius) continue;
+        const candidate = {
+          x: roundedCenter.x + x * spacing,
+          y: roundedCenter.y + y * spacing,
+        };
+        if (isClear(candidate)) {
+          return candidate;
+        }
+      }
+    }
+  }
+
+  return {
+    x: roundedCenter.x + spacing,
+    y: roundedCenter.y + spacing,
+  };
+}
+
 function getSheetContentCenter(nodes: MapNode[]) {
   if (nodes.length === 0) {
     return { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
@@ -425,6 +493,7 @@ export default function RailwayMapEditor() {
   const currentSheet = map.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
   const contextMenuNodeId = nodeContextMenu?.nodeIds.length === 1 ? nodeContextMenu.nodeIds[0] : null;
   const contextMenuNode = contextMenuNodeId ? map.nodes.find((node) => node.id === contextMenuNodeId) ?? null : null;
+  const allNodeIds = useMemo(() => new Set(map.nodes.map((node) => node.id)), [map.nodes]);
 
   const currentNodes = useMemo(() => map.nodes.filter((node) => node.sheetId === currentSheetId), [currentSheetId, map.nodes]);
   const selectedNodeIdsSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
@@ -535,12 +604,14 @@ export default function RailwayMapEditor() {
     if (!contextMenuNode) return [];
 
     const query = normalizeSearchValue(nodeAssignmentQuery);
-    const results = currentStations.filter((station) => station.nodeId !== contextMenuNode.id).filter((station) => {
-      if (!query) return true;
-      const kindName = stationKindsById.get(station.kindId)?.name ?? "";
-      const haystack = normalizeSearchValue(`${station.name} ${kindName} ${station.id}`);
-      return haystack.includes(query);
-    });
+    const results = currentStations
+      .filter((station) => station.nodeId === contextMenuNode.id || !allNodeIds.has(station.nodeId))
+      .filter((station) => {
+        if (!query) return true;
+        const kindName = stationKindsById.get(station.kindId)?.name ?? "";
+        const haystack = normalizeSearchValue(`${station.name} ${kindName} ${station.id}`);
+        return haystack.includes(query);
+      });
 
     return [...results].sort((left, right) => {
       const leftName = normalizeSearchValue(left.name);
@@ -551,7 +622,7 @@ export default function RailwayMapEditor() {
       if (leftStarts !== rightStarts) return leftStarts ? -1 : 1;
       return left.name.localeCompare(right.name);
     });
-  }, [contextMenuNode, currentStations, nodeAssignmentQuery, stationKindsById]);
+  }, [allNodeIds, contextMenuNode, currentStations, nodeAssignmentQuery, stationKindsById]);
   const viewBox = useMemo(() => {
     const { width, height } = viewBoxDimensions;
     const centerX = viewportCenter.x;
@@ -781,10 +852,11 @@ export default function RailwayMapEditor() {
   function addStation() {
     if (!currentSheet) return;
     updateMap((current) => {
+      const placement = findNearbyFreePoint(current, currentSheet.id, viewportCenter);
       const node = {
         ...createDefaultNodeForSheet(current, currentSheet.id),
-        x: Math.round(viewportCenter.x),
-        y: Math.round(viewportCenter.y),
+        x: placement.x,
+        y: placement.y,
       };
       const station = createDefaultStationAtNode(current, node, newStationName);
       return {
@@ -798,17 +870,20 @@ export default function RailwayMapEditor() {
 
   function addNode() {
     if (!currentSheet) return;
-    updateMap((current) => ({
-      ...current,
-      nodes: [
-        ...current.nodes,
-        {
-          ...createDefaultNodeForSheet(current, currentSheet.id),
-          x: Math.round(viewportCenter.x),
-          y: Math.round(viewportCenter.y),
-        },
-      ],
-    }));
+    updateMap((current) => {
+      const placement = findNearbyFreePoint(current, currentSheet.id, viewportCenter);
+      return {
+        ...current,
+        nodes: [
+          ...current.nodes,
+          {
+            ...createDefaultNodeForSheet(current, currentSheet.id),
+            x: placement.x,
+            y: placement.y,
+          },
+        ],
+      };
+    });
   }
 
   function attachStationToSelectedNode() {
@@ -837,6 +912,23 @@ export default function RailwayMapEditor() {
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
     setSelectedStationId(stationId);
+    setNodeAssignmentQuery("");
+    setNodeContextMenu(null);
+  }
+
+  function createStationAtNode(nodeId: string, name: string) {
+    const node = map.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+
+    const stationName = name.trim() || `Station ${map.stations.length + 1}`;
+    const createdStation = createDefaultStationAtNode(map, node, stationName);
+    updateMap((current) => ({
+      ...current,
+      stations: [...current.stations, createdStation],
+    }));
+    setSelectedNodeId(nodeId);
+    setSelectedNodeIds([nodeId]);
+    setSelectedStationId(createdStation.id);
     setNodeAssignmentQuery("");
     setNodeContextMenu(null);
   }
@@ -1873,6 +1965,14 @@ export default function RailwayMapEditor() {
                             <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div>
                           ) : null}
                         </div>
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentQuery)}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add new station
+                        </Button>
                       </div>
                     ) : null}
                     <button
