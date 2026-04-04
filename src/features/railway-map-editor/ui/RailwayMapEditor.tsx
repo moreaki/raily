@@ -2311,8 +2311,6 @@ export default function RailwayMapEditor() {
                         : undefined;
                       const rotationLabel = `${normalizeRotation(labelRotation)}°`;
                       const rotationBadgeWidth = Math.max(42, rotationLabel.length * 7.2 + 14);
-                      const rotateIconX = box.maxX + 12;
-                      const rotateIconY = box.minY - 10;
 
                       return (
                         <g
@@ -2362,19 +2360,6 @@ export default function RailwayMapEditor() {
                                 }
                                 style={{ cursor: ROTATE_CURSOR }}
                               />
-                            ) : null}
-                            {isSelected ? (
-                              <g transform={`translate(${rotateIconX} ${rotateIconY})`} pointerEvents="none">
-                                <circle cx="0" cy="0" r="11" fill="white" fillOpacity="0.94" stroke="#cbd5e1" />
-                                <g transform="translate(-7 -7)" fill="none" stroke="#0f172a" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M14 7l-2 2-2-2" />
-                                  <path d="M0 7l2-2 2 2" />
-                                  <path d="M12.678 8.333V7.033A4.7 4.7 0 0 0 5.333 3.147" />
-                                  <path d="M10.678 10.897A4.7 4.7 0 0 1 3.333 6.343V5" />
-                                  <path d="M3.333 5V4.333" />
-                                  <path d="M12.667 9v-.667" />
-                                </g>
-                              </g>
                             ) : null}
                             <text
                               x={labelX}
