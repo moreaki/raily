@@ -145,60 +145,78 @@ function candidateLabelPositions(node: MapNode) {
   ];
 }
 
-function autoPlaceLabels(current: RailwayMap) {
-  const nodesById = new Map(current.nodes.map((node) => [node.id, node]));
-  const segmentsBySheetId = new Map<string, Segment[]>();
-  for (const segment of current.segments) {
-    const existing = segmentsBySheetId.get(segment.sheetId) ?? [];
-    existing.push(segment);
-    segmentsBySheetId.set(segment.sheetId, existing);
+function getStationLabelPosition(station: Station, node: MapNode) {
+  return {
+    x: station.label?.x ?? node.x + 12,
+    y: station.label?.y ?? node.y - 10,
+    align: station.label?.align ?? "right",
+  };
+}
+
+function computeLabelPenalty(
+  current: RailwayMap,
+  station: Station,
+  position: { x: number; y: number; align?: "left" | "right" | "top" | "bottom" },
+  placedBoxes: ReturnType<typeof estimateLabelBox>[],
+  nodesById: Map<string, MapNode>,
+) {
+  const node = nodesById.get(station.nodeId);
+  if (!node) {
+    return { score: Number.POSITIVE_INFINITY, box: estimateLabelBox(station.name, position.x, position.y) };
   }
 
-  const resolvedBoxes: Array<{ stationId: string; box: ReturnType<typeof estimateLabelBox> }> = [];
+  const box = estimateLabelBox(station.name, position.x, position.y);
+  const sheetSegments = current.segments.filter((segment) => segment.sheetId === node.sheetId);
+
+  let overlapPenalty = 0;
+  for (const placedBox of placedBoxes) {
+    if (boxesOverlap(box, placedBox)) overlapPenalty += 300;
+  }
+
+  let segmentPenalty = 0;
+  for (const segment of sheetSegments) {
+    const points = buildSegmentPoints(segment, nodesById);
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const start = points[index];
+      const end = points[index + 1];
+      const boxCorners = [
+        { x: box.minX, y: box.minY },
+        { x: box.maxX, y: box.minY },
+        { x: box.minX, y: box.maxY },
+        { x: box.maxX, y: box.maxY },
+        { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 },
+      ];
+      const minDistance = Math.min(...boxCorners.map((corner) => pointToSegmentDistance(corner, start, end)));
+      if (minDistance < 8) {
+        segmentPenalty += 500;
+      } else if (minDistance < 18) {
+        segmentPenalty += 120;
+      }
+    }
+  }
+
+  const offsetPenalty = Math.hypot(position.x - node.x, position.y - node.y) * 0.2;
+  return { score: overlapPenalty + segmentPenalty + offsetPenalty, box };
+}
+
+function autoPlaceLabels(current: RailwayMap) {
+  const nodesById = new Map(current.nodes.map((node) => [node.id, node]));
+  const resolvedBoxes: ReturnType<typeof estimateLabelBox>[] = [];
 
   return current.stations.map((station) => {
     const node = nodesById.get(station.nodeId);
     if (!node) return station;
 
-    const sheetSegments = segmentsBySheetId.get(node.sheetId) ?? [];
     const candidate = candidateLabelPositions(node)
       .map((position) => {
-        const box = estimateLabelBox(station.name, position.x, position.y);
-        let overlapPenalty = 0;
-        for (const resolved of resolvedBoxes) {
-          if (boxesOverlap(box, resolved.box)) overlapPenalty += 300;
-        }
-
-        let segmentPenalty = 0;
-        for (const segment of sheetSegments) {
-          const points = buildSegmentPoints(segment, nodesById);
-          for (let index = 0; index < points.length - 1; index += 1) {
-            const start = points[index];
-            const end = points[index + 1];
-            const boxCorners = [
-              { x: box.minX, y: box.minY },
-              { x: box.maxX, y: box.minY },
-              { x: box.minX, y: box.maxY },
-              { x: box.maxX, y: box.maxY },
-              { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 },
-            ];
-            const minDistance = Math.min(...boxCorners.map((corner) => pointToSegmentDistance(corner, start, end)));
-            if (minDistance < 8) {
-              segmentPenalty += 500;
-            } else if (minDistance < 18) {
-              segmentPenalty += 120;
-            }
-          }
-        }
-
-        const offsetPenalty = Math.hypot(position.x - node.x, position.y - node.y) * 0.2;
-        return { position, box, score: overlapPenalty + segmentPenalty + offsetPenalty };
+        const analysis = computeLabelPenalty(current, station, position, resolvedBoxes, nodesById);
+        return { position, box: analysis.box, score: analysis.score };
       })
       .sort((left, right) => left.score - right.score)[0];
 
     if (!candidate) return station;
 
-    resolvedBoxes.push({ stationId: station.id, box: candidate.box });
+    resolvedBoxes.push(candidate.box);
     return {
       ...station,
       label: {
@@ -249,6 +267,7 @@ export default function RailwayMapEditor() {
 
   const [map, setMap] = useState<RailwayMap>(initialMap);
   const [selectedNodeId, setSelectedNodeId] = useState(initialMap.nodes[0]?.id ?? "");
+  const [selectedStationId, setSelectedStationId] = useState(initialMap.stations[0]?.id ?? "");
   const [selectedSegmentId, setSelectedSegmentId] = useState(initialMap.segments[0]?.id ?? "");
   const [selectedLineId, setSelectedLineId] = useState(initialMap.lines[0]?.id ?? "");
   const [selectedStationKindId, setSelectedStationKindId] = useState(initialMap.stationKinds[0]?.id ?? "");
@@ -265,6 +284,7 @@ export default function RailwayMapEditor() {
   const [viewportCenter, setViewportCenter] = useState({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
   const [sheetViews, setSheetViews] = useState<Record<string, { zoom: number; centerX: number; centerY: number }>>(loadStoredSheetViews);
   const [showGrid, setShowGrid] = useState(false);
+  const [showLeaderLines, setShowLeaderLines] = useState(true);
   const [gridStepX, setGridStepX] = useState(80);
   const [gridStepY, setGridStepY] = useState(80);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
@@ -281,6 +301,7 @@ export default function RailwayMapEditor() {
   const lastRestoredSheetIdRef = useRef<string | null>(null);
 
   const selectedNode = map.nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const selectedStation = map.stations.find((station) => station.id === selectedStationId) ?? null;
   const selectedSegment = map.segments.find((segment) => segment.id === selectedSegmentId) ?? null;
   const selectedLine = map.lines.find((line) => line.id === selectedLineId) ?? null;
   const selectedStationKind = map.stationKinds.find((kind) => kind.id === selectedStationKindId) ?? null;
@@ -312,6 +333,70 @@ export default function RailwayMapEditor() {
 
     return next;
   }, [currentStations]);
+  const labelDiagnostics = useMemo(() => {
+    const diagnostics = new Map<
+      string,
+      {
+        box: ReturnType<typeof estimateLabelBox>;
+        overlapsLabel: boolean;
+        overlapsSegment: boolean;
+        colliding: boolean;
+        leaderLine: boolean;
+      }
+    >();
+
+    for (const station of currentStations) {
+      const node = nodesById.get(station.nodeId);
+      if (!node) continue;
+      const position = getStationLabelPosition(station, node);
+      const box = estimateLabelBox(station.name, position.x, position.y);
+      let overlapsLabel = false;
+      let overlapsSegment = false;
+
+      for (const otherStation of currentStations) {
+        if (otherStation.id === station.id) continue;
+        const otherNode = nodesById.get(otherStation.nodeId);
+        if (!otherNode) continue;
+        const otherPosition = getStationLabelPosition(otherStation, otherNode);
+        const otherBox = estimateLabelBox(otherStation.name, otherPosition.x, otherPosition.y);
+        if (boxesOverlap(box, otherBox)) {
+          overlapsLabel = true;
+          break;
+        }
+      }
+
+      for (const segment of currentSegments) {
+        const points = buildSegmentPoints(segment, nodesById);
+        for (let index = 0; index < points.length - 1; index += 1) {
+          const start = points[index];
+          const end = points[index + 1];
+          const boxCorners = [
+            { x: box.minX, y: box.minY },
+            { x: box.maxX, y: box.minY },
+            { x: box.minX, y: box.maxY },
+            { x: box.maxX, y: box.maxY },
+            { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 },
+          ];
+          const minDistance = Math.min(...boxCorners.map((corner) => pointToSegmentDistance(corner, start, end)));
+          if (minDistance < 8) {
+            overlapsSegment = true;
+            break;
+          }
+        }
+        if (overlapsSegment) break;
+      }
+
+      diagnostics.set(station.id, {
+        box,
+        overlapsLabel,
+        overlapsSegment,
+        colliding: overlapsLabel || overlapsSegment,
+        leaderLine: Math.hypot(position.x - node.x, position.y - node.y) > 28,
+      });
+    }
+
+    return diagnostics;
+  }, [currentSegments, currentStations, nodesById]);
   const selectedLineRun = useMemo(
     () => map.lineRuns.find((lineRun) => lineRun.lineId === selectedLineId) ?? null,
     [map.lineRuns, selectedLineId],
@@ -382,6 +467,12 @@ export default function RailwayMapEditor() {
       setSelectedLineId(map.lines[0]?.id ?? "");
     }
   }, [map.lines, selectedLine]);
+
+  useEffect(() => {
+    if (!selectedStation || !map.stations.some((station) => station.id === selectedStation.id)) {
+      setSelectedStationId(map.stations[0]?.id ?? "");
+    }
+  }, [map.stations, selectedStation]);
 
   useEffect(() => {
     if (!selectedSegment || !segmentsById.has(selectedSegment.id)) {
@@ -522,6 +613,7 @@ export default function RailwayMapEditor() {
     const nextMap = cloneMap(DEVELOPMENT_BOOTSTRAP_MAP);
     setMap(nextMap);
     setSelectedNodeId(nextMap.nodes[0]?.id ?? "");
+    setSelectedStationId(nextMap.stations[0]?.id ?? "");
     setSelectedSegmentId(nextMap.segments[0]?.id ?? "");
     setSelectedLineId(nextMap.lines[0]?.id ?? "");
     setSelectedStationKindId(nextMap.stationKinds[0]?.id ?? "");
@@ -551,6 +643,45 @@ export default function RailwayMapEditor() {
           : current.stations.find((candidate) => candidate.id === station.id) ?? station;
       }),
     }));
+  }
+
+  function fixLabelForStation(stationId: string) {
+    const station = map.stations.find((candidate) => candidate.id === stationId);
+    if (!station) return;
+    const stationNode = map.nodes.find((node) => node.id === station.nodeId);
+    if (!stationNode) return;
+
+    const occupiedBoxes = currentStations
+      .filter((candidate) => candidate.id !== station.id)
+      .map((candidate) => {
+        const node = nodesById.get(candidate.nodeId);
+        if (!node) return null;
+        const position = getStationLabelPosition(candidate, node);
+        return estimateLabelBox(candidate.name, position.x, position.y);
+      })
+      .filter((box): box is ReturnType<typeof estimateLabelBox> => box !== null);
+
+    const allNodesById = new Map(map.nodes.map((node) => [node.id, node]));
+    const bestCandidate = candidateLabelPositions(stationNode)
+      .map((position) => {
+        const analysis = computeLabelPenalty(map, station, position, occupiedBoxes, allNodesById);
+        return { position, score: analysis.score };
+      })
+      .sort((left, right) => left.score - right.score)[0];
+
+    if (!bestCandidate) return;
+    updateStation(station.id, {
+      label: {
+        x: bestCandidate.position.x,
+        y: bestCandidate.position.y,
+        align: bestCandidate.position.align,
+      },
+    });
+  }
+
+  function fixSelectedLabel() {
+    if (!selectedStation) return;
+    fixLabelForStation(selectedStation.id);
   }
 
   function updateCurrentSheetName(name: string) {
@@ -800,6 +931,7 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
     setSidePanel("edit");
     setSelectedNodeId(nodeId);
+    setSelectedStationId(stationId);
     setDraggingNodeId(null);
     setDraggingLabelStationId(stationId);
     if (svgRef.current) {
@@ -1210,9 +1342,15 @@ export default function RailwayMapEditor() {
                     {currentStations.map((station) => {
                       const node = nodesById.get(station.nodeId);
                       if (!node) return null;
-                      const labelX = station.label?.x ?? node.x + 12;
-                      const labelY = station.label?.y ?? node.y - 10;
+                      const position = getStationLabelPosition(station, node);
+                      const labelX = position.x;
+                      const labelY = position.y;
                       const isDragging = draggingLabelStationId === station.id;
+                      const isSelected = selectedStationId === station.id;
+                      const diagnostics = labelDiagnostics.get(station.id);
+                      const box = diagnostics?.box ?? estimateLabelBox(station.name, labelX, labelY);
+                      const shouldShowLeader = showLeaderLines && (diagnostics?.leaderLine ?? false);
+                      const labelAnchorY = labelY - 6;
 
                       return (
                         <g
@@ -1220,20 +1358,31 @@ export default function RailwayMapEditor() {
                           onMouseDown={(event) => handleLabelMouseDown(event, station.id, station.nodeId)}
                           style={{ cursor: "grab" }}
                         >
-                          {isDragging ? (
-                            <rect
-                              x={estimateLabelBox(station.name, labelX, labelY).minX}
-                              y={estimateLabelBox(station.name, labelX, labelY).minY}
-                              width={estimateLabelBox(station.name, labelX, labelY).maxX - estimateLabelBox(station.name, labelX, labelY).minX}
-                              height={estimateLabelBox(station.name, labelX, labelY).maxY - estimateLabelBox(station.name, labelX, labelY).minY}
-                              rx="6"
-                              fill="white"
-                              fillOpacity="0.85"
-                              stroke="#0f172a"
-                              strokeDasharray="4 3"
+                          {shouldShowLeader ? (
+                            <line
+                              x1={node.x}
+                              y1={node.y}
+                              x2={Math.max(box.minX, Math.min(node.x, box.maxX))}
+                              y2={Math.max(box.minY, Math.min(labelAnchorY, box.maxY))}
+                              stroke={diagnostics?.colliding ? "#dc2626" : "#94a3b8"}
+                              strokeWidth="1.5"
+                              strokeDasharray="3 3"
                             />
                           ) : null}
-                          <text x={labelX} y={labelY} fontSize="14" fontWeight="600" fill="#111827">
+                          {diagnostics?.colliding || isDragging || isSelected ? (
+                            <rect
+                              x={box.minX}
+                              y={box.minY}
+                              width={box.maxX - box.minX}
+                              height={box.maxY - box.minY}
+                              rx="6"
+                              fill={diagnostics?.colliding ? "#fff1f2" : "white"}
+                              fillOpacity="0.92"
+                              stroke={diagnostics?.colliding ? "#dc2626" : isSelected ? "#0f172a" : "#94a3b8"}
+                              strokeDasharray={diagnostics?.colliding || isDragging ? "4 3" : undefined}
+                            />
+                          ) : null}
+                          <text x={labelX} y={labelY} fontSize="14" fontWeight="600" fill={diagnostics?.colliding ? "#991b1b" : "#111827"}>
                             {station.name}
                           </text>
                         </g>
@@ -1252,6 +1401,10 @@ export default function RailwayMapEditor() {
                   <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
                     {currentSheet?.name ?? "Sheet"}
                   </div>
+                  <label className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
+                    <input type="checkbox" checked={showLeaderLines} onChange={(event) => setShowLeaderLines(event.target.checked)} />
+                    Leader lines
+                  </label>
                 </div>
 
                 {nodeContextMenu ? (
@@ -1375,10 +1528,17 @@ export default function RailwayMapEditor() {
                             <div
                               key={station.id}
                               className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
-                                selectedNodeId === station.nodeId ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
+                                selectedStationId === station.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
                               }`}
                             >
-                              <button type="button" onClick={() => setSelectedNodeId(station.nodeId)} className="flex min-w-0 flex-1 items-center justify-between text-left">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedNodeId(station.nodeId);
+                                  setSelectedStationId(station.id);
+                                }}
+                                className="flex min-w-0 flex-1 items-center justify-between text-left"
+                              >
                                 <span className="truncate">{station.name}</span>
                                 <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
                               </button>
@@ -1386,7 +1546,7 @@ export default function RailwayMapEditor() {
                                 type="button"
                                 aria-label={`Delete ${station.name}`}
                                 className={`rounded-lg px-2 py-1 ${
-                                  selectedNodeId === station.nodeId ? "bg-white/15 text-white hover:bg-white/25" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                  selectedStationId === station.id ? "bg-white/15 text-white hover:bg-white/25" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                                 }`}
                                 onClick={() => deleteNode(station.nodeId)}
                               >
@@ -1409,10 +1569,29 @@ export default function RailwayMapEditor() {
                             <div className="space-y-2">
                               {selectedNodeStations.map((station) => (
                                 <div key={station.id} className="rounded-xl bg-white px-3 py-2 text-sm text-ink">
-                                  <Input value={station.name} onChange={(event) => updateStation(station.id, { name: event.target.value })} />
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      value={station.name}
+                                      onFocus={() => setSelectedStationId(station.id)}
+                                      onChange={(event) => updateStation(station.id, { name: event.target.value })}
+                                    />
+                                    <Button
+                                      variant="outline"
+                                      className="shrink-0"
+                                      onClick={() => {
+                                        setSelectedStationId(station.id);
+                                        fixLabelForStation(station.id);
+                                      }}
+                                    >
+                                      Fix label
+                                    </Button>
+                                  </div>
                                   <select
                                     value={station.kindId}
-                                    onChange={(event) => updateStation(station.id, { kindId: event.target.value })}
+                                    onChange={(event) => {
+                                      setSelectedStationId(station.id);
+                                      updateStation(station.id, { kindId: event.target.value });
+                                    }}
                                     className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
                                   >
                                     {map.stationKinds.map((kind) => (
@@ -1421,6 +1600,16 @@ export default function RailwayMapEditor() {
                                       </option>
                                     ))}
                                   </select>
+                                  {selectedStationId === station.id && labelDiagnostics.get(station.id)?.colliding ? (
+                                    <p className="mt-2 text-xs font-medium text-rose-700">
+                                      Label collision detected with
+                                      {labelDiagnostics.get(station.id)?.overlapsLabel && labelDiagnostics.get(station.id)?.overlapsSegment
+                                        ? " another label and a segment."
+                                        : labelDiagnostics.get(station.id)?.overlapsSegment
+                                          ? " a segment."
+                                          : " another label."}
+                                    </p>
+                                  ) : null}
                                 </div>
                               ))}
                               {selectedNodeStations.length === 0 ? <p className="text-xs text-muted">No station is attached to this node.</p> : null}
