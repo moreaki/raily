@@ -261,6 +261,40 @@ function getStationKindFontSize(stationKind?: StationKind) {
   return stationKind?.fontSize ?? DEFAULT_STATION_FONT_SIZE;
 }
 
+function pointOnPathAtHalf(points: MapPoint[]) {
+  if (points.length === 0) return { x: 0, y: 0 };
+  if (points.length === 1) return points[0];
+
+  const segmentLengths = points.slice(1).map((point, index) => Math.hypot(point.x - points[index].x, point.y - points[index].y));
+  const totalLength = segmentLengths.reduce((sum, length) => sum + length, 0);
+  if (totalLength === 0) {
+    return {
+      x: (points[0].x + points[points.length - 1].x) / 2,
+      y: (points[0].y + points[points.length - 1].y) / 2,
+    };
+  }
+
+  let traversed = 0;
+  const targetLength = totalLength / 2;
+  for (let index = 0; index < segmentLengths.length; index += 1) {
+    const length = segmentLengths[index];
+    if (traversed + length < targetLength) {
+      traversed += length;
+      continue;
+    }
+
+    const start = points[index];
+    const end = points[index + 1];
+    const ratio = length === 0 ? 0 : (targetLength - traversed) / length;
+    return {
+      x: Math.round(start.x + (end.x - start.x) * ratio),
+      y: Math.round(start.y + (end.y - start.y) * ratio),
+    };
+  }
+
+  return points[points.length - 1];
+}
+
 function computeLabelPenalty(
   current: RailwayMap,
   station: Station,
@@ -1330,6 +1364,47 @@ export default function RailwayMapEditor() {
     setSegmentContextMenu(null);
   }
 
+  function insertTrackPointOnSegment(segmentId: string) {
+    const source = model.segments.find((segment) => segment.id === segmentId);
+    if (!source) return;
+
+    const sourcePoints = buildSegmentPoints(source, new Map(model.nodes.map((node) => [node.id, node])));
+    if (sourcePoints.length < 2) return;
+    const insertedNode = {
+      ...createDefaultNodeForSheet(map, source.sheetId),
+      ...pointOnPathAtHalf(sourcePoints),
+    };
+
+    updateMap((current) => {
+      const currentSource = current.model.segments.find((segment) => segment.id === segmentId);
+      if (!currentSource) return current;
+
+      const firstSegment = createStraightSegmentForSheet(currentSource.sheetId, currentSource.fromNodeId, insertedNode.id);
+      const secondSegment = createStraightSegmentForSheet(currentSource.sheetId, insertedNode.id, currentSource.toNodeId);
+
+      return {
+        ...current,
+        model: {
+          ...current.model,
+          nodes: [...current.model.nodes, insertedNode],
+          segments: [...current.model.segments.filter((segment) => segment.id !== segmentId), firstSegment, secondSegment],
+          lineRuns: current.model.lineRuns.map((lineRun) => ({
+            ...lineRun,
+            segmentIds: lineRun.segmentIds.flatMap((candidateId) =>
+              candidateId === segmentId ? [firstSegment.id, secondSegment.id] : [candidateId],
+            ),
+          })),
+        },
+      };
+    });
+
+    setSelectedSegmentId("");
+    setSelectedNodeId(insertedNode.id);
+    setSelectedNodeIds([insertedNode.id]);
+    setSelectedStationId("");
+    setSegmentContextMenu(null);
+  }
+
   function assignLineToSegment(lineId: string, segmentId: string) {
     updateMap((current) => {
       const { current: ensuredCurrent, lineRun } = ensureLineRun(current, lineId);
@@ -2360,6 +2435,14 @@ export default function RailwayMapEditor() {
                         ))}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                      onClick={() => insertTrackPointOnSegment(contextMenuSegment.id)}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Insert track point
+                    </button>
                     <button
                       type="button"
                       className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"

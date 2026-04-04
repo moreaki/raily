@@ -1,7 +1,10 @@
 import type { LineRun, Line, MapNode, MapPoint, RailwayMap, Segment, Sheet, Station } from "./types";
 
+let idCounter = 0;
+
 function nextId(prefix: string) {
-  return `${prefix}${Date.now()}`;
+  idCounter += 1;
+  return `${prefix}${Date.now()}-${idCounter}`;
 }
 
 export function createNodeId() {
