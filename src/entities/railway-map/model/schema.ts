@@ -24,6 +24,7 @@ const stationKindSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   shape: z.enum(["circle", "interchange", "terminal"]),
+  symbolSize: z.number().min(0.6).max(2.5),
   fontFamily: z.string().min(1),
   fontWeight: z.enum(["100", "200", "300", "400", "500", "600", "700", "800", "900"]),
   fontSize: z.number().min(8).max(72),

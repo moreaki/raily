@@ -40,6 +40,7 @@ const MIN_GRID_STEP = 4;
 const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, sans-serif';
 const DEFAULT_STATION_FONT_WEIGHT: StationLabelFontWeight = "600";
 const DEFAULT_STATION_FONT_SIZE = 14;
+const DEFAULT_STATION_SYMBOL_SIZE = 1;
 const STATION_FONT_WEIGHT_OPTIONS: StationLabelFontWeight[] = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
 const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12l-3 3-3-3'/><path d='M2 12l3-3 3 3'/><path d='M19.016 14v-1.95A7.05 7.05 0 0 0 8 6.22'/><path d='M16.016 17.845A7.05 7.05 0 0 1 5 12.015V10'/><path d='M5 10V9'/><path d='M19 15v-1'/></svg>") 12 12, crosshair`;
 const AUTO_LABEL_ROTATIONS = [0, 45, -45, 90, -90, 135, -135, 180] as const;
@@ -69,6 +70,14 @@ type ResolvedLabelPlacement = {
   };
 };
 
+type NodeMarker = {
+  key: string;
+  center: MapPoint;
+  segmentIds: string[];
+};
+
+type NodeSide = "left" | "right" | "up" | "down";
+
 function downloadFile(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -90,40 +99,172 @@ function getSvgPoint(svg: SVGSVGElement, clientX: number, clientY: number) {
   return point.matrixTransform(ctm.inverse());
 }
 
-function renderNodeSymbol(shape: StationKindShape, node: MapNode, isSelected: boolean, isTrackPoint: boolean) {
+function pathFromPoints(points: MapPoint[]) {
+  if (points.length < 2) return "";
+  return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+}
+
+function offsetPoints(points: MapPoint[], offset: number) {
+  if (points.length < 2 || offset === 0) return points;
+  const start = points[0];
+  const end = points[points.length - 1];
+  const deltaX = end.x - start.x;
+  const deltaY = end.y - start.y;
+  const length = Math.hypot(deltaX, deltaY);
+  if (length === 0) return points;
+
+  const normalX = -deltaY / length;
+  const normalY = deltaX / length;
+
+  return points.map((point) => ({
+    x: point.x + normalX * offset,
+    y: point.y + normalY * offset,
+  }));
+}
+
+function getNodeSide(from: MapPoint, to: MapPoint): NodeSide {
+  const deltaX = to.x - from.x;
+  const deltaY = to.y - from.y;
+
+  if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+    return deltaX >= 0 ? "right" : "left";
+  }
+
+  return deltaY >= 0 ? "down" : "up";
+}
+
+function sortPointsForSide(points: MapPoint[], side: NodeSide) {
+  return [...points].sort((left, right) => {
+    if (side === "left" || side === "right") {
+      if (Math.abs(left.y - right.y) > 2) return left.y - right.y;
+      return left.x - right.x;
+    }
+
+    if (Math.abs(left.x - right.x) > 2) return left.x - right.x;
+    return left.y - right.y;
+  });
+}
+
+function chooseSlotIndices(
+  rawPoints: MapPoint[],
+  slotPoints: MapPoint[],
+  availableIndices: number[],
+  side: NodeSide,
+) {
+  if (rawPoints.length === 0 || slotPoints.length === 0 || availableIndices.length === 0) return [];
+
+  const combinations: number[][] = [];
+
+  function buildCombination(start: number, remaining: number, current: number[]) {
+    if (remaining === 0) {
+      combinations.push(current);
+      return;
+    }
+
+    for (let index = start; index <= availableIndices.length - remaining; index += 1) {
+      buildCombination(index + 1, remaining - 1, [...current, availableIndices[index]]);
+    }
+  }
+
+  buildCombination(0, Math.min(rawPoints.length, availableIndices.length), []);
+
+  const slotCenter = (slotPoints.length - 1) / 2;
+  const directionBias = side === "right" || side === "down" ? -1 : 1;
+  let best = combinations[0] ?? [];
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const candidate of combinations) {
+    let score = 0;
+    for (let index = 0; index < candidate.length; index += 1) {
+      const rawPoint = rawPoints[index];
+      const slotPoint = slotPoints[candidate[index]];
+      score += Math.hypot(rawPoint.x - slotPoint.x, rawPoint.y - slotPoint.y) ** 2;
+    }
+
+    const candidateCenter = candidate.reduce((sum, index) => sum + index, 0) / candidate.length;
+    score += Math.abs(candidateCenter - slotCenter) * 0.01;
+    score += directionBias * candidateCenter * 0.1;
+
+    if (score < bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+
+  return best;
+}
+
+function renderNodeSymbol(
+  shape: StationKindShape,
+  center: MapPoint,
+  isTrackPoint: boolean,
+  symbolSize = DEFAULT_STATION_SYMBOL_SIZE,
+) {
+  const scale = isTrackPoint ? 1 : symbolSize;
   return (
     <>
       {isTrackPoint ? (
         <rect
-          x={node.x - 4}
-          y={node.y - 4}
-          width="8"
-          height="8"
-          transform={`rotate(45 ${node.x} ${node.y})`}
+          x={center.x - 5}
+          y={center.y - 5}
+          width="10"
+          height="10"
+          transform={`rotate(45 ${center.x} ${center.y})`}
           fill="#e2e8f0"
           stroke="#475569"
-          strokeWidth="2"
+          strokeWidth="2.25"
         />
       ) : shape === "interchange" ? (
-        <rect x={node.x - 8} y={node.y - 8} width="16" height="16" rx="3" fill="white" stroke="#111827" strokeWidth="3" />
+        <rect
+          x={center.x - 10 * scale}
+          y={center.y - 10 * scale}
+          width={20 * scale}
+          height={20 * scale}
+          rx={4 * scale}
+          fill="white"
+          stroke="#111827"
+          strokeWidth="3.25"
+        />
       ) : shape === "terminal" ? (
-        <rect x={node.x - 10} y={node.y - 6} width="20" height="12" rx="4" fill="white" stroke="#111827" strokeWidth="3" />
+        <rect
+          x={center.x - 12 * scale}
+          y={center.y - 7 * scale}
+          width={24 * scale}
+          height={14 * scale}
+          rx={5 * scale}
+          fill="white"
+          stroke="#111827"
+          strokeWidth="3.25"
+        />
       ) : (
-        <circle cx={node.x} cy={node.y} r="6" fill="white" stroke="#111827" strokeWidth="3" />
+        <circle cx={center.x} cy={center.y} r={7.5 * scale} fill="white" stroke="#111827" strokeWidth="3.25" />
       )}
-      {isSelected ? <circle cx={node.x} cy={node.y} r={isTrackPoint ? "12" : "14"} fill="none" stroke="#0f172a" strokeDasharray="4 3" /> : null}
     </>
   );
 }
 
-function renderStationKindPreview(shape: StationKindShape) {
+function renderStationKindPreview(shape: StationKindShape, symbolSize: number) {
   const previewNode = { id: "preview", sheetId: "preview", x: 18, y: 18 };
 
   return (
     <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
-      {renderNodeSymbol(shape, previewNode, false, false)}
+      {renderNodeSymbol(shape, previewNode, false, symbolSize)}
     </svg>
   );
+}
+
+function withAnchoredSegmentEndpoints(
+  segment: Segment,
+  points: MapPoint[],
+  anchoredEndpointBySegmentNodeKey: Map<string, MapPoint>,
+) {
+  if (points.length < 2) return points;
+
+  const nextPoints = [...points];
+  nextPoints[0] = anchoredEndpointBySegmentNodeKey.get(`${segment.fromNodeId}:${segment.id}`) ?? nextPoints[0];
+  nextPoints[nextPoints.length - 1] =
+    anchoredEndpointBySegmentNodeKey.get(`${segment.toNodeId}:${segment.id}`) ?? nextPoints[nextPoints.length - 1];
+  return nextPoints;
 }
 
 function stationKindShapeGlyph(shape: StationKindShape) {
@@ -729,6 +870,7 @@ export default function RailwayMapEditor() {
   const config = map.config;
   const [selectedNodeId, setSelectedNodeId] = useState(initialMap.model.nodes[0]?.id ?? "");
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(initialMap.model.nodes[0]?.id ? [initialMap.model.nodes[0].id] : []);
+  const [selectedNodeMarkerKey, setSelectedNodeMarkerKey] = useState<string | null>(null);
   const [selectedStationId, setSelectedStationId] = useState(initialMap.model.stations[0]?.id ?? "");
   const [selectedSegmentId, setSelectedSegmentId] = useState(initialMap.model.segments[0]?.id ?? "");
   const [selectedLineId, setSelectedLineId] = useState(initialMap.config.lines[0]?.id ?? "");
@@ -740,6 +882,7 @@ export default function RailwayMapEditor() {
   const [newStationKindFontFamily, setNewStationKindFontFamily] = useState(DEFAULT_STATION_FONT_FAMILY);
   const [newStationKindFontWeight, setNewStationKindFontWeight] = useState<StationLabelFontWeight>(DEFAULT_STATION_FONT_WEIGHT);
   const [newStationKindFontSize, setNewStationKindFontSize] = useState(DEFAULT_STATION_FONT_SIZE);
+  const [newStationKindSymbolSize, setNewStationKindSymbolSize] = useState(DEFAULT_STATION_SYMBOL_SIZE);
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage">("edit");
   const [manageSection, setManageSection] = useState<"development" | "lines" | "stationKinds">("lines");
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
@@ -763,7 +906,13 @@ export default function RailwayMapEditor() {
   const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; centerX: number; centerY: number } | null>(null);
   const [marqueeSelection, setMarqueeSelection] = useState<{ start: MapPoint; end: MapPoint } | null>(null);
   const [pendingSegmentStartNodeId, setPendingSegmentStartNodeId] = useState<string | null>(null);
-  const [nodeContextMenu, setNodeContextMenu] = useState<{ nodeIds: string[]; x: number; y: number } | null>(null);
+  const [nodeContextMenu, setNodeContextMenu] = useState<{
+    nodeIds: string[];
+    x: number;
+    y: number;
+    markerKey: string | null;
+    segmentId: string | null;
+  } | null>(null);
   const [segmentContextMenu, setSegmentContextMenu] = useState<{ segmentId: string; x: number; y: number } | null>(null);
   const [nodeAssignmentQuery, setNodeAssignmentQuery] = useState("");
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -805,6 +954,193 @@ export default function RailwayMapEditor() {
 
   const nodesById = useMemo(() => new Map(currentNodes.map((node) => [node.id, node])), [currentNodes]);
   const segmentsById = useMemo(() => new Map(currentSegments.map((segment) => [segment.id, segment])), [currentSegments]);
+  const segmentOffsetById = useMemo(() => {
+    const groups = new Map<string, Segment[]>();
+
+    for (const segment of currentSegments) {
+      const key = [segment.fromNodeId, segment.toNodeId].sort().join("::");
+      const current = groups.get(key) ?? [];
+      current.push(segment);
+      groups.set(key, current);
+    }
+
+    const offsets = new Map<string, number>();
+    for (const group of groups.values()) {
+      const orderedGroup = [...group].sort((left, right) => left.id.localeCompare(right.id));
+      const center = (orderedGroup.length - 1) / 2;
+      for (let index = 0; index < orderedGroup.length; index += 1) {
+        const offset = (index - center) * 18;
+        offsets.set(orderedGroup[index].id, offset);
+      }
+    }
+
+    return offsets;
+  }, [currentSegments]);
+  const { nodeMarkerCentersById, anchoredEndpointBySegmentNodeKey } = useMemo(() => {
+    const lineIdBySegmentId = new Map<string, string>();
+    for (const lineRun of model.lineRuns) {
+      for (const segmentId of lineRun.segmentIds) {
+        if (!lineIdBySegmentId.has(segmentId)) {
+          lineIdBySegmentId.set(segmentId, lineRun.lineId);
+        }
+      }
+    }
+
+    const endpointsByNodeId = new Map<
+      string,
+      Map<
+        string,
+        {
+          side: NodeSide;
+          markers: NodeMarker[];
+        }
+      >
+    >();
+
+    for (const node of currentNodes) {
+      endpointsByNodeId.set(node.id, new Map());
+    }
+
+    for (const segment of currentSegments) {
+      const offsetSegmentPoints = offsetPoints(buildSegmentPoints(segment, nodesById), segmentOffsetById.get(segment.id) ?? 0);
+      if (offsetSegmentPoints.length < 2) continue;
+
+      const endpoints = [
+        {
+          nodeId: segment.fromNodeId,
+          otherNodeId: segment.toNodeId,
+          point: offsetSegmentPoints[0],
+          side: getNodeSide(nodesById.get(segment.fromNodeId)!, nodesById.get(segment.toNodeId)!),
+        },
+        {
+          nodeId: segment.toNodeId,
+          otherNodeId: segment.fromNodeId,
+          point: offsetSegmentPoints[offsetSegmentPoints.length - 1],
+          side: getNodeSide(nodesById.get(segment.toNodeId)!, nodesById.get(segment.fromNodeId)!),
+        },
+      ];
+
+      for (const endpoint of endpoints) {
+        const groupsForNode = endpointsByNodeId.get(endpoint.nodeId) ?? new Map();
+        const group = groupsForNode.get(endpoint.otherNodeId) ?? { side: endpoint.side, markers: [] };
+        group.markers.push({
+          key: `${endpoint.nodeId}:${endpoint.otherNodeId}:${segment.id}`,
+          center: endpoint.point,
+          segmentIds: [segment.id],
+        });
+        groupsForNode.set(endpoint.otherNodeId, group);
+        endpointsByNodeId.set(endpoint.nodeId, groupsForNode);
+      }
+    }
+
+    const byNodeId = new Map<string, NodeMarker[]>();
+    const endpointAnchors = new Map<string, MapPoint>();
+
+    for (const node of currentNodes) {
+      const groups = endpointsByNodeId.get(node.id);
+      const dominantGroup =
+        groups
+          ? [...groups.values()].sort((left, right) => {
+              if (right.markers.length !== left.markers.length) return right.markers.length - left.markers.length;
+              const leftMinX = Math.min(...left.markers.map((marker) => marker.center.x));
+              const rightMinX = Math.min(...right.markers.map((marker) => marker.center.x));
+              if (leftMinX !== rightMinX) return leftMinX - rightMinX;
+              const leftMinY = Math.min(...left.markers.map((marker) => marker.center.y));
+              const rightMinY = Math.min(...right.markers.map((marker) => marker.center.y));
+              return leftMinY - rightMinY;
+            })[0]
+          : null;
+
+      if (!dominantGroup || dominantGroup.markers.length === 0) {
+        const fallbackMarker = [
+          {
+            key: `${node.id}:base`,
+            center: { x: node.x, y: node.y },
+            segmentIds: [],
+          },
+        ];
+        byNodeId.set(node.id, fallbackMarker);
+        continue;
+      }
+
+      const sortedMarkers = sortPointsForSide(
+        dominantGroup.markers.map((marker) => marker.center),
+        dominantGroup.side,
+      ).map((point) => dominantGroup.markers.find((marker) => marker.center.x === point.x && marker.center.y === point.y)!)
+        .filter(Boolean);
+
+      const slotCenters = sortedMarkers.map((marker) => marker.center);
+      const slotLineIds = sortedMarkers.map((marker) => {
+        const segmentId = marker.segmentIds[0];
+        return segmentId ? lineIdBySegmentId.get(segmentId) ?? null : null;
+      });
+
+      for (const [otherNodeId, group] of groups?.entries() ?? []) {
+        const rawSortedPoints = sortPointsForSide(group.markers.map((marker) => marker.center), group.side);
+        const sortedGroup = rawSortedPoints
+          .map((point) => group.markers.find((marker) => marker.center.x === point.x && marker.center.y === point.y)!)
+          .filter(Boolean);
+        const assignedIndices = new Array<number | null>(sortedGroup.length).fill(null);
+        const usedIndices = new Set<number>();
+
+        for (let index = 0; index < sortedGroup.length; index += 1) {
+          const marker = sortedGroup[index];
+          const segmentId = marker.segmentIds[0];
+          const lineId = segmentId ? lineIdBySegmentId.get(segmentId) ?? null : null;
+          if (!lineId) continue;
+
+          const matchingSlotIndex = slotLineIds.findIndex((candidateLineId, slotIndex) => candidateLineId === lineId && !usedIndices.has(slotIndex));
+          if (matchingSlotIndex >= 0) {
+            assignedIndices[index] = matchingSlotIndex;
+            usedIndices.add(matchingSlotIndex);
+          }
+        }
+
+        const remainingMarkerIndices = assignedIndices
+          .map((slotIndex, index) => (slotIndex === null ? index : -1))
+          .filter((index) => index >= 0);
+
+        if (remainingMarkerIndices.length > 0) {
+          const remainingSlotIndices = slotCenters
+            .map((_, index) => index)
+            .filter((index) => !usedIndices.has(index));
+
+          const chosenIndices = chooseSlotIndices(
+            remainingMarkerIndices.map((index) => sortedGroup[index].center),
+            slotCenters,
+            remainingSlotIndices,
+            group.side,
+          );
+
+          for (let index = 0; index < remainingMarkerIndices.length; index += 1) {
+            assignedIndices[remainingMarkerIndices[index]] = chosenIndices[index] ?? remainingSlotIndices[index] ?? 0;
+          }
+        }
+
+        for (let index = 0; index < sortedGroup.length; index += 1) {
+          const marker = sortedGroup[index];
+          const slotIndex = assignedIndices[index] ?? 0;
+          const slotCenter = slotCenters[slotIndex] ?? marker.center;
+          for (const segmentId of marker.segmentIds) {
+            endpointAnchors.set(`${node.id}:${segmentId}`, slotCenter);
+          }
+        }
+      }
+
+      byNodeId.set(
+        node.id,
+        sortedMarkers.map((marker, index) => ({
+          ...marker,
+          key: `${node.id}:slot:${index}:${marker.segmentIds[0] ?? "base"}`,
+        })),
+      );
+    }
+
+    return {
+      nodeMarkerCentersById: byNodeId,
+      anchoredEndpointBySegmentNodeKey: endpointAnchors,
+    };
+  }, [currentNodes, currentSegments, nodesById, segmentOffsetById]);
   const linesById = useMemo(() => new Map(config.lines.map((line) => [line.id, line])), [config.lines]);
   const stationKindsById = useMemo(() => new Map(config.stationKinds.map((kind) => [kind.id, kind])), [config.stationKinds]);
   const stationsByNodeId = useMemo(() => {
@@ -903,6 +1239,17 @@ export default function RailwayMapEditor() {
     () => model.lineRuns.find((lineRun) => lineRun.lineId === selectedLineId) ?? null,
     [model.lineRuns, selectedLineId],
   );
+  const lineIdBySegmentId = useMemo(() => {
+    const next = new Map<string, string>();
+    for (const lineRun of model.lineRuns) {
+      for (const segmentId of lineRun.segmentIds) {
+        if (!next.has(segmentId)) {
+          next.set(segmentId, lineRun.lineId);
+        }
+      }
+    }
+    return next;
+  }, [model.lineRuns]);
   const assignedSegmentIds = useMemo(() => {
     const ids = new Set<string>();
     for (const lineRun of model.lineRuns) {
@@ -939,20 +1286,17 @@ export default function RailwayMapEditor() {
       return left.name.localeCompare(right.name);
     });
   }, [contextMenuNode, nodeAssignmentQuery, stationKindsById, unassignedStations]);
-  const assignedLinesForContextSegment = useMemo(() => {
-    if (!contextMenuSegment) return [];
+  const assignedLineForContextSegment = useMemo(() => {
+    if (!contextMenuSegment) return null;
 
-    return model.lineRuns
-      .filter((lineRun) => lineRun.segmentIds.includes(contextMenuSegment.id))
-      .map((lineRun) => linesById.get(lineRun.lineId))
-      .filter((line): line is Line => !!line);
+    const owningRun = model.lineRuns.find((lineRun) => lineRun.segmentIds.includes(contextMenuSegment.id));
+    return owningRun ? linesById.get(owningRun.lineId) ?? null : null;
   }, [contextMenuSegment, linesById, model.lineRuns]);
   const assignableLinesForContextSegment = useMemo(() => {
     if (!contextMenuSegment) return [];
 
-    const assignedLineIds = new Set(assignedLinesForContextSegment.map((line) => line.id));
-    return config.lines.filter((line) => !assignedLineIds.has(line.id));
-  }, [assignedLinesForContextSegment, config.lines, contextMenuSegment]);
+    return config.lines.filter((line) => line.id !== assignedLineForContextSegment?.id);
+  }, [assignedLineForContextSegment, config.lines, contextMenuSegment]);
   const viewBox = useMemo(() => {
     const { width, height } = viewBoxDimensions;
     const centerX = viewportCenter.x;
@@ -1021,6 +1365,7 @@ export default function RailwayMapEditor() {
         const nextSelectedNodeIds = currentNodes.map((node) => node.id);
         setSelectedNodeIds(nextSelectedNodeIds);
         setSelectedNodeId(nextSelectedNodeIds[0] ?? "");
+        setSelectedNodeMarkerKey(null);
         const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
         setSelectedStationId(firstStation?.id ?? "");
       }
@@ -1043,6 +1388,16 @@ export default function RailwayMapEditor() {
       setSelectedNodeId(filteredSelectedIds[0] ?? "");
     }
   }, [currentNodes, nodesById, selectedNode, selectedNodeId, selectedNodeIds]);
+
+  useEffect(() => {
+    if (!selectedNodeMarkerKey) return;
+    const markerStillExists = [...nodeMarkerCentersById.values()].some((markers) =>
+      markers.some((marker) => marker.key === selectedNodeMarkerKey),
+    );
+    if (!markerStillExists) {
+      setSelectedNodeMarkerKey(null);
+    }
+  }, [nodeMarkerCentersById, selectedNodeMarkerKey]);
 
   useEffect(() => {
     if (!selectedLine || !config.lines.some((line) => line.id === selectedLine.id)) {
@@ -1174,6 +1529,7 @@ export default function RailwayMapEditor() {
   function clearCanvasSelections() {
     setSelectedNodeId("");
     setSelectedNodeIds([]);
+    setSelectedNodeMarkerKey(null);
     setSelectedStationId("");
     setSelectedSegmentId("");
     setPendingSegmentStartNodeId(null);
@@ -1184,6 +1540,7 @@ export default function RailwayMapEditor() {
   function selectSingleNode(nodeId: string) {
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
+    setSelectedNodeMarkerKey(null);
     setSelectedSegmentId("");
     const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
     setSelectedStationId(station?.id ?? "");
@@ -1250,6 +1607,7 @@ export default function RailwayMapEditor() {
     });
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
+    setSelectedNodeMarkerKey(null);
     setSelectedStationId(stationId);
     setNodeAssignmentQuery("");
     setNodeContextMenu(null);
@@ -1270,6 +1628,7 @@ export default function RailwayMapEditor() {
     }));
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
+    setSelectedNodeMarkerKey(null);
     setSelectedStationId(createdStation.id);
     setNodeAssignmentQuery("");
     setNodeContextMenu(null);
@@ -1298,6 +1657,7 @@ export default function RailwayMapEditor() {
       id: createStationKindId(),
       name: newStationKindName.trim() || `Kind ${config.stationKinds.length + 1}`,
       shape: newStationKindShape,
+      symbolSize: clamp(newStationKindSymbolSize, 0.6, 2.5),
       fontFamily: newStationKindFontFamily.trim() || DEFAULT_STATION_FONT_FAMILY,
       fontWeight: newStationKindFontWeight,
       fontSize: clamp(newStationKindFontSize, 8, 72),
@@ -1313,6 +1673,7 @@ export default function RailwayMapEditor() {
     setSelectedStationKindId(stationKind.id);
     setNewStationKindName("");
     setNewStationKindShape("circle");
+    setNewStationKindSymbolSize(DEFAULT_STATION_SYMBOL_SIZE);
     setNewStationKindFontFamily(DEFAULT_STATION_FONT_FAMILY);
     setNewStationKindFontWeight(DEFAULT_STATION_FONT_WEIGHT);
     setNewStationKindFontSize(DEFAULT_STATION_FONT_SIZE);
@@ -1348,21 +1709,17 @@ export default function RailwayMapEditor() {
     replaceMap(nextMap);
     setSelectedNodeId(nextMap.model.nodes[0]?.id ?? "");
     setSelectedNodeIds(nextMap.model.nodes[0]?.id ? [nextMap.model.nodes[0].id] : []);
+    setSelectedNodeMarkerKey(null);
     setSelectedStationId(nextMap.model.stations[0]?.id ?? "");
     setSelectedSegmentId(nextMap.model.segments[0]?.id ?? "");
     setSelectedLineId(nextMap.config.lines[0]?.id ?? "");
     setSelectedStationKindId(nextMap.config.stationKinds[0]?.id ?? "");
     setCurrentSheetId(nextMap.model.sheets[0]?.id ?? "");
     setSheetViews({
-      "sh-ov": { zoom: 1, centerX: 510, centerY: 260 },
-      "sh-west": { zoom: 1.05, centerX: 420, centerY: 220 },
-      "sh-core": { zoom: 1.1, centerX: 390, centerY: 240 },
-      "sh-harbor": { zoom: 1.05, centerX: 470, centerY: 220 },
-      "sh-north": { zoom: 1.15, centerX: 410, centerY: 220 },
-      "sh-south": { zoom: 1.05, centerX: 500, centerY: 260 },
+      "sh-ov": { zoom: 0.5, centerX: 565, centerY: 940 },
     });
-    setViewportCenter({ x: 510, y: 260 });
-    setZoom(1);
+    setViewportCenter({ x: 565, y: 940 });
+    setZoom(0.5);
     setMarqueeSelection(null);
     setNodeContextMenu(null);
     setPendingSegmentStartNodeId(null);
@@ -1541,18 +1898,26 @@ export default function RailwayMapEditor() {
 
     updateMap((current) => {
       const { current: nextCurrent, lineRun } = ensureLineRun(current, selectedLine.id);
+      const currentlyAssignedToSelected = lineRun.segmentIds.includes(segmentId);
 
       return {
         ...nextCurrent,
         model: {
           ...nextCurrent.model,
           lineRuns: nextCurrent.model.lineRuns.map((candidate) => {
-          if (candidate.id !== lineRun.id) return candidate;
-          const segmentIds = candidate.segmentIds.includes(segmentId)
-            ? candidate.segmentIds.filter((value) => value !== segmentId)
-            : [...candidate.segmentIds, segmentId];
-          return { ...candidate, segmentIds };
-        }),
+            if (candidate.id === lineRun.id) {
+              const segmentIds = currentlyAssignedToSelected
+                ? candidate.segmentIds.filter((value) => value !== segmentId)
+                : [...candidate.segmentIds.filter((value) => value !== segmentId), segmentId];
+              return { ...candidate, segmentIds };
+            }
+
+            if (currentlyAssignedToSelected) return candidate;
+            return {
+              ...candidate,
+              segmentIds: candidate.segmentIds.filter((value) => value !== segmentId),
+            };
+          }),
         },
       };
     });
@@ -1651,6 +2016,7 @@ export default function RailwayMapEditor() {
     setSelectedSegmentId("");
     setSelectedNodeId(insertedNode.id);
     setSelectedNodeIds([insertedNode.id]);
+    setSelectedNodeMarkerKey(null);
     setSelectedStationId("");
     setSegmentContextMenu(null);
   }
@@ -1663,11 +2029,17 @@ export default function RailwayMapEditor() {
         model: {
           ...ensuredCurrent.model,
           lineRuns: ensuredCurrent.model.lineRuns.map((candidate) => {
-            if (candidate.id !== lineRun.id) return candidate;
-            const segmentIds = candidate.segmentIds.includes(segmentId)
-              ? candidate.segmentIds
-              : [...candidate.segmentIds, segmentId];
-            return { ...candidate, segmentIds };
+            if (candidate.id === lineRun.id) {
+              const segmentIds = candidate.segmentIds.includes(segmentId)
+                ? candidate.segmentIds
+                : [...candidate.segmentIds.filter((value) => value !== segmentId), segmentId];
+              return { ...candidate, segmentIds };
+            }
+
+            return {
+              ...candidate,
+              segmentIds: candidate.segmentIds.filter((value) => value !== segmentId),
+            };
           }),
         },
       };
@@ -1720,6 +2092,7 @@ export default function RailwayMapEditor() {
 
     setSelectedNodeIds((current) => current.filter((nodeId) => !nodeIdSet.has(nodeId)));
     if (selectedNodeId && nodeIdSet.has(selectedNodeId)) setSelectedNodeId("");
+    if (selectedNodeId && nodeIdSet.has(selectedNodeId)) setSelectedNodeMarkerKey(null);
     if (selectedStationId && model.stations.find((station) => station.id === selectedStationId && !!station.nodeId && nodeIdSet.has(station.nodeId))) {
       setSelectedStationId("");
     }
@@ -1876,6 +2249,7 @@ export default function RailwayMapEditor() {
   function startSegmentFromNode(nodeId: string) {
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
+    setSelectedNodeMarkerKey(null);
     setPendingSegmentStartNodeId(nodeId);
     setNodeContextMenu(null);
   }
@@ -1891,7 +2265,7 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
   }
 
-  function handleNodeMouseDown(event: MouseEvent<SVGGElement>, nodeId: string) {
+  function handleNodeMouseDown(event: MouseEvent<SVGGElement>, nodeId: string, markerKey: string, segmentIds: string[]) {
     event.stopPropagation();
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
@@ -1911,24 +2285,36 @@ export default function RailwayMapEditor() {
         if (current.includes(nodeId)) {
           const next = current.filter((value) => value !== nodeId);
           setSelectedNodeId(next[0] ?? "");
+          if (selectedNodeMarkerKey === markerKey) {
+            setSelectedNodeMarkerKey(null);
+          }
           if (selectedStationId && currentStations.find((station) => station.id === selectedStationId)?.nodeId === nodeId) {
             setSelectedStationId("");
+          }
+          if (segmentIds.includes(selectedSegmentId)) {
+            setSelectedSegmentId("");
           }
           return next;
         }
 
         const next = [...current, nodeId];
         setSelectedNodeId(nodeId);
+        setSelectedNodeMarkerKey(markerKey);
         const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
         setSelectedStationId(station?.id ?? "");
+        setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
         return next;
       });
     } else if (!selectedNodeIdsSet.has(nodeId)) {
       selectSingleNode(nodeId);
+      setSelectedNodeMarkerKey(markerKey);
+      setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
     } else {
       setSelectedNodeId(nodeId);
+      setSelectedNodeMarkerKey(markerKey);
       const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
       if (station) setSelectedStationId(station.id);
+      setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
     }
 
     setDraggingNodeId(nodeId);
@@ -1958,6 +2344,7 @@ export default function RailwayMapEditor() {
     }
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
+    setSelectedNodeMarkerKey(null);
     setSelectedStationId(stationId);
     setSelectedSegmentId("");
     setDraggingNodeId(null);
@@ -1984,6 +2371,7 @@ export default function RailwayMapEditor() {
     setSidePanel("edit");
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
+    setSelectedNodeMarkerKey(null);
     setSelectedStationId(stationId);
     setSelectedSegmentId("");
     setDraggingNodeId(null);
@@ -2009,6 +2397,7 @@ export default function RailwayMapEditor() {
     setSidePanel("edit");
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
+    setSelectedNodeMarkerKey(null);
     setSelectedStationId(stationId);
     setSelectedSegmentId("");
     setNodeAssignmentQuery("");
@@ -2016,6 +2405,8 @@ export default function RailwayMapEditor() {
       nodeIds: [nodeId],
       x: event.clientX,
       y: event.clientY,
+      markerKey: null,
+      segmentId: null,
     });
   }
 
@@ -2049,6 +2440,7 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
     setSidePanel("edit");
+    setSelectedNodeMarkerKey(null);
     setSelectedSegmentId(segmentId);
     setSelectedNodeId("");
     setSelectedNodeIds([]);
@@ -2060,6 +2452,7 @@ export default function RailwayMapEditor() {
     event.preventDefault();
     event.stopPropagation();
     setNodeContextMenu(null);
+    setSelectedNodeMarkerKey(null);
     setSelectedSegmentId(segmentId);
     setSelectedNodeId("");
     setSelectedNodeIds([]);
@@ -2195,6 +2588,7 @@ export default function RailwayMapEditor() {
 
         setSelectedNodeIds(nextSelectedNodeIds);
         setSelectedNodeId(nextSelectedNodeIds[0] ?? "");
+        setSelectedNodeMarkerKey(null);
         const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
         setSelectedStationId(firstStation?.id ?? "");
         setSelectedSegmentId("");
@@ -2208,7 +2602,7 @@ export default function RailwayMapEditor() {
     setPanStart(null);
   }
 
-  function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string) {
+  function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string, markerKey: string, segmentIds: string[]) {
     event.preventDefault();
     event.stopPropagation();
     setSegmentContextMenu(null);
@@ -2220,14 +2614,17 @@ export default function RailwayMapEditor() {
     if (selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length <= 1) {
       setSelectedNodeId(nodeId);
       setSelectedStationId(station?.id ?? "");
-      setSelectedSegmentId("");
     }
+    setSelectedNodeMarkerKey(markerKey);
+    setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
     const nodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
     setNodeAssignmentQuery("");
     setNodeContextMenu({
       nodeIds,
       x: event.clientX,
       y: event.clientY,
+      markerKey,
+      segmentId: segmentIds.length === 1 ? segmentIds[0] : null,
     });
   }
 
@@ -2448,37 +2845,58 @@ export default function RailwayMapEditor() {
                       </g>
                     ) : null}
 
-                    {currentSegments.map((segment) => (
-                      <path
-                        key={segment.id}
-                        d={buildSegmentPath(segment, nodesById)}
-                        fill="none"
-                        stroke={selectedSegmentId === segment.id ? "#94a3b8" : assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee"}
-                        strokeWidth={selectedSegmentId === segment.id ? "22" : "18"}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        onMouseDown={() => handleSegmentMouseDown(segment.id)}
-                        onContextMenu={(event) => handleSegmentContextMenu(event, segment.id)}
-                      />
-                    ))}
+                    {currentSegments.map((segment) => {
+                      const segmentPoints = buildSegmentPoints(segment, nodesById);
+                      const offsetPointsForSegment = withAnchoredSegmentEndpoints(
+                        segment,
+                        offsetPoints(segmentPoints, segmentOffsetById.get(segment.id) ?? 0),
+                        anchoredEndpointBySegmentNodeKey,
+                      );
+                      return (
+                        <path
+                          key={segment.id}
+                          d={pathFromPoints(offsetPointsForSegment)}
+                          fill="none"
+                          stroke={selectedSegmentId === segment.id ? "#94a3b8" : assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee"}
+                          strokeWidth={selectedSegmentId === segment.id ? "22" : "18"}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          onMouseDown={() => handleSegmentMouseDown(segment.id)}
+                          onContextMenu={(event) => handleSegmentContextMenu(event, segment.id)}
+                        />
+                      );
+                    })}
 
                     {model.lineRuns.map((lineRun) => {
                       const line = linesById.get(lineRun.lineId);
                       if (!line) return null;
 
-                      return (
-                        <path
-                          key={lineRun.id}
-                          d={buildLineRunPath(lineRun, segmentsById, nodesById)}
-                          fill="none"
-                          stroke={line.color}
-                          strokeWidth={line.strokeWidth}
-                          strokeDasharray={lineStrokeDasharray(line)}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          pointerEvents="none"
-                        />
-                      );
+                      const visibleSegments = lineRun.segmentIds
+                        .map((segmentId) => segmentsById.get(segmentId))
+                        .filter((segment): segment is Segment => !!segment);
+
+                      return visibleSegments.map((segment) => {
+                        const points = buildSegmentPoints(segment, nodesById);
+                        const offsetSegmentPoints = withAnchoredSegmentEndpoints(
+                          segment,
+                          offsetPoints(points, segmentOffsetById.get(segment.id) ?? 0),
+                          anchoredEndpointBySegmentNodeKey,
+                        );
+
+                        return (
+                          <path
+                            key={`${lineRun.id}-${segment.id}`}
+                            d={pathFromPoints(offsetSegmentPoints)}
+                            fill="none"
+                            stroke={line.color}
+                            strokeWidth={line.strokeWidth}
+                            strokeDasharray={lineStrokeDasharray(line)}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            pointerEvents="none"
+                          />
+                        );
+                      });
                     })}
 
                     {currentNodes.map((node) => {
@@ -2486,16 +2904,40 @@ export default function RailwayMapEditor() {
                       const isSelected = selectedNodeIdsSet.has(node.id);
                       const primaryStation = stations[0];
                       const isTrackPoint = stations.length === 0;
+                      const markers = nodeMarkerCentersById.get(node.id) ?? [
+                        { key: `${node.id}:base`, center: { x: node.x, y: node.y }, segmentIds: [] },
+                      ];
+                      const hasSelectedMarker = markers.some((marker) => marker.key === selectedNodeMarkerKey);
                       const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
+                      const symbolSize = primaryStation ? stationKindsById.get(primaryStation.kindId)?.symbolSize ?? DEFAULT_STATION_SYMBOL_SIZE : DEFAULT_STATION_SYMBOL_SIZE;
 
                       return (
                         <g
                           key={node.id}
-                          onMouseDown={(event) => handleNodeMouseDown(event, node.id)}
-                          onContextMenu={(event) => handleNodeContextMenu(event, node.id)}
                           style={{ cursor: "grab" }}
                         >
-                          {renderNodeSymbol(shape, node, isSelected, isTrackPoint)}
+                          {markers.map((marker) => (
+                            <g
+                              key={marker.key}
+                              onMouseDown={(event) => handleNodeMouseDown(event, node.id, marker.key, marker.segmentIds)}
+                              onContextMenu={(event) => handleNodeContextMenu(event, node.id, marker.key, marker.segmentIds)}
+                            >
+                              {renderNodeSymbol(shape, marker.center, isTrackPoint, symbolSize)}
+                              {selectedNodeMarkerKey === marker.key ? (
+                                <circle
+                                  cx={marker.center.x}
+                                  cy={marker.center.y}
+                                  r={isTrackPoint ? "14" : "16"}
+                                  fill="none"
+                                  stroke="#0f172a"
+                                  strokeDasharray="4 3"
+                                />
+                              ) : null}
+                            </g>
+                          ))}
+                          {isSelected && !hasSelectedMarker ? (
+                            <circle cx={node.x} cy={node.y} r={isTrackPoint ? "14" : "16"} fill="none" stroke="#0f172a" strokeDasharray="4 3" />
+                          ) : null}
                         </g>
                       );
                     })}
@@ -2759,24 +3201,21 @@ export default function RailwayMapEditor() {
                     className="fixed z-30 min-w-[240px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
                     style={{ left: segmentContextMenu.x, top: segmentContextMenu.y }}
                   >
-                    {assignedLinesForContextSegment.length > 0 ? (
+                    {assignedLineForContextSegment ? (
                       <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
                         <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Unassign Line</div>
                         <div className="mt-2 space-y-1">
-                          {assignedLinesForContextSegment.map((line) => (
-                            <button
-                              key={line.id}
-                              type="button"
-                              className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                              onClick={() => unassignLineFromSegment(line.id, contextMenuSegment.id)}
-                            >
-                              <span className="truncate">{line.name}</span>
-                              <span
-                                className="ml-3 h-3 w-3 shrink-0 rounded-full border border-slate-200"
-                                style={{ backgroundColor: line.color }}
-                              />
-                            </button>
-                          ))}
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                            onClick={() => unassignLineFromSegment(assignedLineForContextSegment.id, contextMenuSegment.id)}
+                          >
+                            <span className="truncate">{assignedLineForContextSegment.name}</span>
+                            <span
+                              className="ml-3 h-3 w-3 shrink-0 rounded-full border border-slate-200"
+                              style={{ backgroundColor: assignedLineForContextSegment.color }}
+                            />
+                          </button>
                         </div>
                       </div>
                     ) : null}
@@ -3158,10 +3597,15 @@ export default function RailwayMapEditor() {
                                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Segments On Current Sheet</div>
                                   <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-white p-2">
                                     {currentSegments.map((segment) => {
-                                      const active = selectedLineRun?.segmentIds.includes(segment.id) ?? false;
+                                      const ownerLineId = lineIdBySegmentId.get(segment.id) ?? null;
+                                      const active = ownerLineId === selectedLine?.id;
+                                      const ownerLine = ownerLineId ? linesById.get(ownerLineId) ?? null : null;
                                       return (
                                         <label key={segment.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm text-ink">
-                                          <span>{segment.id}</span>
+                                          <span className="flex min-w-0 flex-col">
+                                            <span>{segment.id}</span>
+                                            <span className="text-xs text-muted">{ownerLine ? `Assigned to ${ownerLine.name}` : "Unassigned"}</span>
+                                          </span>
                                           <input type="checkbox" checked={active} onChange={() => toggleSegmentOnSelectedLine(segment.id)} />
                                         </label>
                                       );
@@ -3169,7 +3613,7 @@ export default function RailwayMapEditor() {
                                     {currentSegments.length === 0 ? <p className="px-3 py-2 text-xs text-muted">No segments on the active sheet yet.</p> : null}
                                   </div>
                                   <p className="text-xs text-muted">
-                                    This is a quick assignment helper for the active sheet. Segment right-click is still the fastest direct workflow on the canvas.
+                                    Each segment can belong to one line at most. This helper reassigns the segment to the selected line or clears it if it is already selected.
                                   </p>
                                 </div>
                                 <Button variant="destructive" className="w-full" onClick={deleteSelectedLine}>
@@ -3222,6 +3666,16 @@ export default function RailwayMapEditor() {
                                   className="w-24"
                                   placeholder="Size"
                                 />
+                                <Input
+                                  type="number"
+                                  min={0.6}
+                                  max={2.5}
+                                  step={0.1}
+                                  value={newStationKindSymbolSize}
+                                  onChange={(event) => setNewStationKindSymbolSize(Number(event.target.value) || DEFAULT_STATION_SYMBOL_SIZE)}
+                                  className="w-24"
+                                  placeholder="Symbol"
+                                />
                                 <Button onClick={addStationKind}>
                                   <Plus className="h-4 w-4" />
                                 </Button>
@@ -3239,7 +3693,7 @@ export default function RailwayMapEditor() {
                                 >
                                   <div className="flex items-center gap-3">
                                     <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-1">
-                                      {renderStationKindPreview(kind.shape)}
+                              {renderStationKindPreview(kind.shape, kind.symbolSize)}
                                     </div>
                                     <div className="min-w-0">
                                       <div className="font-medium">{kind.name}</div>
@@ -3274,6 +3728,19 @@ export default function RailwayMapEditor() {
                                     })
                                   }
                                   placeholder="Font size"
+                                />
+                                <Input
+                                  type="number"
+                                  min={0.6}
+                                  max={2.5}
+                                  step={0.1}
+                                  value={selectedStationKind.symbolSize}
+                                  onChange={(event) =>
+                                    updateStationKind(selectedStationKind.id, {
+                                      symbolSize: clamp(Number(event.target.value) || DEFAULT_STATION_SYMBOL_SIZE, 0.6, 2.5),
+                                    })
+                                  }
+                                  placeholder="Symbol size"
                                 />
                                 <select
                                   value={selectedStationKind.shape}
