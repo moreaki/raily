@@ -1125,7 +1125,15 @@ export default function RailwayMapEditor() {
   }
 
   function bootstrapDevelopmentModel() {
-    const nextMap = cloneMap(DEVELOPMENT_BOOTSTRAP_MAP);
+    const seededMap = cloneMap(DEVELOPMENT_BOOTSTRAP_MAP);
+    const nextMap = {
+      ...seededMap,
+      model: {
+        ...seededMap.model,
+        stations: autoPlaceLabels(seededMap),
+      },
+    };
+
     replaceMap(nextMap);
     setSelectedNodeId(nextMap.model.nodes[0]?.id ?? "");
     setSelectedNodeIds(nextMap.model.nodes[0]?.id ? [nextMap.model.nodes[0].id] : []);
@@ -1136,9 +1144,11 @@ export default function RailwayMapEditor() {
     setCurrentSheetId(nextMap.model.sheets[0]?.id ?? "");
     setSheetViews({
       "sh-ov": { zoom: 1, centerX: 510, centerY: 260 },
-      "sh-mid": { zoom: 1.1, centerX: 480, centerY: 280 },
-      "sh-urban": { zoom: 1.3, centerX: 420, centerY: 280 },
+      "sh-west": { zoom: 1.05, centerX: 420, centerY: 220 },
+      "sh-core": { zoom: 1.1, centerX: 390, centerY: 240 },
+      "sh-harbor": { zoom: 1.05, centerX: 470, centerY: 220 },
       "sh-north": { zoom: 1.15, centerX: 410, centerY: 220 },
+      "sh-south": { zoom: 1.05, centerX: 500, centerY: 260 },
     });
     setViewportCenter({ x: 510, y: 260 });
     setZoom(1);
