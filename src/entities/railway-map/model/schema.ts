@@ -17,6 +17,7 @@ const nodeSchema = pointSchema.extend({
 
 const stationLabelSchema = pointSchema.extend({
   align: z.enum(["left", "right", "top", "bottom"]).optional(),
+  rotation: z.number().min(-360).max(360).optional(),
 });
 
 const stationKindSchema = z.object({

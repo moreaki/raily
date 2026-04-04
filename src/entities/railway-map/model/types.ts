@@ -29,6 +29,7 @@ export interface MapNode extends MapPoint {
 
 export interface StationLabel extends MapPoint {
   align?: LabelAlignment;
+  rotation?: number;
 }
 
 export interface Station {

@@ -41,6 +41,7 @@ const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, san
 const DEFAULT_STATION_FONT_WEIGHT: StationLabelFontWeight = "600";
 const DEFAULT_STATION_FONT_SIZE = 14;
 const STATION_FONT_WEIGHT_OPTIONS: StationLabelFontWeight[] = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
+const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12l-3 3-3-3'/><path d='M2 12l3-3 3 3'/><path d='M19.016 14v-1.95A7.05 7.05 0 0 0 8 6.22'/><path d='M16.016 17.845A7.05 7.05 0 0 1 5 12.015V10'/><path d='M5 10V9'/><path d='M19 15v-1'/></svg>") 12 12, crosshair`;
 
 function downloadFile(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -255,7 +256,15 @@ function getStationLabelPosition(station: Station, node: MapNode) {
     x: station.label?.x ?? node.x + 12,
     y: station.label?.y ?? node.y - 10,
     align: station.label?.align ?? "right",
+    rotation: station.label?.rotation ?? 0,
   };
+}
+
+function normalizeRotation(rotation: number) {
+  let next = rotation % 360;
+  if (next > 180) next -= 360;
+  if (next <= -180) next += 360;
+  return Math.round(next);
 }
 
 function getStationKindFontSize(stationKind?: StationKind) {
@@ -382,6 +391,7 @@ function autoPlaceLabels(current: RailwayMap) {
         x: candidate.position.x,
         y: candidate.position.y,
         align: candidate.position.align,
+        rotation: station.label?.rotation ?? 0,
       },
     };
   });
@@ -550,6 +560,12 @@ export default function RailwayMapEditor() {
   const [gridStepY, setGridStepY] = useState(20);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [draggingLabelStationId, setDraggingLabelStationId] = useState<string | null>(null);
+  const [rotatingLabelState, setRotatingLabelState] = useState<{
+    stationId: string;
+    center: MapPoint;
+    startAngle: number;
+    startRotation: number;
+  } | null>(null);
   const [dragLastPoint, setDragLastPoint] = useState<{ x: number; y: number } | null>(null);
   const [panning, setPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; centerX: number; centerY: number } | null>(null);
@@ -969,6 +985,7 @@ export default function RailwayMapEditor() {
     setSelectedSegmentId("");
     setPendingSegmentStartNodeId(null);
     setNodeContextMenu(null);
+    setRotatingLabelState(null);
   }
 
   function selectSingleNode(nodeId: string) {
@@ -1035,6 +1052,7 @@ export default function RailwayMapEditor() {
         x: node.x + 12,
         y: node.y - 10,
         align: "right",
+        rotation: 0,
       },
     });
     setSelectedNodeId(nodeId);
@@ -1204,6 +1222,7 @@ export default function RailwayMapEditor() {
         x: bestCandidate.position.x,
         y: bestCandidate.position.y,
         align: bestCandidate.position.align,
+        rotation: station.label?.rotation ?? 0,
       },
     });
   }
@@ -1739,6 +1758,37 @@ export default function RailwayMapEditor() {
     }
   }
 
+  function handleLabelRotateMouseDown(
+    event: MouseEvent<SVGRectElement>,
+    stationId: string,
+    nodeId: string,
+    center: MapPoint,
+    currentRotation: number,
+  ) {
+    event.stopPropagation();
+    setNodeContextMenu(null);
+    setSegmentContextMenu(null);
+    setSidePanel("edit");
+    setSelectedNodeId(nodeId);
+    setSelectedNodeIds([nodeId]);
+    setSelectedStationId(stationId);
+    setSelectedSegmentId("");
+    setDraggingNodeId(null);
+    setDraggingLabelStationId(null);
+
+    if (!svgRef.current) return;
+    const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+    if (!point) return;
+
+    setRotatingLabelState({
+      stationId,
+      center,
+      startAngle: Math.atan2(point.y - center.y, point.x - center.x),
+      startRotation: currentRotation,
+    });
+    beginTransientMapChange();
+  }
+
   function handleStationContextMenu(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
     event.preventDefault();
     event.stopPropagation();
@@ -1762,6 +1812,7 @@ export default function RailwayMapEditor() {
     setSegmentContextMenu(null);
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
+    setRotatingLabelState(null);
     setPendingSegmentStartNodeId(null);
     if (!svgRef.current) return;
     const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
@@ -1827,6 +1878,34 @@ export default function RailwayMapEditor() {
       return;
     }
 
+    if (rotatingLabelState) {
+      const nextAngle = Math.atan2(svgPoint.y - rotatingLabelState.center.y, svgPoint.x - rotatingLabelState.center.x);
+      const nextRotation = normalizeRotation(
+        rotatingLabelState.startRotation + ((nextAngle - rotatingLabelState.startAngle) * 180) / Math.PI,
+      );
+
+      updateMap((current) => ({
+        ...current,
+        model: {
+          ...current.model,
+          stations: current.model.stations.map((station) => {
+            if (station.id !== rotatingLabelState.stationId) return station;
+            const stationNode = station.nodeId ? current.model.nodes.find((node) => node.id === station.nodeId) : null;
+            return {
+              ...station,
+              label: {
+                x: station.label?.x ?? ((stationNode?.x ?? 0) + 12),
+                y: station.label?.y ?? ((stationNode?.y ?? 0) - 10),
+                align: station.label?.align ?? "right",
+                rotation: nextRotation,
+              },
+            };
+          }),
+        },
+      }), { trackHistory: false });
+      return;
+    }
+
     if (draggingLabelStationId && dragLastPoint) {
       const deltaX = Math.round(svgPoint.x - dragLastPoint.x);
       const deltaY = Math.round(svgPoint.y - dragLastPoint.y);
@@ -1842,6 +1921,7 @@ export default function RailwayMapEditor() {
             return {
               ...station,
               label: {
+                ...station.label,
                 x: (station.label?.x ?? ((stationNode?.x ?? 0) + 12)) + deltaX,
                 y: (station.label?.y ?? ((stationNode?.y ?? 0) - 10)) + deltaY,
                 align: station.label?.align ?? "right",
@@ -1888,6 +1968,7 @@ export default function RailwayMapEditor() {
 
   function handleSvgMouseUp() {
     completeTransientMapChange();
+    setRotatingLabelState(null);
     if (marqueeSelection) {
       const rect = normalizeRect(marqueeSelection.start, marqueeSelection.end);
       setMarqueeSelection(null);
@@ -2213,7 +2294,9 @@ export default function RailwayMapEditor() {
                       const position = getStationLabelPosition(station, node);
                       const labelX = position.x;
                       const labelY = position.y;
+                      const labelRotation = position.rotation;
                       const isDragging = draggingLabelStationId === station.id;
+                      const isRotating = rotatingLabelState?.stationId === station.id;
                       const isSelected = selectedStationId === station.id;
                       const diagnostics = labelDiagnostics.get(station.id);
                       const box =
@@ -2221,6 +2304,15 @@ export default function RailwayMapEditor() {
                         estimateLabelBox(station.name, labelX, labelY, getStationKindFontSize(stationKind));
                       const shouldShowLeader = isDragging && (diagnostics?.leaderLine ?? false);
                       const labelAnchorY = labelY - 6;
+                      const labelCenterX = (box.minX + box.maxX) / 2;
+                      const labelCenterY = (box.minY + box.maxY) / 2;
+                      const labelTransform = labelRotation
+                        ? `rotate(${labelRotation} ${labelCenterX} ${labelCenterY})`
+                        : undefined;
+                      const rotationLabel = `${normalizeRotation(labelRotation)}°`;
+                      const rotationBadgeWidth = Math.max(42, rotationLabel.length * 7.2 + 14);
+                      const rotateIconX = box.maxX + 12;
+                      const rotateIconY = box.minY - 10;
 
                       return (
                         <g
@@ -2240,29 +2332,85 @@ export default function RailwayMapEditor() {
                               strokeDasharray="3 3"
                             />
                           ) : null}
-                          {diagnostics?.colliding || isDragging || isSelected ? (
-                            <rect
-                              x={box.minX}
-                              y={box.minY}
-                              width={box.maxX - box.minX}
-                              height={box.maxY - box.minY}
-                              rx="6"
-                              fill={diagnostics?.colliding ? "#fff1f2" : "white"}
-                              fillOpacity="0.92"
-                              stroke={diagnostics?.colliding ? "#dc2626" : isSelected ? "#0f172a" : "#94a3b8"}
-                              strokeDasharray={diagnostics?.colliding || isDragging || isSelected ? "4 3" : undefined}
-                            />
+                          <g transform={labelTransform}>
+                            {diagnostics?.colliding || isDragging || isRotating || isSelected ? (
+                              <rect
+                                x={box.minX}
+                                y={box.minY}
+                                width={box.maxX - box.minX}
+                                height={box.maxY - box.minY}
+                                rx="6"
+                                fill={diagnostics?.colliding ? "#fff1f2" : "white"}
+                                fillOpacity="0.92"
+                                stroke={diagnostics?.colliding ? "#dc2626" : isSelected ? "#0f172a" : "#94a3b8"}
+                                strokeDasharray="4 3"
+                              />
+                            ) : null}
+                            {isSelected ? (
+                              <rect
+                                x={box.minX}
+                                y={box.minY}
+                                width={box.maxX - box.minX}
+                                height={box.maxY - box.minY}
+                                rx="6"
+                                fill="none"
+                                stroke="transparent"
+                                strokeWidth="12"
+                                pointerEvents="stroke"
+                                onMouseDown={(event) =>
+                                  handleLabelRotateMouseDown(event, station.id, node.id, { x: labelCenterX, y: labelCenterY }, labelRotation)
+                                }
+                                style={{ cursor: ROTATE_CURSOR }}
+                              />
+                            ) : null}
+                            {isSelected ? (
+                              <g transform={`translate(${rotateIconX} ${rotateIconY})`} pointerEvents="none">
+                                <circle cx="0" cy="0" r="11" fill="white" fillOpacity="0.94" stroke="#cbd5e1" />
+                                <g transform="translate(-7 -7)" fill="none" stroke="#0f172a" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M14 7l-2 2-2-2" />
+                                  <path d="M0 7l2-2 2 2" />
+                                  <path d="M12.678 8.333V7.033A4.7 4.7 0 0 0 5.333 3.147" />
+                                  <path d="M10.678 10.897A4.7 4.7 0 0 1 3.333 6.343V5" />
+                                  <path d="M3.333 5V4.333" />
+                                  <path d="M12.667 9v-.667" />
+                                </g>
+                              </g>
+                            ) : null}
+                            <text
+                              x={labelX}
+                              y={labelY}
+                              fontSize={getStationKindFontSize(stationKind)}
+                              fontFamily={stationKind?.fontFamily ?? DEFAULT_STATION_FONT_FAMILY}
+                              fontWeight={stationKind?.fontWeight ?? DEFAULT_STATION_FONT_WEIGHT}
+                              fill={diagnostics?.colliding ? "#991b1b" : "#111827"}
+                            >
+                              {station.name}
+                            </text>
+                          </g>
+                          {isRotating ? (
+                            <g pointerEvents="none">
+                              <rect
+                                x={labelCenterX - rotationBadgeWidth / 2}
+                                y={box.minY - 28}
+                                width={rotationBadgeWidth}
+                                height="20"
+                                rx="10"
+                                fill="#0f172a"
+                                fillOpacity="0.92"
+                              />
+                              <text
+                                x={labelCenterX}
+                                y={box.minY - 14}
+                                textAnchor="middle"
+                                fontSize="11"
+                                fontFamily={DEFAULT_STATION_FONT_FAMILY}
+                                fontWeight="700"
+                                fill="white"
+                              >
+                                {rotationLabel}
+                              </text>
+                            </g>
                           ) : null}
-                          <text
-                            x={labelX}
-                            y={labelY}
-                            fontSize={getStationKindFontSize(stationKind)}
-                            fontFamily={stationKind?.fontFamily ?? DEFAULT_STATION_FONT_FAMILY}
-                            fontWeight={stationKind?.fontWeight ?? DEFAULT_STATION_FONT_WEIGHT}
-                            fill={diagnostics?.colliding ? "#991b1b" : "#111827"}
-                          >
-                            {station.name}
-                          </text>
                         </g>
                       );
                     })}
