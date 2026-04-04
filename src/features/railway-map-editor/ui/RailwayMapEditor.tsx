@@ -1,6 +1,6 @@
 import type { MouseEvent, WheelEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Grip, Hand, Link2, Plus, Trash2, Upload } from "lucide-react";
+import { Download, Grip, Hand, Plus, Trash2, Upload } from "lucide-react";
 import { DEVELOPMENT_BOOTSTRAP_MAP, INITIAL_MAP, LINE_PRESETS } from "@/entities/railway-map/model/constants";
 import { railwayMapSchema } from "@/entities/railway-map/model/schema";
 import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape } from "@/entities/railway-map/model/types";
@@ -461,7 +461,7 @@ export default function RailwayMapEditor() {
   const [newStationName, setNewStationName] = useState("");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
-  const [mode, setMode] = useState<"move" | "pan" | "segment" | "assign">("move");
+  const [mode, setMode] = useState<"move" | "pan">("move");
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage">("edit");
   const [moveAllNodes, setMoveAllNodes] = useState(false);
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
@@ -1384,6 +1384,24 @@ export default function RailwayMapEditor() {
     setPendingSegmentStartNodeId(null);
   }
 
+  function startSegmentFromNode(nodeId: string) {
+    setSelectedNodeId(nodeId);
+    setSelectedNodeIds([nodeId]);
+    setPendingSegmentStartNodeId(nodeId);
+    setNodeContextMenu(null);
+  }
+
+  function cancelPendingSegment() {
+    setPendingSegmentStartNodeId(null);
+    setNodeContextMenu(null);
+  }
+
+  function completeSegmentAtNode(nodeId: string) {
+    selectSingleNode(nodeId);
+    createSegmentFromPendingNode(nodeId);
+    setNodeContextMenu(null);
+  }
+
   function handleNodeMouseDown(event: MouseEvent<SVGGElement>, nodeId: string) {
     event.stopPropagation();
     setNodeContextMenu(null);
@@ -1399,13 +1417,6 @@ export default function RailwayMapEditor() {
       });
       return;
     }
-    if (mode === "segment") {
-      selectSingleNode(nodeId);
-      createSegmentFromPendingNode(nodeId);
-      return;
-    }
-
-    if (mode !== "move") return;
     if (event.metaKey) {
       setSelectedNodeIds((current) => {
         if (current.includes(nodeId)) {
@@ -1516,9 +1527,6 @@ export default function RailwayMapEditor() {
     setSelectedNodeIds([]);
     setSelectedStationId("");
 
-    if (mode === "assign") {
-      toggleSegmentOnSelectedLine(segmentId);
-    }
   }
 
   function handleSegmentContextMenu(event: MouseEvent<SVGPathElement>, segmentId: string) {
@@ -1780,14 +1788,6 @@ export default function RailwayMapEditor() {
               <Hand className="h-4 w-4" />
               Pan
             </Button>
-            <Button variant={mode === "segment" ? "default" : "outline"} onClick={() => setMode("segment")}>
-              <Link2 className="h-4 w-4" />
-              Segment
-            </Button>
-            <Button variant={mode === "assign" ? "default" : "outline"} onClick={() => setMode("assign")}>
-              <Link2 className="h-4 w-4" />
-              Assign
-            </Button>
             <Button variant={sidePanel === "edit" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "edit" ? "closed" : "edit")}>
               Edit Panel
             </Button>
@@ -1811,18 +1811,11 @@ export default function RailwayMapEditor() {
               <div className="relative min-h-[78vh] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.08),transparent_28%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
                 <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 p-4">
                   <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-ink shadow-sm backdrop-blur">
-                    {mode === "move"
-                      ? "Move nodes"
-                      : mode === "pan"
-                        ? "Pan viewport"
-                        : mode === "segment"
-                          ? "Draw segments"
-                          : "Assign segments to the selected line"}
+                    {mode === "move" ? "Move nodes" : "Pan viewport"}
                   </div>
-                  {mode === "segment" ? (
+                  {pendingSegmentStartNodeId ? (
                     <div className="pointer-events-auto rounded-2xl border border-sky-200 bg-sky-50/95 px-3 py-2 text-xs text-sky-800 shadow-sm">
-                      Click one node, then another.
-                      {pendingSegmentStartNodeId ? ` Start node: ${pendingSegmentStartNodeId}` : ""}
+                      Segment start: {pendingSegmentStartNodeId}. Right-click another track point to connect it.
                     </div>
                   ) : null}
                   <div className="pointer-events-auto ml-auto flex gap-2">
@@ -2061,41 +2054,71 @@ export default function RailwayMapEditor() {
                     style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
                   >
                     {nodeContextMenu.nodeIds.length === 1 ? (
-                      <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Station</div>
-                        <Input
-                          value={nodeAssignmentQuery}
-                          onChange={(event) => setNodeAssignmentQuery(event.target.value)}
-                          placeholder="Search stations"
-                          className="h-9"
-                        />
-                        <div className="max-h-40 space-y-1 overflow-auto">
-                          {stationAssignmentResults.slice(0, 8).map((station) => (
+                      <>
+                        <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Track</div>
+                          {pendingSegmentStartNodeId && pendingSegmentStartNodeId !== nodeContextMenu.nodeIds[0] ? (
                             <button
-                              key={station.id}
                               type="button"
-                              className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                              onClick={() => assignStationToNode(station.id, nodeContextMenu.nodeIds[0])}
+                              className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                              onClick={() => completeSegmentAtNode(nodeContextMenu.nodeIds[0])}
                             >
-                              <span className="truncate">{station.name}</span>
-                              <span className="ml-3 shrink-0 text-xs text-slate-500">
-                                {stationKindsById.get(station.kindId)?.name ?? "Unknown"}
-                              </span>
+                              Create segment to here
                             </button>
-                          ))}
-                          {stationAssignmentResults.length === 0 ? (
-                            <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div>
-                          ) : null}
+                          ) : pendingSegmentStartNodeId === nodeContextMenu.nodeIds[0] ? (
+                            <button
+                              type="button"
+                              className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                              onClick={cancelPendingSegment}
+                            >
+                              Cancel pending segment
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                              onClick={() => startSegmentFromNode(nodeContextMenu.nodeIds[0])}
+                            >
+                              Start segment here
+                            </button>
+                          )}
                         </div>
-                        <Button
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentQuery)}
-                        >
-                          <Plus className="h-4 w-4" />
-                          Add new station
-                        </Button>
-                      </div>
+                        <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Station</div>
+                          <Input
+                            value={nodeAssignmentQuery}
+                            onChange={(event) => setNodeAssignmentQuery(event.target.value)}
+                            placeholder="Search stations"
+                            className="h-9"
+                          />
+                          <div className="max-h-40 space-y-1 overflow-auto">
+                            {stationAssignmentResults.slice(0, 8).map((station) => (
+                              <button
+                                key={station.id}
+                                type="button"
+                                className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                                onClick={() => assignStationToNode(station.id, nodeContextMenu.nodeIds[0])}
+                              >
+                                <span className="truncate">{station.name}</span>
+                                <span className="ml-3 shrink-0 text-xs text-slate-500">
+                                  {stationKindsById.get(station.kindId)?.name ?? "Unknown"}
+                                </span>
+                              </button>
+                            ))}
+                            {stationAssignmentResults.length === 0 ? (
+                              <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div>
+                            ) : null}
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentQuery)}
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add new station
+                          </Button>
+                        </div>
+                      </>
                     ) : null}
                     <button
                       type="button"
