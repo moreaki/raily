@@ -233,6 +233,17 @@ function cloneMap(map: RailwayMap) {
   return JSON.parse(JSON.stringify(map)) as RailwayMap;
 }
 
+function normalizeRect(start: MapPoint, end: MapPoint) {
+  return {
+    minX: Math.min(start.x, end.x),
+    maxX: Math.max(start.x, end.x),
+    minY: Math.min(start.y, end.y),
+    maxY: Math.max(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+}
+
 function getSheetContentCenter(nodes: MapNode[]) {
   if (nodes.length === 0) {
     return { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
@@ -268,6 +279,7 @@ export default function RailwayMapEditor() {
 
   const [map, setMap] = useState<RailwayMap>(initialMap);
   const [selectedNodeId, setSelectedNodeId] = useState(initialMap.nodes[0]?.id ?? "");
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(initialMap.nodes[0]?.id ? [initialMap.nodes[0].id] : []);
   const [selectedStationId, setSelectedStationId] = useState(initialMap.stations[0]?.id ?? "");
   const [selectedSegmentId, setSelectedSegmentId] = useState(initialMap.segments[0]?.id ?? "");
   const [selectedLineId, setSelectedLineId] = useState(initialMap.lines[0]?.id ?? "");
@@ -292,6 +304,7 @@ export default function RailwayMapEditor() {
   const [dragLastPoint, setDragLastPoint] = useState<{ x: number; y: number } | null>(null);
   const [panning, setPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; centerX: number; centerY: number } | null>(null);
+  const [marqueeSelection, setMarqueeSelection] = useState<{ start: MapPoint; end: MapPoint } | null>(null);
   const [pendingSegmentStartNodeId, setPendingSegmentStartNodeId] = useState<string | null>(null);
   const [jsonText, setJsonText] = useState(JSON.stringify(initialMap, null, 2));
   const [errorMessage, setErrorMessage] = useState("");
@@ -308,6 +321,7 @@ export default function RailwayMapEditor() {
   const currentSheet = map.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
 
   const currentNodes = useMemo(() => map.nodes.filter((node) => node.sheetId === currentSheetId), [currentSheetId, map.nodes]);
+  const selectedNodeIdsSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
   const currentNodeIds = useMemo(() => new Set(currentNodes.map((node) => node.id)), [currentNodes]);
   const currentStations = useMemo(
     () => map.stations.filter((station) => currentNodeIds.has(station.nodeId)),
@@ -457,10 +471,16 @@ export default function RailwayMapEditor() {
   }, [sheetViews]);
 
   useEffect(() => {
-    if (!selectedNode || !nodesById.has(selectedNode.id)) {
-      setSelectedNodeId(currentNodes[0]?.id ?? "");
+    const currentNodeIdSet = new Set(currentNodes.map((node) => node.id));
+    const filteredSelectedIds = selectedNodeIds.filter((nodeId) => currentNodeIdSet.has(nodeId));
+    if (filteredSelectedIds.length !== selectedNodeIds.length) {
+      setSelectedNodeIds(filteredSelectedIds);
     }
-  }, [currentNodes, nodesById, selectedNode]);
+
+    if (selectedNodeId && (!selectedNode || !nodesById.has(selectedNode.id))) {
+      setSelectedNodeId(filteredSelectedIds[0] ?? "");
+    }
+  }, [currentNodes, nodesById, selectedNode, selectedNodeId, selectedNodeIds]);
 
   useEffect(() => {
     if (!selectedLine || !map.lines.some((line) => line.id === selectedLine.id)) {
@@ -469,16 +489,16 @@ export default function RailwayMapEditor() {
   }, [map.lines, selectedLine]);
 
   useEffect(() => {
-    if (!selectedStation || !map.stations.some((station) => station.id === selectedStation.id)) {
-      setSelectedStationId(map.stations[0]?.id ?? "");
+    if (selectedStationId && (!selectedStation || !map.stations.some((station) => station.id === selectedStation.id))) {
+      setSelectedStationId("");
     }
-  }, [map.stations, selectedStation]);
+  }, [map.stations, selectedStation, selectedStationId]);
 
   useEffect(() => {
-    if (!selectedSegment || !segmentsById.has(selectedSegment.id)) {
-      setSelectedSegmentId(currentSegments[0]?.id ?? "");
+    if (selectedSegmentId && (!selectedSegment || !segmentsById.has(selectedSegment.id))) {
+      setSelectedSegmentId("");
     }
-  }, [currentSegments, segmentsById, selectedSegment]);
+  }, [currentSegments, segmentsById, selectedSegment, selectedSegmentId]);
 
   useEffect(() => {
     if (!selectedStationKind || !map.stationKinds.some((kind) => kind.id === selectedStationKind.id)) {
@@ -532,6 +552,24 @@ export default function RailwayMapEditor() {
   function updateMap(updater: (current: RailwayMap) => RailwayMap) {
     setMap((current) => updater(current));
     setErrorMessage("");
+  }
+
+  function clearCanvasSelections() {
+    setSelectedNodeId("");
+    setSelectedNodeIds([]);
+    setSelectedStationId("");
+    setSelectedSegmentId("");
+    setPendingSegmentStartNodeId(null);
+    setNodeContextMenu(null);
+    setMoveAllNodes(false);
+  }
+
+  function selectSingleNode(nodeId: string) {
+    setSelectedNodeId(nodeId);
+    setSelectedNodeIds([nodeId]);
+    setSelectedSegmentId("");
+    const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
+    setSelectedStationId(station?.id ?? "");
   }
 
   function addStation() {
@@ -613,6 +651,7 @@ export default function RailwayMapEditor() {
     const nextMap = cloneMap(DEVELOPMENT_BOOTSTRAP_MAP);
     setMap(nextMap);
     setSelectedNodeId(nextMap.nodes[0]?.id ?? "");
+    setSelectedNodeIds(nextMap.nodes[0]?.id ? [nextMap.nodes[0].id] : []);
     setSelectedStationId(nextMap.stations[0]?.id ?? "");
     setSelectedSegmentId(nextMap.segments[0]?.id ?? "");
     setSelectedLineId(nextMap.lines[0]?.id ?? "");
@@ -627,6 +666,7 @@ export default function RailwayMapEditor() {
     setViewportCenter({ x: 510, y: 260 });
     setZoom(1);
     setMoveAllNodes(false);
+    setMarqueeSelection(null);
     setNodeContextMenu(null);
     setPendingSegmentStartNodeId(null);
     setErrorMessage("");
@@ -907,16 +947,41 @@ export default function RailwayMapEditor() {
   }
 
   function handleNodeMouseDown(event: MouseEvent<SVGGElement>, nodeId: string) {
+    event.stopPropagation();
     setNodeContextMenu(null);
     setSidePanel("edit");
     if (mode === "segment") {
-      setSelectedNodeId(nodeId);
+      selectSingleNode(nodeId);
       createSegmentFromPendingNode(nodeId);
       return;
     }
 
     if (mode !== "move") return;
-    setSelectedNodeId(nodeId);
+    if (event.metaKey) {
+      setSelectedNodeIds((current) => {
+        if (current.includes(nodeId)) {
+          const next = current.filter((value) => value !== nodeId);
+          setSelectedNodeId(next[0] ?? "");
+          if (selectedStationId && currentStations.find((station) => station.id === selectedStationId)?.nodeId === nodeId) {
+            setSelectedStationId("");
+          }
+          return next;
+        }
+
+        const next = [...current, nodeId];
+        setSelectedNodeId(nodeId);
+        const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
+        setSelectedStationId(station?.id ?? "");
+        return next;
+      });
+    } else if (!selectedNodeIdsSet.has(nodeId)) {
+      selectSingleNode(nodeId);
+    } else {
+      setSelectedNodeId(nodeId);
+      const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
+      if (station) setSelectedStationId(station.id);
+    }
+
     setDraggingNodeId(nodeId);
     if (svgRef.current) {
       const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
@@ -931,7 +996,9 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
     setSidePanel("edit");
     setSelectedNodeId(nodeId);
+    setSelectedNodeIds([nodeId]);
     setSelectedStationId(stationId);
+    setSelectedSegmentId("");
     setDraggingNodeId(null);
     setDraggingLabelStationId(stationId);
     if (svgRef.current) {
@@ -948,6 +1015,15 @@ export default function RailwayMapEditor() {
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
     setPendingSegmentStartNodeId(null);
+    if (!svgRef.current) return;
+    const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+    if (!point) return;
+
+    if (mode === "move" && !event.altKey) {
+      setMarqueeSelection({ start: { x: point.x, y: point.y }, end: { x: point.x, y: point.y } });
+      return;
+    }
+
     setPanning(true);
     setPanStart({
       clientX: event.clientX,
@@ -961,6 +1037,9 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
     setSidePanel("edit");
     setSelectedSegmentId(segmentId);
+    setSelectedNodeId("");
+    setSelectedNodeIds([]);
+    setSelectedStationId("");
 
     if (mode === "assign") {
       toggleSegmentOnSelectedLine(segmentId);
@@ -971,6 +1050,11 @@ export default function RailwayMapEditor() {
     if (!svgRef.current) return;
     const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
     if (!svgPoint) return;
+
+    if (marqueeSelection) {
+      setMarqueeSelection((current) => (current ? { ...current, end: { x: svgPoint.x, y: svgPoint.y } } : current));
+      return;
+    }
 
     if (panning && panStart) {
       const deltaX = ((event.clientX - panStart.clientX) / CANVAS_WIDTH) * viewBox.width;
@@ -1011,17 +1095,23 @@ export default function RailwayMapEditor() {
     const deltaY = Math.round(svgPoint.y - dragLastPoint.y);
     if (deltaX === 0 && deltaY === 0) return;
 
+    const nodeIdsToMove = moveAllNodes
+      ? new Set(currentNodes.map((node) => node.id))
+      : selectedNodeIdsSet.has(draggingNodeId)
+        ? selectedNodeIdsSet
+        : new Set([draggingNodeId]);
+
     updateMap((current) => ({
       ...current,
       nodes: current.nodes.map((node) => {
-        const shouldMove = moveAllNodes ? node.sheetId === currentSheetId : node.id === draggingNodeId;
+        const shouldMove = moveAllNodes ? node.sheetId === currentSheetId : nodeIdsToMove.has(node.id);
         return shouldMove ? { ...node, x: node.x + deltaX, y: node.y + deltaY } : node;
       }),
       stations: current.stations.map((station) => {
         const stationNode = current.nodes.find((node) => node.id === station.nodeId);
         const shouldMove = moveAllNodes
           ? stationNode?.sheetId === currentSheetId
-          : station.nodeId === draggingNodeId;
+          : nodeIdsToMove.has(station.nodeId);
         if (!shouldMove || !station.label) return station;
         return {
           ...station,
@@ -1037,6 +1127,26 @@ export default function RailwayMapEditor() {
   }
 
   function handleSvgMouseUp() {
+    if (marqueeSelection) {
+      const rect = normalizeRect(marqueeSelection.start, marqueeSelection.end);
+      setMarqueeSelection(null);
+
+      if (rect.width < 4 && rect.height < 4) {
+        clearCanvasSelections();
+      } else {
+        const nextSelectedNodeIds = currentNodes
+          .filter((node) => node.x >= rect.minX && node.x <= rect.maxX && node.y >= rect.minY && node.y <= rect.maxY)
+          .map((node) => node.id);
+
+        setSelectedNodeIds(nextSelectedNodeIds);
+        setSelectedNodeId(nextSelectedNodeIds[0] ?? "");
+        const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
+        setSelectedStationId(firstStation?.id ?? "");
+        setSelectedSegmentId("");
+        setMoveAllNodes(false);
+      }
+    }
+
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
     setDragLastPoint(null);
@@ -1259,7 +1369,7 @@ export default function RailwayMapEditor() {
                     onMouseUp={handleSvgMouseUp}
                     onMouseLeave={handleSvgMouseUp}
                   >
-                    <rect x={-WORLD_SIZE / 2} y={-WORLD_SIZE / 2} width={WORLD_SIZE} height={WORLD_SIZE} fill="white" />
+                    <rect x={-WORLD_SIZE / 2} y={-WORLD_SIZE / 2} width={WORLD_SIZE} height={WORLD_SIZE} fill="white" pointerEvents="none" />
 
                     {showGrid ? (
                       <g pointerEvents="none">
@@ -1323,7 +1433,7 @@ export default function RailwayMapEditor() {
 
                     {currentNodes.map((node) => {
                       const stations = stationsByNodeId.get(node.id) ?? [];
-                      const isSelected = moveAllNodes || selectedNodeId === node.id;
+                      const isSelected = moveAllNodes || selectedNodeIdsSet.has(node.id);
                       const primaryStation = stations[0];
                       const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
 
@@ -1379,7 +1489,7 @@ export default function RailwayMapEditor() {
                               fill={diagnostics?.colliding ? "#fff1f2" : "white"}
                               fillOpacity="0.92"
                               stroke={diagnostics?.colliding ? "#dc2626" : isSelected ? "#0f172a" : "#94a3b8"}
-                              strokeDasharray={diagnostics?.colliding || isDragging ? "4 3" : undefined}
+                              strokeDasharray={diagnostics?.colliding || isDragging || isSelected ? "4 3" : undefined}
                             />
                           ) : null}
                           <text x={labelX} y={labelY} fontSize="14" fontWeight="600" fill={diagnostics?.colliding ? "#991b1b" : "#111827"}>
@@ -1388,6 +1498,21 @@ export default function RailwayMapEditor() {
                         </g>
                       );
                     })}
+
+                    {marqueeSelection ? (
+                      <rect
+                        x={normalizeRect(marqueeSelection.start, marqueeSelection.end).minX}
+                        y={normalizeRect(marqueeSelection.start, marqueeSelection.end).minY}
+                        width={normalizeRect(marqueeSelection.start, marqueeSelection.end).width}
+                        height={normalizeRect(marqueeSelection.start, marqueeSelection.end).height}
+                        fill="#0ea5e9"
+                        fillOpacity="0.08"
+                        stroke="#0284c7"
+                        strokeDasharray="6 4"
+                        strokeWidth="1.5"
+                        pointerEvents="none"
+                      />
+                    ) : null}
                   </svg>
                 </div>
 
@@ -1511,10 +1636,27 @@ export default function RailwayMapEditor() {
 
                       <section className="space-y-3">
                         <div className="text-sm font-semibold text-ink">Layout Move</div>
-                        <Button variant={moveAllNodes ? "default" : "outline"} className="w-full" onClick={() => setMoveAllNodes((current) => !current)}>
-                          {moveAllNodes ? "Whole sheet selected" : "Select all nodes on this sheet"}
-                        </Button>
-                        <p className="text-xs text-muted">With this enabled in move mode, dragging any node moves the full sheet layout together.</p>
+                        <div className="grid gap-2">
+                          <Button
+                            variant={selectedNodeIds.length === currentNodes.length && currentNodes.length > 0 ? "default" : "outline"}
+                            className="w-full"
+                            onClick={() => {
+                              const nextSelectedNodeIds =
+                                selectedNodeIds.length === currentNodes.length ? [] : currentNodes.map((node) => node.id);
+                              setSelectedNodeIds(nextSelectedNodeIds);
+                              setSelectedNodeId(nextSelectedNodeIds[0] ?? "");
+                              const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
+                              setSelectedStationId(firstStation?.id ?? "");
+                              setMoveAllNodes(false);
+                            }}
+                          >
+                            {selectedNodeIds.length === currentNodes.length && currentNodes.length > 0 ? "Clear node selection" : "Select all nodes on this sheet"}
+                          </Button>
+                          <Button variant={moveAllNodes ? "default" : "outline"} className="w-full" onClick={() => setMoveAllNodes((current) => !current)}>
+                            {moveAllNodes ? "Whole sheet drag enabled" : "Move whole sheet"}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted">Drag on empty canvas to lasso-select nodes. Alt-drag on empty canvas pans instead.</p>
                       </section>
 
                       <section className="space-y-3">
@@ -1531,6 +1673,7 @@ export default function RailwayMapEditor() {
                                 type="button"
                                 onClick={() => {
                                   setSelectedNodeId(station.nodeId);
+                                  setSelectedNodeIds([station.nodeId]);
                                   setSelectedStationId(station.id);
                                 }}
                                 className="flex min-w-0 flex-1 items-center justify-between text-left"
