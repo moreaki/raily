@@ -1,4 +1,4 @@
-import type { MouseEvent, WheelEvent } from "react";
+import type { MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, Trash2 } from "lucide-react";
 import { DEVELOPMENT_BOOTSTRAP_MAP, INITIAL_MAP, LINE_PRESETS } from "@/entities/railway-map/model/constants";
@@ -44,6 +44,8 @@ const DEFAULT_STATION_SYMBOL_SIZE = 1;
 const STATION_FONT_WEIGHT_OPTIONS: StationLabelFontWeight[] = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
 const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12l-3 3-3-3'/><path d='M2 12l3-3 3 3'/><path d='M19.016 14v-1.95A7.05 7.05 0 0 0 8 6.22'/><path d='M16.016 17.845A7.05 7.05 0 0 1 5 12.015V10'/><path d='M5 10V9'/><path d='M19 15v-1'/></svg>") 12 12, crosshair`;
 const AUTO_LABEL_ROTATIONS = [0, 45, -45, 90, -90, 135, -135, 180] as const;
+const WHEEL_LINE_HEIGHT = 16;
+const WHEEL_PAGE_HEIGHT = 120;
 
 type LabelBox = {
   localMinX: number;
@@ -302,6 +304,12 @@ function loadStoredSheetViews() {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function normalizeWheelDelta(delta: number, deltaMode: number) {
+  if (deltaMode === 1) return delta * WHEEL_LINE_HEIGHT;
+  if (deltaMode === 2) return delta * WHEEL_PAGE_HEIGHT;
+  return delta;
 }
 
 function rotatePoint(point: MapPoint, center: MapPoint, rotation: number) {
@@ -921,6 +929,7 @@ export default function RailwayMapEditor() {
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const lastRestoredSheetIdRef = useRef<string | null>(null);
   const mapRef = useRef(map);
+  const zoomRef = useRef(zoom);
   const undoStackRef = useRef<RailwayMap[]>([]);
   const redoStackRef = useRef<RailwayMap[]>([]);
   const transientHistoryStartRef = useRef<RailwayMap | null>(null);
@@ -1073,7 +1082,10 @@ export default function RailwayMapEditor() {
             .map((marker) => marker.laneId)
             .filter((laneId, index, source): laneId is string => Boolean(laneId) && source.indexOf(laneId) === index)
         : [];
-      const orderedLaneIds = [...dominantLaneIds, ...knownLaneIds.filter((laneId) => !dominantLaneIds.includes(laneId))];
+      const orderedLaneIds =
+        knownLaneIds.length > 0
+          ? [...knownLaneIds, ...dominantLaneIds.filter((laneId) => !knownLaneIds.includes(laneId))]
+          : dominantLaneIds;
 
       if (orderedLaneIds.length === 0 && allMarkers.length === 0) {
         byNodeId.set(node.id, [{ key: `${node.id}:base`, center: { x: node.x, y: node.y }, segmentIds: [], laneId: null }]);
@@ -1267,11 +1279,15 @@ export default function RailwayMapEditor() {
         const lineNames = [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))]
           .map((lineId) => config.lines.find((line) => line.id === lineId)?.name ?? lineId)
           .filter(Boolean);
+        const lineColors = [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))]
+          .map((lineId) => config.lines.find((line) => line.id === lineId)?.color ?? null)
+          .filter((color): color is string => Boolean(color));
 
         return {
           ...lane,
           segmentIds,
           lineNames,
+          lineColors,
         };
       });
   }, [config.lines, currentSegments, lineIdBySegmentId, model.nodeLanes, selectedNodeId]);
@@ -1279,6 +1295,29 @@ export default function RailwayMapEditor() {
     if (!selectedNodeId || !selectedNodeMarkerKey) return null;
     return nodeMarkerCentersById.get(selectedNodeId)?.find((marker) => marker.key === selectedNodeMarkerKey)?.laneId ?? null;
   }, [nodeMarkerCentersById, selectedNodeId, selectedNodeMarkerKey]);
+  const selectedNodeLaneAxis = useMemo(() => {
+    if (!selectedNodeId) return "vertical" as const;
+    const markers = nodeMarkerCentersById.get(selectedNodeId) ?? [];
+    if (markers.length < 2) return "vertical" as const;
+
+    const xs = markers.map((marker) => marker.center.x);
+    const ys = markers.map((marker) => marker.center.y);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = Math.max(...ys) - Math.min(...ys);
+
+    return width > height ? ("horizontal" as const) : ("vertical" as const);
+  }, [nodeMarkerCentersById, selectedNodeId]);
+  const selectedNodeLaneMoveLabels = selectedNodeLaneAxis === "horizontal"
+    ? {
+        backward: "Left",
+        forward: "Right",
+        hint: "Lane order for this node runs left to right around the node center.",
+      }
+    : {
+        backward: "Up",
+        forward: "Down",
+        hint: "Lane order for this node runs top to bottom around the node center.",
+      };
   const viewBoxDimensions = useMemo(() => {
     const width = CANVAS_WIDTH / zoom;
     const height = CANVAS_HEIGHT / zoom;
@@ -1360,6 +1399,10 @@ export default function RailwayMapEditor() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
     }
   }, [map]);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1736,10 +1779,10 @@ export default function RailwayMapEditor() {
     setSelectedStationKindId(nextMap.config.stationKinds[0]?.id ?? "");
     setCurrentSheetId(nextMap.model.sheets[0]?.id ?? "");
     setSheetViews({
-      "sh-ov": { zoom: 0.5, centerX: 565, centerY: 940 },
+      "sh-ov": { zoom: 0.46, centerX: 620, centerY: 955 },
     });
-    setViewportCenter({ x: 565, y: 940 });
-    setZoom(0.5);
+    setViewportCenter({ x: 620, y: 955 });
+    setZoom(0.46);
     setMarqueeSelection(null);
     setNodeContextMenu(null);
     setPendingSegmentStart(null);
@@ -2702,18 +2745,20 @@ export default function RailwayMapEditor() {
   }
 
   function applyZoom(nextZoom: number, focusPoint?: { x: number; y: number }) {
+    const currentZoom = zoomRef.current;
+    const currentViewBox = viewBoxRef.current;
     const clampedZoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
-    if (clampedZoom === zoom) return;
+    if (clampedZoom === currentZoom) return;
 
-    const currentWidth = CANVAS_WIDTH / zoom;
-    const currentHeight = CANVAS_HEIGHT / zoom;
+    const currentWidth = CANVAS_WIDTH / currentZoom;
+    const currentHeight = CANVAS_HEIGHT / currentZoom;
     const nextWidth = CANVAS_WIDTH / clampedZoom;
     const nextHeight = CANVAS_HEIGHT / clampedZoom;
-    const focusX = focusPoint?.x ?? viewBox.centerX;
-    const focusY = focusPoint?.y ?? viewBox.centerY;
+    const focusX = focusPoint?.x ?? currentViewBox.centerX;
+    const focusY = focusPoint?.y ?? currentViewBox.centerY;
 
-    const relativeX = (focusX - viewBox.x) / currentWidth;
-    const relativeY = (focusY - viewBox.y) / currentHeight;
+    const relativeX = (focusX - currentViewBox.x) / currentWidth;
+    const relativeY = (focusY - currentViewBox.y) / currentHeight;
 
     const nextX = focusX - relativeX * nextWidth;
     const nextY = focusY - relativeY * nextHeight;
@@ -2723,20 +2768,6 @@ export default function RailwayMapEditor() {
       x: nextX + nextWidth / 2,
       y: nextY + nextHeight / 2,
     });
-  }
-
-  function handleSvgWheel(event: WheelEvent<SVGSVGElement>) {
-    if (!svgRef.current) return;
-    event.preventDefault();
-    if (event.ctrlKey || event.metaKey) {
-      const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-      const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
-      const nextZoom = event.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
-      applyZoom(nextZoom, focusPoint);
-      return;
-    }
-
-    panViewportByPixels(event.deltaX, event.deltaY);
   }
 
   useEffect(() => {
@@ -2750,19 +2781,25 @@ export default function RailwayMapEditor() {
       if (event.ctrlKey || event.metaKey) {
         const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
         const focusPoint = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : undefined;
-        const nextZoom = event.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
+        const normalizedDeltaY = normalizeWheelDelta(event.deltaY, event.deltaMode);
+        if (Math.abs(normalizedDeltaY) < 0.25) return;
+        const zoomFactor = Math.exp(-normalizedDeltaY * 0.006);
+        const nextZoom = zoomRef.current * zoomFactor;
         applyZoom(nextZoom, focusPoint);
         return;
       }
 
-      panViewportByPixels(event.deltaX, event.deltaY);
+      panViewportByPixels(
+        normalizeWheelDelta(event.deltaX, event.deltaMode),
+        normalizeWheelDelta(event.deltaY, event.deltaMode),
+      );
     }
 
     element.addEventListener("wheel", handleNativeWheel, { passive: false });
     return () => {
       element.removeEventListener("wheel", handleNativeWheel);
     };
-  }, [zoom, viewBox.centerX, viewBox.centerY, viewBox.x, viewBox.y]);
+  }, []);
 
   function resetViewportToSheet() {
     const center = getSheetContentCenter(currentNodes);
@@ -3480,6 +3517,39 @@ export default function RailwayMapEditor() {
                             {selectedNodeLanes.length > 1 ? (
                               <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
                                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Lane Order</div>
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                  <svg viewBox="0 0 180 56" className="h-14 w-full" aria-hidden="true">
+                                    {selectedNodeLanes.map((lane, index) => {
+                                      const offset = (index - (selectedNodeLanes.length - 1) / 2) * 22;
+                                      const cx = selectedNodeLaneAxis === "horizontal" ? 90 + offset : 90;
+                                      const cy = selectedNodeLaneAxis === "vertical" ? 28 + offset : 28;
+                                      const stroke = lane.lineColors[0] ?? "#64748b";
+                                      const isActive = selectedNodeMarkerLaneId === lane.id;
+                                      return (
+                                        <g key={lane.id}>
+                                          <circle
+                                            cx={cx}
+                                            cy={cy}
+                                            r={isActive ? 9 : 7}
+                                            fill="white"
+                                            stroke={stroke}
+                                            strokeWidth={isActive ? 4 : 3}
+                                          />
+                                          {isActive ? (
+                                            <circle
+                                              cx={cx}
+                                              cy={cy}
+                                              r="13"
+                                              fill="none"
+                                              stroke="#0f172a"
+                                              strokeDasharray="4 3"
+                                            />
+                                          ) : null}
+                                        </g>
+                                      );
+                                    })}
+                                  </svg>
+                                </div>
                                 <div className="space-y-2">
                                   {selectedNodeLanes.map((lane, index) => (
                                     <div
@@ -3489,7 +3559,13 @@ export default function RailwayMapEditor() {
                                       }`}
                                     >
                                       <div className="min-w-0">
-                                        <div className="font-medium">{lane.lineNames.length > 0 ? lane.lineNames.join(", ") : lane.id}</div>
+                                        <div className="flex items-center gap-2 font-medium">
+                                          <span
+                                            className="inline-block h-2.5 w-2.5 rounded-full"
+                                            style={{ backgroundColor: lane.lineColors[0] ?? "#94a3b8" }}
+                                          />
+                                          <span>{lane.lineNames.length > 0 ? lane.lineNames.join(", ") : "Unassigned lane"}</span>
+                                        </div>
                                         <div className="text-xs text-muted">
                                           {lane.segmentIds.length} segment{lane.segmentIds.length === 1 ? "" : "s"}
                                         </div>
@@ -3502,7 +3578,7 @@ export default function RailwayMapEditor() {
                                           disabled={index === 0}
                                           onClick={() => moveLaneOrder(selectedNode.id, lane.id, -1)}
                                         >
-                                          Up
+                                          {selectedNodeLaneMoveLabels.backward}
                                         </Button>
                                         <Button
                                           type="button"
@@ -3511,13 +3587,15 @@ export default function RailwayMapEditor() {
                                           disabled={index === selectedNodeLanes.length - 1}
                                           onClick={() => moveLaneOrder(selectedNode.id, lane.id, 1)}
                                         >
-                                          Down
+                                          {selectedNodeLaneMoveLabels.forward}
                                         </Button>
                                       </div>
                                     </div>
                                   ))}
                                 </div>
-                                <p className="text-xs text-muted">Use this when parallel tracks at this node need a different visual ordering.</p>
+                                <p className="text-xs text-muted">
+                                  {selectedNodeLaneMoveLabels.hint} Use this when parallel tracks at this node need a different visual ordering.
+                                </p>
                               </div>
                             ) : null}
                             {selectedNodeStations.length === 0 ? (

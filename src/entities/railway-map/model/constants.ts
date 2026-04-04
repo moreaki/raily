@@ -5,6 +5,217 @@ const DEFAULT_STATION_FONT_WEIGHT = "600" as const;
 const DEFAULT_STATION_FONT_SIZE = 14;
 const DEFAULT_STATION_SYMBOL_SIZE = 1;
 
+function scaleMapLayout(map: RailwayMap, scaleX: number, scaleY: number, originX: number, originY: number): RailwayMap {
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodes: map.model.nodes.map((node) => ({
+        ...node,
+        x: originX + (node.x - originX) * scaleX,
+        y: originY + (node.y - originY) * scaleY,
+      })),
+      stations: map.model.stations.map((station) => ({
+        ...station,
+        label: station.label
+          ? {
+              ...station.label,
+              x: originX + (station.label.x - originX) * scaleX,
+              y: originY + (station.label.y - originY) * scaleY,
+            }
+          : station.label,
+      })),
+    },
+  };
+}
+
+function directedEdgeKey(fromNodeId: string, toNodeId: string) {
+  return `${fromNodeId}::${toNodeId}`;
+}
+
+function snapVectorToOctilinear(
+  deltaX: number,
+  deltaY: number,
+  step: number,
+  preferredDirection?: { x: number; y: number } | null,
+) {
+  if (deltaX === 0 && deltaY === 0) {
+    return { x: step, y: 0 };
+  }
+
+  const directions = [
+    { x: 1, y: 0 },
+    { x: 1, y: 1 },
+    { x: 0, y: 1 },
+    { x: -1, y: 1 },
+    { x: -1, y: 0 },
+    { x: -1, y: -1 },
+    { x: 0, y: -1 },
+    { x: 1, y: -1 },
+  ] as const;
+  const direction = preferredDirection
+    ? directions.find((candidate) => candidate.x === preferredDirection.x && candidate.y === preferredDirection.y) ?? directions[0]
+    : (() => {
+        const angle = Math.atan2(deltaY, deltaX);
+        const eighthTurn = Math.PI / 4;
+        const snappedIndex = (((Math.round(angle / eighthTurn) % 8) + 8) % 8);
+        return directions[snappedIndex];
+      })();
+  const length = Math.hypot(deltaX, deltaY);
+  const isDiagonal = direction.x !== 0 && direction.y !== 0;
+  const units = Math.max(1, Math.round(length / (isDiagonal ? Math.SQRT2 * step : step)));
+
+  return {
+    x: direction.x * units * step,
+    y: direction.y * units * step,
+  };
+}
+
+function octilinearizeMapLayout(
+  map: RailwayMap,
+  rootNodeId: string,
+  step: number,
+  preferredEdgeDirections: Record<string, { x: number; y: number }> = {},
+): RailwayMap {
+  const originalNodesById = new Map(map.model.nodes.map((node) => [node.id, node]));
+  const adjacency = new Map<string, string[]>();
+
+  for (const node of map.model.nodes) {
+    adjacency.set(node.id, []);
+  }
+
+  for (const segment of map.model.segments) {
+    const fromList = adjacency.get(segment.fromNodeId) ?? [];
+    fromList.push(segment.toNodeId);
+    adjacency.set(segment.fromNodeId, fromList);
+
+    const toList = adjacency.get(segment.toNodeId) ?? [];
+    toList.push(segment.fromNodeId);
+    adjacency.set(segment.toNodeId, toList);
+  }
+
+  const root = originalNodesById.get(rootNodeId) ?? map.model.nodes[0];
+  if (!root) return map;
+
+  const assignedPositions = new Map<string, { x: number; y: number }>();
+  assignedPositions.set(root.id, { x: root.x, y: root.y });
+
+  const queue = [root.id];
+  while (queue.length > 0) {
+    const currentNodeId = queue.shift()!;
+    const currentOriginal = originalNodesById.get(currentNodeId);
+    const currentAssigned = assignedPositions.get(currentNodeId);
+    if (!currentOriginal || !currentAssigned) continue;
+
+    for (const nextNodeId of adjacency.get(currentNodeId) ?? []) {
+      if (assignedPositions.has(nextNodeId)) continue;
+      const nextOriginal = originalNodesById.get(nextNodeId);
+      if (!nextOriginal) continue;
+
+      const directPreference = preferredEdgeDirections[directedEdgeKey(currentNodeId, nextNodeId)] ?? null;
+      const reversePreference = preferredEdgeDirections[directedEdgeKey(nextNodeId, currentNodeId)] ?? null;
+      const preferredDirection = directPreference
+        ? directPreference
+        : reversePreference
+          ? { x: -reversePreference.x, y: -reversePreference.y }
+          : null;
+
+      const snappedDelta = snapVectorToOctilinear(
+        nextOriginal.x - currentOriginal.x,
+        nextOriginal.y - currentOriginal.y,
+        step,
+        preferredDirection,
+      );
+
+      assignedPositions.set(nextNodeId, {
+        x: currentAssigned.x + snappedDelta.x,
+        y: currentAssigned.y + snappedDelta.y,
+      });
+      queue.push(nextNodeId);
+    }
+  }
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodes: map.model.nodes.map((node) => ({
+        ...node,
+        x: assignedPositions.get(node.id)?.x ?? node.x,
+        y: assignedPositions.get(node.id)?.y ?? node.y,
+      })),
+    },
+  };
+}
+
+const VALENCIA_BOOTSTRAP_EDGE_DIRECTIONS: Record<string, { x: number; y: number }> = {
+  "n-c5-0::n-c5-1": { x: 1, y: 1 },
+  "n-c5-1::n-c5-2": { x: 1, y: 1 },
+  "n-c5-2::n-c5-3": { x: 1, y: 1 },
+  "n-c5-3::n-c5-4": { x: 1, y: 1 },
+  "n-c5-4::n-c5-5": { x: 1, y: 1 },
+  "n-c5-5::n-c5-6": { x: 1, y: 1 },
+  "n-c5-6::n-c5-7": { x: 1, y: 1 },
+  "n-c5-7::n-c5-8": { x: 1, y: 1 },
+  "n-c5-8::n-sagunt": { x: 1, y: 1 },
+  "n-c6-0::n-c6-1": { x: -1, y: 1 },
+  "n-c6-1::n-c6-2": { x: -1, y: 1 },
+  "n-c6-2::n-c6-2a": { x: -1, y: 1 },
+  "n-c6-2a::n-c6-3": { x: -1, y: 1 },
+  "n-c6-3::n-c6-4": { x: -1, y: 1 },
+  "n-c6-4::n-c6-5": { x: -1, y: 1 },
+  "n-c6-5::n-c6-6": { x: -1, y: 1 },
+  "n-c6-6::n-c6-7": { x: -1, y: 1 },
+  "n-c6-7::n-c6-8": { x: -1, y: 1 },
+  "n-c6-8::n-sagunt": { x: -1, y: 1 },
+  "n-sagunt::n-pucol": { x: 0, y: 1 },
+  "n-pucol::n-puig": { x: 0, y: 1 },
+  "n-puig::n-massalfassar": { x: 0, y: 1 },
+  "n-massalfassar::n-albuixech": { x: 0, y: 1 },
+  "n-albuixech::n-roca-cuper": { x: 0, y: 1 },
+  "n-roca-cuper::n-cabanyal": { x: 0, y: 1 },
+  "n-cabanyal::n-font": { x: 0, y: 1 },
+  "n-font::n-nord": { x: 0, y: 1 },
+  "n-c3-0::n-c3-0a": { x: 1, y: 1 },
+  "n-c3-0a::n-c3-1": { x: 1, y: 1 },
+  "n-c3-1::n-c3-2": { x: 1, y: 1 },
+  "n-c3-2::n-c3-2a": { x: 1, y: 1 },
+  "n-c3-2a::n-c3-3": { x: 1, y: 1 },
+  "n-c3-3::n-c3-4": { x: 1, y: 1 },
+  "n-c3-4::n-c3-5": { x: 1, y: 0 },
+  "n-c3-5::n-c3-6": { x: 1, y: 0 },
+  "n-c3-6::n-c3-6a": { x: 1, y: 0 },
+  "n-c3-6a::n-c3-7": { x: 1, y: 0 },
+  "n-c3-7::n-c3-8": { x: 1, y: 0 },
+  "n-c3-8::n-c3-8a": { x: 1, y: 0 },
+  "n-c3-8a::n-c3-9": { x: 1, y: 0 },
+  "n-c3-9::n-font": { x: 1, y: -1 },
+  "n-nord::n-alfafar": { x: -1, y: 1 },
+  "n-alfafar::n-massanassa": { x: -1, y: 1 },
+  "n-massanassa::n-catarroja": { x: -1, y: 1 },
+  "n-catarroja::n-albal": { x: -1, y: 1 },
+  "n-albal::n-silla": { x: -1, y: 1 },
+  "n-silla::n-c1-0a": { x: 1, y: 1 },
+  "n-c1-0a::n-c1-0": { x: 1, y: 1 },
+  "n-c1-0::n-c1-1": { x: 1, y: 1 },
+  "n-c1-1::n-c1-2": { x: 1, y: 1 },
+  "n-c1-2::n-c1-3": { x: 1, y: 1 },
+  "n-c1-3::n-c1-4": { x: 1, y: 1 },
+  "n-c1-4::n-c1-5": { x: 1, y: 1 },
+  "n-c1-5::n-c1-6": { x: 0, y: 1 },
+  "n-silla::n-c2-0": { x: 0, y: 1 },
+  "n-c2-0::n-c2-1": { x: 0, y: 1 },
+  "n-c2-1::n-c2-2": { x: 0, y: 1 },
+  "n-c2-2::n-c2-3": { x: 0, y: 1 },
+  "n-c2-3::n-c2-3a": { x: 0, y: 1 },
+  "n-c2-3a::n-c2-4": { x: 0, y: 1 },
+  "n-c2-4::n-c2-5": { x: 0, y: 1 },
+  "n-c2-5::n-c2-6": { x: 0, y: 1 },
+  "n-c2-6::n-c2-7": { x: 0, y: 1 },
+  "n-c2-7::n-c2-8": { x: 0, y: 1 },
+  "n-c2-8::n-c2-9": { x: 0, y: 1 },
+};
+
 export const LINE_PRESETS = [
   { id: "C1", color: "#e11d48", strokeWidth: 10, strokeStyle: "solid" as const },
   { id: "C2", color: "#2563eb", strokeWidth: 10, strokeStyle: "dashed" as const },
@@ -86,7 +297,7 @@ export const INITIAL_MAP: RailwayMap = {
   },
 };
 
-export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
+const DEVELOPMENT_BOOTSTRAP_MAP_BASE: RailwayMap = {
   config: {
     stationKinds: [
       { id: "sk-stop", name: "Stop", shape: "circle", symbolSize: DEFAULT_STATION_SYMBOL_SIZE, fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
@@ -330,3 +541,10 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
     ],
   },
 };
+
+export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = octilinearizeMapLayout(
+  scaleMapLayout(DEVELOPMENT_BOOTSTRAP_MAP_BASE, 1.12, 1.12, 660, 920),
+  "n-nord",
+  48,
+  VALENCIA_BOOTSTRAP_EDGE_DIRECTIONS,
+);
