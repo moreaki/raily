@@ -35,6 +35,7 @@ const WORLD_SIZE = 200000;
 const LABEL_FONT_SIZE = 14;
 const LABEL_PADDING_X = 10;
 const LABEL_PADDING_Y = 8;
+const MIN_GRID_STEP = 4;
 
 function downloadFile(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -284,9 +285,8 @@ export default function RailwayMapEditor() {
   const [viewportCenter, setViewportCenter] = useState({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
   const [sheetViews, setSheetViews] = useState<Record<string, { zoom: number; centerX: number; centerY: number }>>(loadStoredSheetViews);
   const [showGrid, setShowGrid] = useState(false);
-  const [showLeaderLines, setShowLeaderLines] = useState(true);
-  const [gridStepX, setGridStepX] = useState(80);
-  const [gridStepY, setGridStepY] = useState(80);
+  const [gridStepX, setGridStepX] = useState(20);
+  const [gridStepY, setGridStepY] = useState(20);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [draggingLabelStationId, setDraggingLabelStationId] = useState<string | null>(null);
   const [dragLastPoint, setDragLastPoint] = useState<{ x: number; y: number } | null>(null);
@@ -422,8 +422,8 @@ export default function RailwayMapEditor() {
   const gridLines = useMemo(() => {
     if (!showGrid) return { vertical: [] as number[], horizontal: [] as number[] };
 
-    const safeStepX = Math.max(8, gridStepX);
-    const safeStepY = Math.max(8, gridStepY);
+    const safeStepX = Math.max(MIN_GRID_STEP, gridStepX);
+    const safeStepY = Math.max(MIN_GRID_STEP, gridStepY);
     const vertical: number[] = [];
     const horizontal: number[] = [];
 
@@ -1216,13 +1216,13 @@ export default function RailwayMapEditor() {
                       <Input
                         type="number"
                         value={gridStepX}
-                        onChange={(event) => setGridStepX(Math.max(8, Number(event.target.value) || 8))}
+                        onChange={(event) => setGridStepX(Math.max(MIN_GRID_STEP, Number(event.target.value) || MIN_GRID_STEP))}
                         className="h-8 w-20 px-2 py-1 text-xs"
                       />
                       <Input
                         type="number"
                         value={gridStepY}
-                        onChange={(event) => setGridStepY(Math.max(8, Number(event.target.value) || 8))}
+                        onChange={(event) => setGridStepY(Math.max(MIN_GRID_STEP, Number(event.target.value) || MIN_GRID_STEP))}
                         className="h-8 w-20 px-2 py-1 text-xs"
                       />
                     </div>
@@ -1349,7 +1349,7 @@ export default function RailwayMapEditor() {
                       const isSelected = selectedStationId === station.id;
                       const diagnostics = labelDiagnostics.get(station.id);
                       const box = diagnostics?.box ?? estimateLabelBox(station.name, labelX, labelY);
-                      const shouldShowLeader = showLeaderLines && (diagnostics?.leaderLine ?? false);
+                      const shouldShowLeader = isDragging && (diagnostics?.leaderLine ?? false);
                       const labelAnchorY = labelY - 6;
 
                       return (
@@ -1401,10 +1401,6 @@ export default function RailwayMapEditor() {
                   <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
                     {currentSheet?.name ?? "Sheet"}
                   </div>
-                  <label className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
-                    <input type="checkbox" checked={showLeaderLines} onChange={(event) => setShowLeaderLines(event.target.checked)} />
-                    Leader lines
-                  </label>
                 </div>
 
                 {nodeContextMenu ? (
