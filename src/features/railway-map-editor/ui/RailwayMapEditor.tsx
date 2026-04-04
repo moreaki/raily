@@ -482,6 +482,7 @@ export default function RailwayMapEditor() {
   const [jsonText, setJsonText] = useState(JSON.stringify(initialMap, null, 2));
   const [errorMessage, setErrorMessage] = useState("");
   const [nodeContextMenu, setNodeContextMenu] = useState<{ nodeIds: string[]; x: number; y: number } | null>(null);
+  const [segmentContextMenu, setSegmentContextMenu] = useState<{ segmentId: string; x: number; y: number } | null>(null);
   const [nodeAssignmentQuery, setNodeAssignmentQuery] = useState("");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
@@ -499,6 +500,7 @@ export default function RailwayMapEditor() {
   const currentSheet = map.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
   const contextMenuNodeId = nodeContextMenu?.nodeIds.length === 1 ? nodeContextMenu.nodeIds[0] : null;
   const contextMenuNode = contextMenuNodeId ? map.nodes.find((node) => node.id === contextMenuNodeId) ?? null : null;
+  const contextMenuSegment = segmentContextMenu ? map.segments.find((segment) => segment.id === segmentContextMenu.segmentId) ?? null : null;
 
   const currentNodes = useMemo(() => map.nodes.filter((node) => node.sheetId === currentSheetId), [currentSheetId, map.nodes]);
   const selectedNodeIdsSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
@@ -644,6 +646,14 @@ export default function RailwayMapEditor() {
       return left.name.localeCompare(right.name);
     });
   }, [contextMenuNode, nodeAssignmentQuery, stationKindsById, unassignedStations]);
+  const assignedLinesForContextSegment = useMemo(() => {
+    if (!contextMenuSegment) return [];
+
+    return map.lineRuns
+      .filter((lineRun) => lineRun.segmentIds.includes(contextMenuSegment.id))
+      .map((lineRun) => linesById.get(lineRun.lineId))
+      .filter((line): line is Line => !!line);
+  }, [contextMenuSegment, linesById, map.lineRuns]);
   const viewBox = useMemo(() => {
     const { width, height } = viewBoxDimensions;
     const centerX = viewportCenter.x;
@@ -1174,6 +1184,73 @@ export default function RailwayMapEditor() {
         segmentIds: lineRun.segmentIds.filter((segmentId) => segmentId !== selectedSegment.id),
       })),
     }));
+    setSegmentContextMenu(null);
+  }
+
+  function deleteSegment(segmentId: string) {
+    updateMap((current) => ({
+      ...current,
+      segments: current.segments.filter((segment) => segment.id !== segmentId),
+      lineRuns: current.lineRuns.map((lineRun) => ({
+        ...lineRun,
+        segmentIds: lineRun.segmentIds.filter((candidate) => candidate !== segmentId),
+      })),
+    }));
+    if (selectedSegmentId === segmentId) {
+      setSelectedSegmentId("");
+    }
+    setSegmentContextMenu(null);
+  }
+
+  function duplicateSegment(segmentId: string) {
+    const source = map.segments.find((segment) => segment.id === segmentId);
+    if (!source) return;
+
+    const duplicated = {
+      ...JSON.parse(JSON.stringify(source)),
+      id: createSegmentId(),
+    };
+
+    updateMap((current) => ({
+      ...current,
+      segments: [...current.segments, duplicated],
+    }));
+    setSelectedSegmentId(duplicated.id);
+    setSegmentContextMenu(null);
+  }
+
+  function assignLineToSegment(lineId: string, segmentId: string) {
+    updateMap((current) => {
+      const { current: ensuredCurrent, lineRun } = ensureLineRun(current, lineId);
+      return {
+        ...ensuredCurrent,
+        lineRuns: ensuredCurrent.lineRuns.map((candidate) => {
+          if (candidate.id !== lineRun.id) return candidate;
+          const segmentIds = candidate.segmentIds.includes(segmentId)
+            ? candidate.segmentIds
+            : [...candidate.segmentIds, segmentId];
+          return { ...candidate, segmentIds };
+        }),
+      };
+    });
+    setSelectedLineId(lineId);
+    setSelectedSegmentId(segmentId);
+    setSegmentContextMenu(null);
+  }
+
+  function unassignLineFromSegment(lineId: string, segmentId: string) {
+    updateMap((current) => ({
+      ...current,
+      lineRuns: current.lineRuns.map((lineRun) =>
+        lineRun.lineId !== lineId
+          ? lineRun
+          : {
+              ...lineRun,
+              segmentIds: lineRun.segmentIds.filter((candidate) => candidate !== segmentId),
+            },
+      ),
+    }));
+    setSegmentContextMenu(null);
   }
 
   function deleteNodes(nodeIds: string[]) {
@@ -1310,6 +1387,7 @@ export default function RailwayMapEditor() {
   function handleNodeMouseDown(event: MouseEvent<SVGGElement>, nodeId: string) {
     event.stopPropagation();
     setNodeContextMenu(null);
+    setSegmentContextMenu(null);
     setSidePanel("edit");
     if (mode === "pan") {
       setPanning(true);
@@ -1366,6 +1444,7 @@ export default function RailwayMapEditor() {
   function handleLabelMouseDown(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
     event.stopPropagation();
     setNodeContextMenu(null);
+    setSegmentContextMenu(null);
     setSidePanel("edit");
     if (mode === "pan") {
       setPanning(true);
@@ -1395,6 +1474,7 @@ export default function RailwayMapEditor() {
   function handleCanvasMouseDown(event: MouseEvent<SVGSVGElement>) {
     if (event.target !== event.currentTarget) return;
     setNodeContextMenu(null);
+    setSegmentContextMenu(null);
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
     setPendingSegmentStartNodeId(null);
@@ -1429,6 +1509,7 @@ export default function RailwayMapEditor() {
 
   function handleSegmentMouseDown(segmentId: string) {
     setNodeContextMenu(null);
+    setSegmentContextMenu(null);
     setSidePanel("edit");
     setSelectedSegmentId(segmentId);
     setSelectedNodeId("");
@@ -1438,6 +1519,21 @@ export default function RailwayMapEditor() {
     if (mode === "assign") {
       toggleSegmentOnSelectedLine(segmentId);
     }
+  }
+
+  function handleSegmentContextMenu(event: MouseEvent<SVGPathElement>, segmentId: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    setNodeContextMenu(null);
+    setSelectedSegmentId(segmentId);
+    setSelectedNodeId("");
+    setSelectedNodeIds([]);
+    setSelectedStationId("");
+    setSegmentContextMenu({
+      segmentId,
+      x: event.clientX,
+      y: event.clientY,
+    });
   }
 
   function handleSvgMouseMove(event: MouseEvent<SVGSVGElement>) {
@@ -1551,6 +1647,7 @@ export default function RailwayMapEditor() {
 
   function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string) {
     event.preventDefault();
+    setSegmentContextMenu(null);
     if (!selectedNodeIdsSet.has(nodeId)) {
       selectSingleNode(nodeId);
     }
@@ -1837,6 +1934,7 @@ export default function RailwayMapEditor() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         onMouseDown={() => handleSegmentMouseDown(segment.id)}
+                        onContextMenu={(event) => handleSegmentContextMenu(event, segment.id)}
                       />
                     ))}
 
@@ -1854,6 +1952,7 @@ export default function RailwayMapEditor() {
                           strokeDasharray={lineStrokeDasharray(line)}
                           strokeLinecap="round"
                           strokeLinejoin="round"
+                          pointerEvents="none"
                         />
                       );
                     })}
@@ -2005,6 +2104,70 @@ export default function RailwayMapEditor() {
                     >
                       <Trash2 className="h-4 w-4" />
                       {nodeContextMenu.nodeIds.length > 1 ? "Delete nodes" : "Delete node"}
+                    </button>
+                  </div>
+                ) : null}
+
+                {segmentContextMenu && contextMenuSegment ? (
+                  <div
+                    className="fixed z-30 min-w-[240px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                    style={{ left: segmentContextMenu.x, top: segmentContextMenu.y }}
+                  >
+                    {assignedLinesForContextSegment.length > 0 ? (
+                      <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Unassign Line</div>
+                        <div className="mt-2 space-y-1">
+                          {assignedLinesForContextSegment.map((line) => (
+                            <button
+                              key={line.id}
+                              type="button"
+                              className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                              onClick={() => unassignLineFromSegment(line.id, contextMenuSegment.id)}
+                            >
+                              <span className="truncate">{line.name}</span>
+                              <span
+                                className="ml-3 h-3 w-3 shrink-0 rounded-full border border-slate-200"
+                                style={{ backgroundColor: line.color }}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Line</div>
+                      <div className="mt-2 max-h-40 space-y-1 overflow-auto">
+                        {map.lines.map((line) => (
+                          <button
+                            key={line.id}
+                            type="button"
+                            className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                            onClick={() => assignLineToSegment(line.id, contextMenuSegment.id)}
+                          >
+                            <span className="truncate">{line.name}</span>
+                            <span
+                              className="ml-3 h-3 w-3 shrink-0 rounded-full border border-slate-200"
+                              style={{ backgroundColor: line.color }}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                      onClick={() => duplicateSegment(contextMenuSegment.id)}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Duplicate segment
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
+                      onClick={() => deleteSegment(contextMenuSegment.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Remove segment
                     </button>
                   </div>
                 ) : null}
