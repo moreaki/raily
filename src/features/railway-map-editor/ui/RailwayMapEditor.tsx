@@ -135,6 +135,78 @@ function pointToSegmentDistance(point: MapPoint, start: MapPoint, end: MapPoint)
   return Math.hypot(point.x - projectedX, point.y - projectedY);
 }
 
+function pointInBox(
+  point: MapPoint,
+  box: ReturnType<typeof estimateLabelBox>,
+  padding = 0,
+) {
+  return (
+    point.x >= box.minX - padding &&
+    point.x <= box.maxX + padding &&
+    point.y >= box.minY - padding &&
+    point.y <= box.maxY + padding
+  );
+}
+
+function orientation(a: MapPoint, b: MapPoint, c: MapPoint) {
+  const value = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
+  if (Math.abs(value) < 0.0001) return 0;
+  return value > 0 ? 1 : 2;
+}
+
+function onSegment(a: MapPoint, b: MapPoint, c: MapPoint) {
+  return (
+    b.x <= Math.max(a.x, c.x) &&
+    b.x >= Math.min(a.x, c.x) &&
+    b.y <= Math.max(a.y, c.y) &&
+    b.y >= Math.min(a.y, c.y)
+  );
+}
+
+function segmentsIntersect(a1: MapPoint, a2: MapPoint, b1: MapPoint, b2: MapPoint) {
+  const o1 = orientation(a1, a2, b1);
+  const o2 = orientation(a1, a2, b2);
+  const o3 = orientation(b1, b2, a1);
+  const o4 = orientation(b1, b2, a2);
+
+  if (o1 !== o2 && o3 !== o4) return true;
+  if (o1 === 0 && onSegment(a1, b1, a2)) return true;
+  if (o2 === 0 && onSegment(a1, b2, a2)) return true;
+  if (o3 === 0 && onSegment(b1, a1, b2)) return true;
+  if (o4 === 0 && onSegment(b1, a2, b2)) return true;
+  return false;
+}
+
+function segmentIntersectsLabelBox(
+  start: MapPoint,
+  end: MapPoint,
+  box: ReturnType<typeof estimateLabelBox>,
+  padding = 8,
+) {
+  const expandedBox = {
+    minX: box.minX - padding,
+    maxX: box.maxX + padding,
+    minY: box.minY - padding,
+    maxY: box.maxY + padding,
+  };
+
+  if (pointInBox(start, expandedBox) || pointInBox(end, expandedBox)) {
+    return true;
+  }
+
+  const topLeft = { x: expandedBox.minX, y: expandedBox.minY };
+  const topRight = { x: expandedBox.maxX, y: expandedBox.minY };
+  const bottomRight = { x: expandedBox.maxX, y: expandedBox.maxY };
+  const bottomLeft = { x: expandedBox.minX, y: expandedBox.maxY };
+
+  return (
+    segmentsIntersect(start, end, topLeft, topRight) ||
+    segmentsIntersect(start, end, topRight, bottomRight) ||
+    segmentsIntersect(start, end, bottomRight, bottomLeft) ||
+    segmentsIntersect(start, end, bottomLeft, topLeft)
+  );
+}
+
 function candidateLabelPositions(node: MapNode) {
   return [
     { x: node.x + 14, y: node.y - 12, align: "right" as const },
@@ -180,6 +252,11 @@ function computeLabelPenalty(
     for (let index = 0; index < points.length - 1; index += 1) {
       const start = points[index];
       const end = points[index + 1];
+      if (segmentIntersectsLabelBox(start, end, box, 8)) {
+        segmentPenalty += 500;
+        continue;
+      }
+
       const boxCorners = [
         { x: box.minX, y: box.minY },
         { x: box.maxX, y: box.minY },
@@ -188,9 +265,7 @@ function computeLabelPenalty(
         { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 },
       ];
       const minDistance = Math.min(...boxCorners.map((corner) => pointToSegmentDistance(corner, start, end)));
-      if (minDistance < 8) {
-        segmentPenalty += 500;
-      } else if (minDistance < 18) {
+      if (minDistance < 18) {
         segmentPenalty += 120;
       }
     }
@@ -384,6 +459,11 @@ export default function RailwayMapEditor() {
         for (let index = 0; index < points.length - 1; index += 1) {
           const start = points[index];
           const end = points[index + 1];
+          if (segmentIntersectsLabelBox(start, end, box, 8)) {
+            overlapsSegment = true;
+            break;
+          }
+
           const boxCorners = [
             { x: box.minX, y: box.minY },
             { x: box.maxX, y: box.minY },
