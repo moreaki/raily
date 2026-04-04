@@ -1,0 +1,77 @@
+import type { RailwayMap } from "./types";
+
+export const LINE_PRESETS = [
+  { id: "C1", color: "#e11d48" },
+  { id: "C2", color: "#2563eb" },
+  { id: "C3", color: "#16a34a" },
+  { id: "C4", color: "#f59e0b" },
+  { id: "C5", color: "#7c3aed" },
+  { id: "C6", color: "#0891b2" },
+];
+
+export const INITIAL_MAP: RailwayMap = {
+  sheets: [
+    { id: "sh1", name: "Regional Overview" },
+    { id: "sh2", name: "Urban Detail" },
+  ],
+  nodes: [
+    { id: "n1", sheetId: "sh1", kind: "station", x: 170, y: 220 },
+    { id: "n2", sheetId: "sh1", kind: "station", x: 340, y: 220 },
+    { id: "n3", sheetId: "sh1", kind: "station", x: 510, y: 220 },
+    { id: "n4", sheetId: "sh1", kind: "station", x: 680, y: 220 },
+    { id: "n5", sheetId: "sh1", kind: "station", x: 340, y: 360 },
+    { id: "n6", sheetId: "sh1", kind: "station", x: 510, y: 360 },
+    { id: "n7", sheetId: "sh1", kind: "junction", x: 510, y: 110 },
+    { id: "n8", sheetId: "sh1", kind: "station", x: 680, y: 110 },
+    { id: "n9", sheetId: "sh2", kind: "station", x: 200, y: 220 },
+    { id: "n10", sheetId: "sh2", kind: "station", x: 320, y: 220 },
+    { id: "n11", sheetId: "sh2", kind: "station", x: 440, y: 220 },
+    { id: "n12", sheetId: "sh2", kind: "station", x: 560, y: 220 },
+    { id: "n13", sheetId: "sh2", kind: "station", x: 320, y: 340 },
+    { id: "n14", sheetId: "sh2", kind: "station", x: 440, y: 340 },
+  ],
+  stationKinds: [
+    { id: "sk1", name: "Stop", shape: "circle" },
+    { id: "sk2", name: "Hub", shape: "interchange" },
+    { id: "sk3", name: "Terminal", shape: "terminal" },
+  ],
+  stations: [
+    { id: "s1", nodeId: "n1", name: "Westside", kindId: "sk3", label: { x: 170, y: 196, align: "top" } },
+    { id: "s2", nodeId: "n2", name: "Central Park", kindId: "sk2", label: { x: 340, y: 196, align: "top" } },
+    { id: "s3", nodeId: "n3", name: "Museum", kindId: "sk2", label: { x: 510, y: 196, align: "top" } },
+    { id: "s4", nodeId: "n4", name: "Eastside", kindId: "sk3", label: { x: 680, y: 196, align: "top" } },
+    { id: "s5", nodeId: "n5", name: "Harbor", kindId: "sk1", label: { x: 340, y: 386, align: "bottom" } },
+    { id: "s6", nodeId: "n6", name: "Airport", kindId: "sk3", label: { x: 510, y: 386, align: "bottom" } },
+    { id: "s7", nodeId: "n8", name: "North Hill", kindId: "sk3", label: { x: 680, y: 86, align: "top" } },
+    { id: "s8", nodeId: "n9", name: "Inner West", kindId: "sk1", label: { x: 200, y: 196, align: "top" } },
+    { id: "s9", nodeId: "n10", name: "Central", kindId: "sk2", label: { x: 320, y: 196, align: "top" } },
+    { id: "s10", nodeId: "n11", name: "Market", kindId: "sk2", label: { x: 440, y: 196, align: "top" } },
+    { id: "s11", nodeId: "n12", name: "East Gate", kindId: "sk3", label: { x: 560, y: 196, align: "top" } },
+    { id: "s12", nodeId: "n13", name: "Docklands", kindId: "sk1", label: { x: 320, y: 366, align: "bottom" } },
+    { id: "s13", nodeId: "n14", name: "Airport Spur", kindId: "sk3", label: { x: 440, y: 366, align: "bottom" } },
+  ],
+  segments: [
+    { id: "sg1", sheetId: "sh1", fromNodeId: "n1", toNodeId: "n2", geometry: { kind: "straight" } },
+    { id: "sg2", sheetId: "sh1", fromNodeId: "n2", toNodeId: "n3", geometry: { kind: "straight" } },
+    { id: "sg3", sheetId: "sh1", fromNodeId: "n3", toNodeId: "n4", geometry: { kind: "straight" } },
+    { id: "sg4", sheetId: "sh1", fromNodeId: "n2", toNodeId: "n5", geometry: { kind: "straight" } },
+    { id: "sg5", sheetId: "sh1", fromNodeId: "n5", toNodeId: "n6", geometry: { kind: "straight" } },
+    { id: "sg6", sheetId: "sh1", fromNodeId: "n3", toNodeId: "n7", geometry: { kind: "straight" } },
+    { id: "sg7", sheetId: "sh1", fromNodeId: "n7", toNodeId: "n8", geometry: { kind: "straight" } },
+    { id: "sg8", sheetId: "sh2", fromNodeId: "n9", toNodeId: "n10", geometry: { kind: "straight" } },
+    { id: "sg9", sheetId: "sh2", fromNodeId: "n10", toNodeId: "n11", geometry: { kind: "straight" } },
+    { id: "sg10", sheetId: "sh2", fromNodeId: "n11", toNodeId: "n12", geometry: { kind: "straight" } },
+    { id: "sg11", sheetId: "sh2", fromNodeId: "n10", toNodeId: "n13", geometry: { kind: "straight" } },
+    { id: "sg12", sheetId: "sh2", fromNodeId: "n13", toNodeId: "n14", geometry: { kind: "straight" } },
+  ],
+  lines: [
+    { id: "l1", name: "C1", color: "#e11d48" },
+    { id: "l2", name: "C2", color: "#2563eb" },
+    { id: "l3", name: "C3", color: "#16a34a" },
+  ],
+  lineRuns: [
+    { id: "lr1", lineId: "l1", segmentIds: ["sg1", "sg2", "sg3"] },
+    { id: "lr2", lineId: "l2", segmentIds: ["sg1", "sg2", "sg6", "sg7", "sg8", "sg9", "sg10"] },
+    { id: "lr3", lineId: "l3", segmentIds: ["sg2", "sg4", "sg5", "sg9", "sg11", "sg12"] },
+  ],
+};
