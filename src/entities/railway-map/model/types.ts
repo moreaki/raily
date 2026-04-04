@@ -29,7 +29,7 @@ export interface StationLabel extends MapPoint {
 
 export interface Station {
   id: string;
-  nodeId: string;
+  nodeId: string | null;
   name: string;
   kindId: string;
   label?: StationLabel;

@@ -54,18 +54,20 @@ export function createDefaultNodeForSheet(map: RailwayMap, sheetId: string): Map
   };
 }
 
-export function createDefaultStation(map: RailwayMap, nodeId: string, name: string): Station {
-  const node = map.nodes.find((candidate) => candidate.id === nodeId);
+export function createDefaultStation(map: RailwayMap, nodeId: string | null, name: string): Station {
+  const node = nodeId ? map.nodes.find((candidate) => candidate.id === nodeId) : null;
   return {
     id: createStationId(),
     nodeId,
     name: name.trim() || `Station ${map.stations.length + 1}`,
     kindId: map.stationKinds[0]?.id ?? "",
-    label: {
-      x: node?.x ?? 160,
-      y: (node?.y ?? 520) - 24,
-      align: "top",
-    },
+    label: node
+      ? {
+          x: node.x,
+          y: node.y - 24,
+          align: "top",
+        }
+      : undefined,
   };
 }
 

@@ -244,6 +244,10 @@ function computeLabelPenalty(
   placedBoxes: ReturnType<typeof estimateLabelBox>[],
   nodesById: Map<string, MapNode>,
 ) {
+  if (!station.nodeId) {
+    return { score: Number.POSITIVE_INFINITY, box: estimateLabelBox(station.name, position.x, position.y) };
+  }
+
   const node = nodesById.get(station.nodeId);
   if (!node) {
     return { score: Number.POSITIVE_INFINITY, box: estimateLabelBox(station.name, position.x, position.y) };
@@ -291,6 +295,7 @@ function autoPlaceLabels(current: RailwayMap) {
   const resolvedBoxes: ReturnType<typeof estimateLabelBox>[] = [];
 
   return current.stations.map((station) => {
+    if (!station.nodeId) return station;
     const node = nodesById.get(station.nodeId);
     if (!node) return station;
 
@@ -359,7 +364,7 @@ function findNearbyFreePoint(map: RailwayMap, sheetId: string, preferredCenter: 
     }
 
     for (const station of map.stations) {
-      if (!sheetNodeIds.has(station.nodeId)) continue;
+      if (!station.nodeId || !sheetNodeIds.has(station.nodeId)) continue;
       const stationNode = nodesById.get(station.nodeId);
       if (!stationNode) continue;
       const position = getStationLabelPosition(station, stationNode);
@@ -493,14 +498,20 @@ export default function RailwayMapEditor() {
   const currentSheet = map.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
   const contextMenuNodeId = nodeContextMenu?.nodeIds.length === 1 ? nodeContextMenu.nodeIds[0] : null;
   const contextMenuNode = contextMenuNodeId ? map.nodes.find((node) => node.id === contextMenuNodeId) ?? null : null;
-  const allNodeIds = useMemo(() => new Set(map.nodes.map((node) => node.id)), [map.nodes]);
 
   const currentNodes = useMemo(() => map.nodes.filter((node) => node.sheetId === currentSheetId), [currentSheetId, map.nodes]);
   const selectedNodeIdsSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
   const currentNodeIds = useMemo(() => new Set(currentNodes.map((node) => node.id)), [currentNodes]);
   const currentStations = useMemo(
-    () => map.stations.filter((station) => currentNodeIds.has(station.nodeId)),
+    () =>
+      map.stations.filter(
+        (station): station is Station & { nodeId: string } => !!station.nodeId && currentNodeIds.has(station.nodeId),
+      ),
     [currentNodeIds, map.stations],
+  );
+  const unassignedStations = useMemo(
+    () => map.stations.filter((station): station is Station & { nodeId: null } => !station.nodeId),
+    [map.stations],
   );
   const currentSegments = useMemo(
     () => map.segments.filter((segment) => segment.sheetId === currentSheetId),
@@ -515,6 +526,7 @@ export default function RailwayMapEditor() {
     const next = new Map<string, Station[]>();
 
     for (const station of currentStations) {
+      if (!station.nodeId) continue;
       const current = next.get(station.nodeId) ?? [];
       current.push(station);
       next.set(station.nodeId, current);
@@ -604,8 +616,7 @@ export default function RailwayMapEditor() {
     if (!contextMenuNode) return [];
 
     const query = normalizeSearchValue(nodeAssignmentQuery);
-    const results = currentStations
-      .filter((station) => station.nodeId === contextMenuNode.id || !allNodeIds.has(station.nodeId))
+    const results = unassignedStations
       .filter((station) => {
         if (!query) return true;
         const kindName = stationKindsById.get(station.kindId)?.name ?? "";
@@ -622,7 +633,7 @@ export default function RailwayMapEditor() {
       if (leftStarts !== rightStarts) return leftStarts ? -1 : 1;
       return left.name.localeCompare(right.name);
     });
-  }, [allNodeIds, contextMenuNode, currentStations, nodeAssignmentQuery, stationKindsById]);
+  }, [contextMenuNode, nodeAssignmentQuery, stationKindsById, unassignedStations]);
   const viewBox = useMemo(() => {
     const { width, height } = viewBoxDimensions;
     const centerX = viewportCenter.x;
@@ -850,21 +861,10 @@ export default function RailwayMapEditor() {
   }
 
   function addStation() {
-    if (!currentSheet) return;
-    updateMap((current) => {
-      const placement = findNearbyFreePoint(current, currentSheet.id, viewportCenter);
-      const node = {
-        ...createDefaultNodeForSheet(current, currentSheet.id),
-        x: placement.x,
-        y: placement.y,
-      };
-      const station = createDefaultStationAtNode(current, node, newStationName);
-      return {
-        ...current,
-        nodes: [...current.nodes, node],
-        stations: [...current.stations, station],
-      };
-    });
+    updateMap((current) => ({
+      ...current,
+      stations: [...current.stations, createDefaultStation(current, null, newStationName)],
+    }));
     setNewStationName("");
   }
 
@@ -1005,6 +1005,7 @@ export default function RailwayMapEditor() {
     updateMap((current) => ({
       ...current,
       stations: autoPlaceLabels(current).map((station) => {
+        if (!station.nodeId) return station;
         const node = current.nodes.find((candidate) => candidate.id === station.nodeId);
         return node?.sheetId === currentSheetId
           ? station
@@ -1015,7 +1016,7 @@ export default function RailwayMapEditor() {
 
   function fixLabelForStation(stationId: string) {
     const station = map.stations.find((candidate) => candidate.id === stationId);
-    if (!station) return;
+    if (!station || !station.nodeId) return;
     const stationNode = map.nodes.find((node) => node.id === station.nodeId);
     if (!stationNode) return;
 
@@ -1097,7 +1098,7 @@ export default function RailwayMapEditor() {
       ...current,
       sheets: current.sheets.filter((sheet) => sheet.id !== currentSheet.id),
       nodes: current.nodes.filter((node) => node.sheetId !== currentSheet.id),
-      stations: current.stations.filter((station) => !nodeIdsToRemove.has(station.nodeId)),
+      stations: current.stations.filter((station) => !station.nodeId || !nodeIdsToRemove.has(station.nodeId)),
       segments: current.segments.filter((segment) => segment.sheetId !== currentSheet.id),
       lineRuns: current.lineRuns.map((lineRun) => ({
         ...lineRun,
@@ -1177,7 +1178,7 @@ export default function RailwayMapEditor() {
     updateMap((current) => ({
       ...current,
       nodes: current.nodes.filter((node) => !nodeIdSet.has(node.id)),
-      stations: current.stations.filter((station) => !nodeIdSet.has(station.nodeId)),
+      stations: current.stations.filter((station) => !station.nodeId || !nodeIdSet.has(station.nodeId)),
       segments: current.segments.filter((segment) => !connectedSegmentIds.has(segment.id)),
       lineRuns: current.lineRuns.map((lineRun) => ({
         ...lineRun,
@@ -1187,7 +1188,7 @@ export default function RailwayMapEditor() {
 
     setSelectedNodeIds((current) => current.filter((nodeId) => !nodeIdSet.has(nodeId)));
     if (selectedNodeId && nodeIdSet.has(selectedNodeId)) setSelectedNodeId("");
-    if (selectedStationId && map.stations.find((station) => station.id === selectedStationId && nodeIdSet.has(station.nodeId))) {
+    if (selectedStationId && map.stations.find((station) => station.id === selectedStationId && !!station.nodeId && nodeIdSet.has(station.nodeId))) {
       setSelectedStationId("");
     }
     setNodeContextMenu(null);
@@ -1195,6 +1196,17 @@ export default function RailwayMapEditor() {
 
   function deleteNode(nodeId: string) {
     deleteNodes([nodeId]);
+  }
+
+  function deleteStation(stationId: string) {
+    updateMap((current) => ({
+      ...current,
+      stations: current.stations.filter((station) => station.id !== stationId),
+    }));
+    if (selectedStationId === stationId) {
+      setSelectedStationId("");
+    }
+    setNodeContextMenu(null);
   }
 
   function deleteSelectedStationKind() {
@@ -1447,7 +1459,7 @@ export default function RailwayMapEditor() {
         ...current,
         stations: current.stations.map((station) => {
           if (station.id !== draggingLabelStationId) return station;
-          const stationNode = current.nodes.find((node) => node.id === station.nodeId);
+          const stationNode = station.nodeId ? current.nodes.find((node) => node.id === station.nodeId) : null;
           return {
             ...station,
             label: {
@@ -1480,10 +1492,10 @@ export default function RailwayMapEditor() {
         return shouldMove ? { ...node, x: node.x + deltaX, y: node.y + deltaY } : node;
       }),
       stations: current.stations.map((station) => {
-        const stationNode = current.nodes.find((node) => node.id === station.nodeId);
+        const stationNode = station.nodeId ? current.nodes.find((node) => node.id === station.nodeId) : null;
         const shouldMove = moveAllNodes
           ? stationNode?.sheetId === currentSheetId
-          : nodeIdsToMove.has(station.nodeId);
+          : !!station.nodeId && nodeIdsToMove.has(station.nodeId);
         if (!shouldMove || !station.label) return station;
         return {
           ...station,
@@ -1637,6 +1649,7 @@ export default function RailwayMapEditor() {
   }
 
   const selectedNodeStations = selectedNode ? stationsByNodeId.get(selectedNode.id) ?? [] : [];
+  const visibleStations = useMemo(() => [...currentStations, ...unassignedStations], [currentStations, unassignedStations]);
 
   return (
     <div className="min-h-screen px-4 py-5 sm:px-6">
@@ -1870,7 +1883,7 @@ export default function RailwayMapEditor() {
                       return (
                         <g
                           key={station.id}
-                          onMouseDown={(event) => handleLabelMouseDown(event, station.id, station.nodeId)}
+                          onMouseDown={(event) => handleLabelMouseDown(event, station.id, node.id)}
                           style={{ cursor: "grab" }}
                         >
                           {shouldShowLeader ? (
@@ -2074,7 +2087,7 @@ export default function RailwayMapEditor() {
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>
-                        <p className="text-xs text-muted">`Station` creates a named station with its own node. `Track Point` creates an unlabeled geometry point.</p>
+                        <p className="text-xs text-muted">Quick add creates an unassigned station object. Use the canvas to assign it to a track point later.</p>
                       </section>
 
                       <section className="space-y-3">
@@ -2105,7 +2118,7 @@ export default function RailwayMapEditor() {
                       <section className="space-y-3">
                         <div className="text-sm font-semibold text-ink">Stations</div>
                         <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                          {currentStations.map((station) => (
+                          {visibleStations.map((station) => (
                             <div
                               key={station.id}
                               className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
@@ -2115,14 +2128,17 @@ export default function RailwayMapEditor() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setSelectedNodeId(station.nodeId);
-                                  setSelectedNodeIds([station.nodeId]);
+                                  setSelectedNodeId(station.nodeId ?? "");
+                                  setSelectedNodeIds(station.nodeId ? [station.nodeId] : []);
                                   setSelectedStationId(station.id);
                                 }}
                                 className="flex min-w-0 flex-1 items-center justify-between text-left"
                               >
                                 <span className="truncate">{station.name}</span>
-                                <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
+                                <div className="flex items-center gap-2">
+                                  {!station.nodeId ? <Badge>Unassigned</Badge> : null}
+                                  <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
+                                </div>
                               </button>
                               <button
                                 type="button"
@@ -2130,7 +2146,7 @@ export default function RailwayMapEditor() {
                                 className={`rounded-lg px-2 py-1 ${
                                   selectedStationId === station.id ? "bg-white/15 text-white hover:bg-white/25" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                                 }`}
-                                onClick={() => deleteNode(station.nodeId)}
+                                onClick={() => (station.nodeId ? deleteNode(station.nodeId) : deleteStation(station.id))}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>

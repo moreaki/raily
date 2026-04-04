@@ -27,7 +27,7 @@ const stationKindSchema = z.object({
 
 const stationSchema = z.object({
   id: z.string().min(1),
-  nodeId: z.string().min(1),
+  nodeId: z.string().min(1).nullable(),
   name: z.string().min(1),
   kindId: z.string().min(1),
   label: stationLabelSchema.optional(),
