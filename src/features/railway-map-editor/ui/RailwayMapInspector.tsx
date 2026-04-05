@@ -656,21 +656,6 @@ export function RailwayMapInspector({
                                       <div className="flex h-full flex-col items-center justify-center gap-1 px-1">
                                         <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cellLane.lineColors[0] ?? "#94a3b8" }} />
                                         <span className="truncate font-medium text-ink">{cellLane.lineNames[0] || "Port"}</span>
-                                        <svg viewBox="0 0 28 28" className="h-4 w-4 overflow-visible">
-                                          {cellLane.connections.map((connection, connectionIndex) => (
-                                            <line
-                                              key={`${cellLane.id}:cell:${connectionIndex}`}
-                                              x1="14"
-                                              y1="14"
-                                              x2={connection.side === "left" ? 2 : connection.side === "right" ? 26 : 14}
-                                              y2={connection.side === "up" ? 2 : connection.side === "down" ? 26 : 14}
-                                              stroke={connection.color ?? "#64748b"}
-                                              strokeWidth="2"
-                                              strokeLinecap="round"
-                                            />
-                                          ))}
-                                          <circle cx="14" cy="14" r="2.5" fill={cellLane.lineColors[0] ?? "#64748b"} />
-                                        </svg>
                                       </div>
                                     ) : (
                                       <span className="text-slate-300">{activeLaneId ? "Place" : ""}</span>
