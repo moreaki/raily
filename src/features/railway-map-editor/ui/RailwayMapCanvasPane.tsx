@@ -789,7 +789,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
             <div className="pointer-events-auto relative h-[52%]">
               <div
                 className={`absolute right-0 top-1/2 flex -translate-y-1/2 transition-transform duration-200 ${
-                  showToolsRail ? "translate-x-0" : "translate-x-[228px]"
+                  showToolsRail ? "translate-x-0" : "translate-x-[220px]"
                 }`}
               >
                 <div className="flex w-[248px] flex-row-reverse items-stretch">
@@ -810,7 +810,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       className="rounded-l-xl border border-r-0 border-slate-200 bg-white/96 px-2 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600 shadow-sm backdrop-blur [writing-mode:vertical-rl]"
                       onClick={() => setToolsRailOpen((current) => !current)}
                     >
-                      Tools
+                      <span className="block rotate-180">Tools</span>
                     </button>
                   </div>
                 </div>
