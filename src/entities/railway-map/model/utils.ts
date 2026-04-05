@@ -325,6 +325,7 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
   for (const node of nodes) {
     const connectedSegments = segmentsByNodeId.get(node.id) ?? [];
     const existingForNode = [...(existingNodeLanesByNodeId.get(node.id) ?? [])].sort((left, right) => left.order - right.order);
+    const isSimplePassThroughNode = connectedSegments.length === 2;
 
     const laneGroups = new Map<
       string,
@@ -344,7 +345,9 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
             ? segment.toLaneId ?? null
             : null;
       const lineId = owningLineIdBySegmentId.get(segment.id) ?? null;
-      const groupKey = existingLaneId ?? `auto:${lineId ?? `segment:${segment.id}`}`;
+      const groupKey = isSimplePassThroughNode
+        ? existingLaneId ?? `through:${lineId ?? "unassigned"}`
+        : existingLaneId ?? `auto:${lineId ?? `segment:${segment.id}`}`;
 
       if (!laneGroups.has(groupKey)) {
         laneGroups.set(groupKey, {
@@ -396,7 +399,9 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
             ? segment.toLaneId
             : null;
       const lineId = owningLineIdBySegmentId.get(segment.id) ?? null;
-      const groupKey = groupKeyBase ?? `auto:${lineId ?? `segment:${segment.id}`}`;
+      const groupKey = isSimplePassThroughNode
+        ? groupKeyBase ?? `through:${lineId ?? "unassigned"}`
+        : groupKeyBase ?? `auto:${lineId ?? `segment:${segment.id}`}`;
       const laneId = laneIdsByNodeIdAndKey.get(`${node.id}:${groupKey}`);
       if (!laneId) continue;
 
