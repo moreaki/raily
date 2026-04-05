@@ -1167,7 +1167,7 @@ export default function RailwayMapEditor() {
       ...current,
       config: {
         ...current.config,
-        parallelTrackSpacing: Math.min(48, Math.max(8, value || 18)),
+        parallelTrackSpacing: Math.min(48, Math.max(8, value || 22)),
       },
     }));
   }
@@ -1178,6 +1178,36 @@ export default function RailwayMapEditor() {
       config: {
         ...current.config,
         segmentIndicatorWidth: Math.min(36, Math.max(8, value || 16)),
+      },
+    }));
+  }
+
+  function updateSelectedSegmentIndicatorBoost(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: {
+        ...current.config,
+        selectedSegmentIndicatorBoost: Math.min(12, Math.max(0, value || 4)),
+      },
+    }));
+  }
+
+  function updateGridLineOpacity(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: {
+        ...current.config,
+        gridLineOpacity: Math.min(0.8, Math.max(0.1, value || 0.45)),
+      },
+    }));
+  }
+
+  function updateLabelAxisSnapSensitivity(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: {
+        ...current.config,
+        labelAxisSnapSensitivity: Math.min(24, Math.max(6, value || 10)),
       },
     }));
   }
@@ -1245,6 +1275,7 @@ export default function RailwayMapEditor() {
     canvasWidth: CANVAS_WIDTH,
     canvasHeight: CANVAS_HEIGHT,
     snapToGrid,
+    labelAxisSnapSensitivity: config.labelAxisSnapSensitivity,
     snapPointToGrid,
     updateMap,
     beginTransientMapChange,
@@ -1380,6 +1411,8 @@ export default function RailwayMapEditor() {
             setGridStepX={setGridStepX}
             setGridStepY={setGridStepY}
             segmentIndicatorWidth={config.segmentIndicatorWidth}
+            selectedSegmentIndicatorBoost={config.selectedSegmentIndicatorBoost}
+            gridLineOpacity={config.gridLineOpacity}
             canvasViewportRef={canvasViewportRef}
             svgRef={svgRef}
             canvasWidth={CANVAS_WIDTH}
@@ -1532,8 +1565,14 @@ export default function RailwayMapEditor() {
                     <RailwayMapSettings
                       parallelTrackSpacing={config.parallelTrackSpacing}
                       segmentIndicatorWidth={config.segmentIndicatorWidth}
+                      selectedSegmentIndicatorBoost={config.selectedSegmentIndicatorBoost}
+                      gridLineOpacity={config.gridLineOpacity}
+                      labelAxisSnapSensitivity={config.labelAxisSnapSensitivity}
                       updateParallelTrackSpacing={updateParallelTrackSpacing}
                       updateSegmentIndicatorWidth={updateSegmentIndicatorWidth}
+                      updateSelectedSegmentIndicatorBoost={updateSelectedSegmentIndicatorBoost}
+                      updateGridLineOpacity={updateGridLineOpacity}
+                      updateLabelAxisSnapSensitivity={updateLabelAxisSnapSensitivity}
                     />
                   ) : (
                     <RailwayMapManagement

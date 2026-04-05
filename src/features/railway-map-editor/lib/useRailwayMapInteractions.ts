@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import type { MapPoint, RailwayMap, Segment, Station, StationKind } from "@/entities/railway-map/model/types";
 import { createStraightSegmentForSheet } from "@/entities/railway-map/model/utils";
 import { getSvgPoint, normalizeRect } from "@/features/railway-map-editor/lib/geometry";
-import { estimateLabelBox, getStationKindFontSize, LABEL_AXIS_SNAP_THRESHOLD, normalizeRotation } from "@/features/railway-map-editor/lib/labels";
+import { estimateLabelBox, getStationKindFontSize, normalizeRotation } from "@/features/railway-map-editor/lib/labels";
 
 const NODE_SEGMENT_LONG_PRESS_MS = 260;
 const NODE_SEGMENT_LONG_PRESS_MOVE_THRESHOLD = 6;
@@ -65,7 +65,6 @@ type LabelAxisBreakoutState = {
 
 const LABEL_AXIS_BREAKOUT_MS = 90;
 const LABEL_AXIS_BREAKOUT_DISTANCE = 12;
-const LABEL_DIAGONAL_AXIS_SNAP_THRESHOLD = 18;
 const ROTATION_SNAP_INCREMENT = 45;
 const ROTATION_SOFT_SNAP_THRESHOLD = 6;
 
@@ -92,6 +91,7 @@ type UseRailwayMapInteractionsArgs = {
   canvasWidth: number;
   canvasHeight: number;
   snapToGrid: boolean;
+  labelAxisSnapSensitivity: number;
   snapPointToGrid: (point: MapPoint) => MapPoint;
   updateMap: (updater: (current: RailwayMap) => RailwayMap, options?: { trackHistory?: boolean }) => void;
   beginTransientMapChange: () => void;
@@ -136,6 +136,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     canvasWidth,
     canvasHeight,
     snapToGrid,
+    labelAxisSnapSensitivity,
     snapPointToGrid,
     updateMap,
     beginTransientMapChange,
@@ -676,12 +677,13 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
 
             const centerDeltaX = box.center.x - stationNode.x;
             const centerDeltaY = box.center.y - stationNode.y;
-            const nearAxisX = Math.abs(centerDeltaX) <= LABEL_AXIS_SNAP_THRESHOLD;
-            const nearAxisY = Math.abs(centerDeltaY) <= LABEL_AXIS_SNAP_THRESHOLD;
+            const nearAxisX = Math.abs(centerDeltaX) <= labelAxisSnapSensitivity;
+            const nearAxisY = Math.abs(centerDeltaY) <= labelAxisSnapSensitivity;
             const diagPosDelta = centerDeltaY - centerDeltaX;
             const diagNegDelta = centerDeltaY + centerDeltaX;
-            const nearDiagPos = Math.abs(diagPosDelta) <= LABEL_DIAGONAL_AXIS_SNAP_THRESHOLD;
-            const nearDiagNeg = Math.abs(diagNegDelta) <= LABEL_DIAGONAL_AXIS_SNAP_THRESHOLD;
+            const diagonalAxisSnapSensitivity = labelAxisSnapSensitivity * 1.8;
+            const nearDiagPos = Math.abs(diagPosDelta) <= diagonalAxisSnapSensitivity;
+            const nearDiagNeg = Math.abs(diagNegDelta) <= diagonalAxisSnapSensitivity;
             const beyondBreakoutX = Math.abs(centerDeltaX) >= LABEL_AXIS_BREAKOUT_DISTANCE;
             const beyondBreakoutY = Math.abs(centerDeltaY) >= LABEL_AXIS_BREAKOUT_DISTANCE;
             const axisFamily = resolveRotationAxisFamily(nextLabel.rotation ?? 0, enforceAxisSnap);

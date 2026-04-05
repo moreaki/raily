@@ -95,6 +95,9 @@ export interface RailwayMapConfig {
   lines: Line[];
   parallelTrackSpacing: number;
   segmentIndicatorWidth: number;
+  selectedSegmentIndicatorBoost: number;
+  gridLineOpacity: number;
+  labelAxisSnapSensitivity: number;
 }
 
 export interface RailwayMapModel {

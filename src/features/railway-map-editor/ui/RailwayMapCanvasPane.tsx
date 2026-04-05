@@ -89,6 +89,8 @@ type RailwayMapCanvasPaneProps = {
   setGridStepX: (value: number) => void;
   setGridStepY: (value: number) => void;
   segmentIndicatorWidth: number;
+  selectedSegmentIndicatorBoost: number;
+  gridLineOpacity: number;
   canvasViewportRef: RefObject<HTMLDivElement | null>;
   svgRef: RefObject<SVGSVGElement | null>;
   canvasWidth: number;
@@ -209,6 +211,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     setGridStepX,
   setGridStepY,
   segmentIndicatorWidth,
+  selectedSegmentIndicatorBoost,
+  gridLineOpacity,
   canvasViewportRef,
     svgRef,
     canvasWidth,
@@ -381,10 +385,10 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               {showGrid ? (
                 <g pointerEvents="none">
                   {gridLines.vertical.map((x) => (
-                    <line key={`grid-x-${x}`} x1={x} y1={viewBox.y - viewBox.height} x2={x} y2={viewBox.y + viewBox.height * 2} stroke="#cbd5e1" strokeOpacity="0.45" strokeWidth="1" />
+                    <line key={`grid-x-${x}`} x1={x} y1={viewBox.y - viewBox.height} x2={x} y2={viewBox.y + viewBox.height * 2} stroke="#cbd5e1" strokeOpacity={gridLineOpacity} strokeWidth="1" />
                   ))}
                   {gridLines.horizontal.map((y) => (
-                    <line key={`grid-y-${y}`} x1={viewBox.x - viewBox.width} y1={y} x2={viewBox.x + viewBox.width * 2} y2={y} stroke="#cbd5e1" strokeOpacity="0.45" strokeWidth="1" />
+                    <line key={`grid-y-${y}`} x1={viewBox.x - viewBox.width} y1={y} x2={viewBox.x + viewBox.width * 2} y2={y} stroke="#cbd5e1" strokeOpacity={gridLineOpacity} strokeWidth="1" />
                   ))}
                 </g>
               ) : null}
@@ -402,7 +406,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                     d={pathFromPoints(offsetPointsForSegment)}
                     fill="none"
                     stroke={selectedSegmentId === segment.id ? "#94a3b8" : assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee"}
-                    strokeWidth={selectedSegmentId === segment.id ? segmentIndicatorWidth + 4 : segmentIndicatorWidth}
+                    strokeWidth={selectedSegmentId === segment.id ? segmentIndicatorWidth + selectedSegmentIndicatorBoost : segmentIndicatorWidth}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     onMouseDown={() => handleSegmentMouseDown(segment.id)}

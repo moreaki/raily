@@ -6,6 +6,9 @@ const DEFAULT_STATION_FONT_SIZE = 14;
 const DEFAULT_STATION_SYMBOL_SIZE = 1;
 const DEFAULT_PARALLEL_TRACK_SPACING = 22;
 const DEFAULT_SEGMENT_INDICATOR_WIDTH = 16;
+const DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST = 4;
+const DEFAULT_GRID_LINE_OPACITY = 0.45;
+const DEFAULT_LABEL_AXIS_SNAP_SENSITIVITY = 10;
 
 export const LINE_PRESETS = [
   { id: "preset-c1", name: "C1", color: "#74b6f2", strokeWidth: 9, strokeStyle: "solid" as const },
@@ -30,6 +33,9 @@ export const INITIAL_MAP: RailwayMap = {
     ],
     parallelTrackSpacing: DEFAULT_PARALLEL_TRACK_SPACING,
     segmentIndicatorWidth: DEFAULT_SEGMENT_INDICATOR_WIDTH,
+    selectedSegmentIndicatorBoost: DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST,
+    gridLineOpacity: DEFAULT_GRID_LINE_OPACITY,
+    labelAxisSnapSensitivity: DEFAULT_LABEL_AXIS_SNAP_SENSITIVITY,
   },
   model: {
     sheets: [
@@ -166,7 +172,10 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
       }
     ],
     parallelTrackSpacing: 22,
-    segmentIndicatorWidth: 16
+    segmentIndicatorWidth: 16,
+    selectedSegmentIndicatorBoost: 4,
+    gridLineOpacity: 0.45,
+    labelAxisSnapSensitivity: 10
   },
   model: {
     sheets: [

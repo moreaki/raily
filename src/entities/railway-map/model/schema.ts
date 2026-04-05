@@ -88,6 +88,9 @@ export const railwayMapSchema = z.object({
     lines: z.array(lineSchema),
     parallelTrackSpacing: z.number().min(8).max(48).default(22),
     segmentIndicatorWidth: z.number().min(8).max(36).default(16),
+    selectedSegmentIndicatorBoost: z.number().min(0).max(12).default(4),
+    gridLineOpacity: z.number().min(0.1).max(0.8).default(0.45),
+    labelAxisSnapSensitivity: z.number().min(6).max(24).default(10),
   }),
   model: z.object({
     sheets: z.array(sheetSchema).min(1),

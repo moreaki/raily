@@ -28,6 +28,9 @@ function makeMap(): RailwayMap {
       ],
       parallelTrackSpacing: 18,
       segmentIndicatorWidth: 16,
+      selectedSegmentIndicatorBoost: 4,
+      gridLineOpacity: 0.45,
+      labelAxisSnapSensitivity: 10,
     },
     model: {
       sheets: [

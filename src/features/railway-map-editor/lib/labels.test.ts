@@ -20,6 +20,9 @@ function makeHorizontalMap(): RailwayMap {
       lines: [{ id: "line-a", name: "A", color: "#2563eb", strokeWidth: 8, strokeStyle: "solid" }],
       parallelTrackSpacing: 22,
       segmentIndicatorWidth: 16,
+      selectedSegmentIndicatorBoost: 4,
+      gridLineOpacity: 0.45,
+      labelAxisSnapSensitivity: 10,
     },
     model: {
       sheets: [{ id: "sheet-main", name: "Main" }],
