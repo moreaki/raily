@@ -300,9 +300,9 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
   const showToolsRail = toolsRailOpen;
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-0">
-        <div className="relative h-[82vh] min-h-[760px] bg-slate-50">
+    <Card className="h-full min-h-0 overflow-hidden">
+      <CardContent className="h-full p-0">
+        <div className="relative h-full bg-slate-50">
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 p-3">
             {pendingSegmentStart ? (
               <div className="pointer-events-auto rounded-2xl border border-sky-200 bg-sky-50/95 px-3 py-2 text-xs text-sky-800 shadow-sm">
@@ -645,7 +645,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
             </svg>
           </div>
 
-          <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap gap-2">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-wrap gap-2 px-3 pb-2">
             <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-1.5 text-sm shadow-sm">{currentStations.length} stations</div>
             <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-1.5 text-sm shadow-sm">{currentSegments.length} segments</div>
             <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-1.5 text-sm shadow-sm">{currentSheet?.name ?? "Sheet"}</div>

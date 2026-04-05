@@ -1291,8 +1291,8 @@ export default function RailwayMapEditor() {
   const visibleStations = useMemo(() => [...currentStations, ...unassignedStations], [currentStations, unassignedStations]);
 
   return (
-    <div className="min-h-screen px-3 py-3 sm:px-4">
-      <div className="mx-auto max-w-[1600px] space-y-3">
+    <div className="h-screen overflow-hidden px-3 py-3 sm:px-4">
+      <div className="mx-auto flex h-full max-w-[1600px] flex-col gap-3">
         <header className="flex flex-col gap-2 rounded-3xl border border-slate-200/80 bg-white/75 px-4 py-3 shadow-panel backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold tracking-tight text-sky-700">Raily Editor</h1>
@@ -1319,7 +1319,8 @@ export default function RailwayMapEditor() {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-h-0 h-full">
           <RailwayMapCanvasPane
             bootstrapDevelopmentModel={bootstrapDevelopmentModel}
             autoPlaceCurrentSheetLabels={autoPlaceCurrentSheetLabels}
@@ -1427,10 +1428,11 @@ export default function RailwayMapEditor() {
             addSheet={addSheet}
             setCurrentSheetId={setCurrentSheetId}
           />
+          </div>
 
           {sidePanel !== "closed" ? (
-            <div className="min-w-0">
-              <Card className="flex h-full min-h-[82vh] flex-col overflow-hidden border-slate-200 bg-white/95 backdrop-blur">
+            <div className="min-w-0 min-h-0 h-full">
+              <Card className="flex h-full min-h-0 flex-col overflow-hidden border-slate-200 bg-white/95 backdrop-blur">
                 <CardHeader className="flex flex-row items-center justify-between gap-3 px-5 py-4">
                   <div>
                     <CardTitle>{sidePanel === "edit" ? "Edit Panel" : sidePanel === "settings" ? "Settings" : "Management"}</CardTitle>
