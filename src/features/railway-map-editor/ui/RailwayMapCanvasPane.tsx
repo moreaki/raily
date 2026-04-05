@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
+import { useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { Plus } from "lucide-react";
 import type { Line, MapNode, MapPoint, Segment, Sheet, Station, StationKind } from "@/entities/railway-map/model/types";
 import { buildSegmentPoints, lineStrokeDasharray } from "@/entities/railway-map/model/utils";
@@ -172,6 +172,7 @@ type RailwayMapCanvasPaneProps = {
 };
 
 export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
+  const [sheetRailOpen, setSheetRailOpen] = useState(false);
   const {
     pendingSegmentStart,
     laneDisplayNameById,
@@ -276,6 +277,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     addSheet,
     setCurrentSheetId,
   } = props;
+  const showSheetRail = sheetRailOpen || renamingSheetId !== null;
 
   return (
     <Card className="overflow-hidden">
@@ -606,53 +608,90 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
             />
           ) : null}
 
-          <div className="absolute inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/94 px-3 py-1.5 backdrop-blur">
-            <div className="flex items-end gap-1 overflow-x-auto">
-              {sheets.map((sheet) => {
-                const active = currentSheetId === sheet.id;
-                const renaming = renamingSheetId === sheet.id;
-
-                return (
-                  <div
-                    key={sheet.id}
-                    className={`flex items-center gap-2 rounded-t-lg border border-b-0 px-3 py-2 text-sm ${
-                      active
-                        ? "border-slate-300 bg-slate-50 text-ink"
-                        : "border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-100"
-                    }`}
-                  >
-                    {renaming ? (
-                      <Input
-                        autoFocus
-                        value={sheetNameDraft}
-                        onChange={(event) => setSheetNameDraft(event.target.value)}
-                        onBlur={commitSheetRename}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") commitSheetRename();
-                          if (event.key === "Escape") setSheetNameDraft("");
-                        }}
-                        className="h-8 min-w-[10rem] px-2 py-1 text-sm"
-                      />
-                    ) : (
-                      <button type="button" className="whitespace-nowrap font-medium" onClick={() => setCurrentSheetId(sheet.id)} onDoubleClick={() => startRenamingSheet(sheet.id, sheet.name)}>
-                        {sheet.name}
-                      </button>
-                    )}
-                    {active && sheets.length > 1 ? (
-                      <button type="button" className="rounded-full px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-200" onClick={deleteCurrentSheet}>
-                        ×
-                      </button>
-                    ) : null}
-                  </div>
-                );
-              })}
-              <button
-                type="button"
-                className="mb-0.5 rounded-t-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                onClick={addSheet}
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center"
+            onMouseEnter={() => setSheetRailOpen(true)}
+            onMouseLeave={() => {
+              if (renamingSheetId === null) {
+                setSheetRailOpen(false);
+              }
+            }}
+          >
+            <div className="pointer-events-auto relative h-[68%]">
+              <div
+                className={`absolute left-0 top-1/2 flex -translate-y-1/2 transition-transform duration-200 ${
+                  showSheetRail ? "translate-x-0" : "-translate-x-[228px]"
+                }`}
               >
-                +
-              </button>
+                <div className="flex w-[248px] items-stretch">
+                  <div className="w-[228px] rounded-r-2xl border border-l-0 border-slate-200 bg-white/96 p-3 shadow-lg backdrop-blur">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-ink">Sheets</div>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-dashed border-slate-300 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                        onClick={addSheet}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div className="max-h-[52vh] space-y-1 overflow-auto pr-1">
+                      {sheets.map((sheet) => {
+                        const active = currentSheetId === sheet.id;
+                        const renaming = renamingSheetId === sheet.id;
+
+                        return (
+                          <div
+                            key={sheet.id}
+                            className={`rounded-xl border px-3 py-2 text-sm ${
+                              active ? "border-slate-300 bg-slate-100 text-ink" : "border-transparent bg-slate-50 text-slate-600 hover:border-slate-200 hover:bg-white"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {renaming ? (
+                                <Input
+                                  autoFocus
+                                  value={sheetNameDraft}
+                                  onChange={(event) => setSheetNameDraft(event.target.value)}
+                                  onBlur={commitSheetRename}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") commitSheetRename();
+                                    if (event.key === "Escape") setSheetNameDraft("");
+                                  }}
+                                  className="h-8 min-w-0 flex-1 px-2 py-1 text-sm"
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="min-w-0 flex-1 truncate text-left font-medium"
+                                  onClick={() => setCurrentSheetId(sheet.id)}
+                                  onDoubleClick={() => startRenamingSheet(sheet.id, sheet.name)}
+                                >
+                                  {sheet.name}
+                                </button>
+                              )}
+                              {active && sheets.length > 1 ? (
+                                <button type="button" className="rounded-full px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-200" onClick={deleteCurrentSheet}>
+                                  ×
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="ml-1 flex items-center">
+                    <button
+                      type="button"
+                      className="rounded-r-xl border border-l-0 border-slate-200 bg-white/96 px-2 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600 shadow-sm backdrop-blur [writing-mode:vertical-rl]"
+                      onClick={() => setSheetRailOpen((current) => !current)}
+                    >
+                      Sheets
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
