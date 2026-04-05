@@ -1,6 +1,11 @@
 import type { LineRun, Line, MapNode, MapPoint, NodeLane, RailwayMap, Segment, Sheet, Station } from "./types";
 
 let idCounter = 0;
+const DEFAULT_PARALLEL_TRACK_SPACING = 22;
+const DEFAULT_SEGMENT_INDICATOR_WIDTH = 16;
+const DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST = 4;
+const DEFAULT_GRID_LINE_OPACITY = 0.45;
+const DEFAULT_LABEL_AXIS_SNAP_SENSITIVITY = 10;
 
 function nextId(prefix: string) {
   idCounter += 1;
@@ -385,6 +390,14 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
 
   return {
     ...map,
+    config: {
+      ...map.config,
+      parallelTrackSpacing: map.config.parallelTrackSpacing ?? DEFAULT_PARALLEL_TRACK_SPACING,
+      segmentIndicatorWidth: map.config.segmentIndicatorWidth ?? DEFAULT_SEGMENT_INDICATOR_WIDTH,
+      selectedSegmentIndicatorBoost: map.config.selectedSegmentIndicatorBoost ?? DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST,
+      gridLineOpacity: map.config.gridLineOpacity ?? DEFAULT_GRID_LINE_OPACITY,
+      labelAxisSnapSensitivity: map.config.labelAxisSnapSensitivity ?? DEFAULT_LABEL_AXIS_SNAP_SENSITIVITY,
+    },
     model: {
       ...map.model,
       nodes,

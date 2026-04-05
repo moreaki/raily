@@ -25,6 +25,12 @@ export function RailwayMapSettings({
   updateGridLineOpacity,
   updateLabelAxisSnapSensitivity,
 }: RailwayMapSettingsProps) {
+  const safeParallelTrackSpacing = parallelTrackSpacing ?? 22;
+  const safeSegmentIndicatorWidth = segmentIndicatorWidth ?? 16;
+  const safeSelectedSegmentIndicatorBoost = selectedSegmentIndicatorBoost ?? 4;
+  const safeGridLineOpacity = gridLineOpacity ?? 0.45;
+  const safeLabelAxisSnapSensitivity = labelAxisSnapSensitivity ?? 10;
+
   return (
     <section className="space-y-3">
       <div className="text-sm font-semibold text-ink">General Settings</div>
@@ -36,8 +42,8 @@ export function RailwayMapSettings({
             min={8}
             max={48}
             step={1}
-            value={parallelTrackSpacing}
-            onChange={(event) => updateParallelTrackSpacing(Number(event.target.value) || parallelTrackSpacing)}
+            value={safeParallelTrackSpacing}
+            onChange={(event) => updateParallelTrackSpacing(Number(event.target.value) || safeParallelTrackSpacing)}
             className="w-28"
           />
           <p className="text-xs text-muted">Controls the distance between parallel segments and grouped station lanes.</p>
@@ -51,8 +57,8 @@ export function RailwayMapSettings({
             min={8}
             max={36}
             step={1}
-            value={segmentIndicatorWidth}
-            onChange={(event) => updateSegmentIndicatorWidth(Number(event.target.value) || segmentIndicatorWidth)}
+            value={safeSegmentIndicatorWidth}
+            onChange={(event) => updateSegmentIndicatorWidth(Number(event.target.value) || safeSegmentIndicatorWidth)}
             className="w-28"
           />
           <p className="text-xs text-muted">Controls the width of the gray segment indicator for selected or unassigned segments.</p>
@@ -66,8 +72,8 @@ export function RailwayMapSettings({
             min={0}
             max={12}
             step={1}
-            value={selectedSegmentIndicatorBoost}
-            onChange={(event) => updateSelectedSegmentIndicatorBoost(Number(event.target.value) || selectedSegmentIndicatorBoost)}
+            value={safeSelectedSegmentIndicatorBoost}
+            onChange={(event) => updateSelectedSegmentIndicatorBoost(Number(event.target.value) || safeSelectedSegmentIndicatorBoost)}
             className="w-28"
           />
           <p className="text-xs text-muted">Adds extra width to the indicator when a segment is selected.</p>
@@ -81,8 +87,8 @@ export function RailwayMapSettings({
             min={0.1}
             max={0.8}
             step={0.05}
-            value={gridLineOpacity}
-            onChange={(event) => updateGridLineOpacity(Number(event.target.value) || gridLineOpacity)}
+            value={safeGridLineOpacity}
+            onChange={(event) => updateGridLineOpacity(Number(event.target.value) || safeGridLineOpacity)}
             className="w-28"
           />
           <p className="text-xs text-muted">Controls how strong the grid lines appear when the grid is shown.</p>
@@ -96,8 +102,8 @@ export function RailwayMapSettings({
             min={6}
             max={24}
             step={1}
-            value={labelAxisSnapSensitivity}
-            onChange={(event) => updateLabelAxisSnapSensitivity(Number(event.target.value) || labelAxisSnapSensitivity)}
+            value={safeLabelAxisSnapSensitivity}
+            onChange={(event) => updateLabelAxisSnapSensitivity(Number(event.target.value) || safeLabelAxisSnapSensitivity)}
             className="w-28"
           />
           <p className="text-xs text-muted">Controls how easily labels snap to horizontal, vertical, and diagonal axes while dragging.</p>

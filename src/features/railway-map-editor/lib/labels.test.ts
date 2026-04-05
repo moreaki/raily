@@ -74,6 +74,74 @@ function layoutDistance(current: RailwayMap, target: RailwayMap) {
   return total;
 }
 
+function layoutSimilarity(current: RailwayMap, target: RailwayMap) {
+  const targetStationsById = new Map(target.model.stations.map((station) => [station.id, station]));
+  const currentNodesById = new Map(current.model.nodes.map((node) => [node.id, node]));
+  const targetNodesById = new Map(target.model.nodes.map((node) => [node.id, node]));
+
+  let compared = 0;
+  let alignmentMatches = 0;
+  let rotationMatches = 0;
+  let sideMatches = 0;
+  let totalDistanceDelta = 0;
+
+  for (const station of current.model.stations) {
+    const targetStation = targetStationsById.get(station.id);
+    if (!station.label || !station.nodeId || !targetStation?.label || !targetStation.nodeId) continue;
+
+    const currentNode = currentNodesById.get(station.nodeId);
+    const targetNode = targetNodesById.get(targetStation.nodeId);
+    if (!currentNode || !targetNode) continue;
+
+    compared += 1;
+
+    if ((station.label.align ?? null) === (targetStation.label.align ?? null)) {
+      alignmentMatches += 1;
+    }
+
+    if (Math.abs((station.label.rotation ?? 0) - (targetStation.label.rotation ?? 0)) <= 0.5) {
+      rotationMatches += 1;
+    }
+
+    const currentDeltaX = station.label.x - currentNode.x;
+    const currentDeltaY = station.label.y - currentNode.y;
+    const targetDeltaX = targetStation.label.x - targetNode.x;
+    const targetDeltaY = targetStation.label.y - targetNode.y;
+
+    const currentSide = Math.abs(currentDeltaX) >= Math.abs(currentDeltaY)
+      ? Math.sign(currentDeltaX || 0)
+      : Math.sign(currentDeltaY || 0);
+    const targetSide = Math.abs(targetDeltaX) >= Math.abs(targetDeltaY)
+      ? Math.sign(targetDeltaX || 0)
+      : Math.sign(targetDeltaY || 0);
+
+    if (currentSide === targetSide) {
+      sideMatches += 1;
+    }
+
+    const currentDistance = Math.hypot(currentDeltaX, currentDeltaY);
+    const targetDistance = Math.hypot(targetDeltaX, targetDeltaY);
+    totalDistanceDelta += Math.abs(currentDistance - targetDistance);
+  }
+
+  return {
+    compared,
+    alignmentMatches,
+    rotationMatches,
+    sideMatches,
+    averageDistanceDelta: compared > 0 ? totalDistanceDelta / compared : 0,
+  };
+}
+
+function similarityScore(metrics: ReturnType<typeof layoutSimilarity>) {
+  return (
+    metrics.alignmentMatches * 2 +
+    metrics.rotationMatches * 1.5 +
+    metrics.sideMatches * 2 -
+    metrics.averageDistanceDelta * 0.35
+  );
+}
+
 describe("label placement", () => {
   it("keeps the committed bootstrap collision-free", () => {
     const evaluation = evaluateLabelLayout(DEVELOPMENT_BOOTSTRAP_MAP);
@@ -116,5 +184,13 @@ describe("label placement", () => {
     };
 
     expect(layoutDistance(bootstrapAware, DEVELOPMENT_BOOTSTRAP_MAP)).toBeLessThan(layoutDistance(generic, DEVELOPMENT_BOOTSTRAP_MAP));
+
+    const genericSimilarity = layoutSimilarity(generic, DEVELOPMENT_BOOTSTRAP_MAP);
+    const bootstrapSimilarity = layoutSimilarity(bootstrapAware, DEVELOPMENT_BOOTSTRAP_MAP);
+
+    expect(similarityScore(bootstrapSimilarity)).toBeGreaterThan(similarityScore(genericSimilarity));
+    expect(bootstrapSimilarity.rotationMatches).toBeGreaterThanOrEqual(genericSimilarity.rotationMatches);
+    expect(bootstrapSimilarity.sideMatches).toBeGreaterThanOrEqual(genericSimilarity.sideMatches);
+    expect(bootstrapSimilarity.averageDistanceDelta).toBeLessThanOrEqual(genericSimilarity.averageDistanceDelta);
   });
 });
