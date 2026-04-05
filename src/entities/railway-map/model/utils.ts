@@ -414,14 +414,32 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
       ...map.model,
       nodes,
       nodeLanes: nextNodeLanes,
-      stations: map.model.stations.map((station) => {
-        if (!station.nodeId || nodeIds.has(station.nodeId)) return station;
-        return {
-          ...station,
-          nodeId: null,
-          label: undefined,
-        };
-      }),
+      stations: (() => {
+        const claimedNodeIds = new Set<string>();
+
+        return map.model.stations.map((station) => {
+          if (!station.nodeId || !nodeIds.has(station.nodeId)) {
+            return station.nodeId
+              ? {
+                  ...station,
+                  nodeId: null,
+                  label: undefined,
+                }
+              : station;
+          }
+
+          if (claimedNodeIds.has(station.nodeId)) {
+            return {
+              ...station,
+              nodeId: null,
+              label: undefined,
+            };
+          }
+
+          claimedNodeIds.add(station.nodeId);
+          return station;
+        });
+      })(),
       segments,
       lineRuns: sanitizedLineRuns,
     },

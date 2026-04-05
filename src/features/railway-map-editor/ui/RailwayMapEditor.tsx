@@ -902,6 +902,8 @@ export default function RailwayMapEditor() {
   const [selectedStationKindId, setSelectedStationKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
   const [currentSheetId, setCurrentSheetId] = useState(initialMap.model.sheets[0]?.id ?? "");
   const [newStationName, setNewStationName] = useState("");
+  const [newStationKindId, setNewStationKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
+  const [nodeAssignmentKindId, setNodeAssignmentKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
   const [newStationKindFontFamily, setNewStationKindFontFamily] = useState(DEFAULT_STATION_FONT_FAMILY);
@@ -1536,6 +1538,15 @@ export default function RailwayMapEditor() {
   }, [config.stationKinds, selectedStationKind]);
 
   useEffect(() => {
+    if (!config.stationKinds.some((kind) => kind.id === newStationKindId)) {
+      setNewStationKindId(config.stationKinds[0]?.id ?? "");
+    }
+    if (!config.stationKinds.some((kind) => kind.id === nodeAssignmentKindId)) {
+      setNodeAssignmentKindId(config.stationKinds[0]?.id ?? "");
+    }
+  }, [config.stationKinds, newStationKindId, nodeAssignmentKindId]);
+
+  useEffect(() => {
     if (!currentSheet || !model.sheets.some((sheet) => sheet.id === currentSheet.id)) {
       setCurrentSheetId(model.sheets[0]?.id ?? "");
     }
@@ -1659,11 +1670,18 @@ export default function RailwayMapEditor() {
   }
 
   function addStation() {
+    const nextKindId = newStationKindId || (config.stationKinds[0]?.id ?? "");
     updateMap((current) => ({
       ...current,
       model: {
         ...current.model,
-        stations: [...current.model.stations, createDefaultStation(current, null, newStationName)],
+        stations: [
+          ...current.model.stations,
+          {
+            ...createDefaultStation(current, null, newStationName),
+            kindId: nextKindId,
+          },
+        ],
       },
     }));
     setNewStationName("");
@@ -1708,6 +1726,8 @@ export default function RailwayMapEditor() {
   function assignStationToNode(stationId: string, nodeId: string) {
     const node = model.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return;
+    const stationAtNode = model.stations.find((candidate) => candidate.nodeId === nodeId);
+    if (stationAtNode && stationAtNode.id !== stationId) return;
 
     updateStation(stationId, {
       nodeId,
@@ -1726,12 +1746,16 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
   }
 
-  function createStationAtNode(nodeId: string, name: string) {
+  function createStationAtNode(nodeId: string, name: string, kindId?: string) {
     const node = model.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return;
+    if (model.stations.some((candidate) => candidate.nodeId === nodeId)) return;
 
     const stationName = name.trim() || `Station ${model.stations.length + 1}`;
-    const createdStation = createDefaultStationAtNode(map, node, stationName);
+    const createdStation = {
+      ...createDefaultStationAtNode(map, node, stationName),
+      kindId: kindId || config.stationKinds[0]?.id || "",
+    };
     updateMap((current) => ({
       ...current,
       model: {
@@ -1744,6 +1768,7 @@ export default function RailwayMapEditor() {
     setSelectedNodeMarkerKey(null);
     setSelectedStationId(createdStation.id);
     setNodeAssignmentQuery("");
+    setNodeAssignmentKindId(config.stationKinds[0]?.id ?? "");
     setNodeContextMenu(null);
   }
 
@@ -2348,6 +2373,15 @@ export default function RailwayMapEditor() {
         stations: current.model.stations.map((station) => (station.id === stationId ? { ...station, ...patch } : station)),
       },
     }));
+  }
+
+  function unassignStation(stationId: string) {
+    updateStation(stationId, {
+      nodeId: null,
+      label: undefined,
+    });
+    setNodeAssignmentQuery("");
+    setNodeContextMenu(null);
   }
 
   function updateStationKind(kindId: string, patch: Partial<StationKind>) {
@@ -3350,6 +3384,13 @@ export default function RailwayMapEditor() {
                                 </option>
                               ))}
                             </select>
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                              onClick={() => unassignStation(contextMenuStation.id)}
+                            >
+                              Unassign station
+                            </button>
                           </div>
                         ) : null}
                         <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
@@ -3385,41 +3426,54 @@ export default function RailwayMapEditor() {
                             </button>
                           )}
                         </div>
-                        <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Station</div>
-                          <Input
-                            value={nodeAssignmentQuery}
-                            onChange={(event) => setNodeAssignmentQuery(event.target.value)}
-                            placeholder="Search stations"
-                            className="h-9"
-                          />
-                          <div className="max-h-40 space-y-1 overflow-auto">
-                            {stationAssignmentResults.slice(0, 8).map((station) => (
-                              <button
-                                key={station.id}
-                                type="button"
-                                className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                                onClick={() => assignStationToNode(station.id, nodeContextMenu.nodeIds[0])}
-                              >
-                                <span className="truncate">{station.name}</span>
-                                <span className="ml-3 shrink-0 text-xs text-slate-500">
-                                  {stationKindsById.get(station.kindId)?.name ?? "Unknown"}
-                                </span>
-                              </button>
-                            ))}
-                            {stationAssignmentResults.length === 0 ? (
-                              <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div>
-                            ) : null}
+                        {!contextMenuStation ? (
+                          <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Station</div>
+                            <Input
+                              value={nodeAssignmentQuery}
+                              onChange={(event) => setNodeAssignmentQuery(event.target.value)}
+                              placeholder="Search stations"
+                              className="h-9"
+                            />
+                            <div className="max-h-40 space-y-1 overflow-auto">
+                              {stationAssignmentResults.slice(0, 8).map((station) => (
+                                <button
+                                  key={station.id}
+                                  type="button"
+                                  className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                                  onClick={() => assignStationToNode(station.id, nodeContextMenu.nodeIds[0])}
+                                >
+                                  <span className="truncate">{station.name}</span>
+                                  <span className="ml-3 shrink-0 text-xs text-slate-500">
+                                    {stationKindsById.get(station.kindId)?.name ?? "Unknown"}
+                                  </span>
+                                </button>
+                              ))}
+                              {stationAssignmentResults.length === 0 ? (
+                                <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div>
+                              ) : null}
+                            </div>
+                            <select
+                              value={nodeAssignmentKindId}
+                              onChange={(event) => setNodeAssignmentKindId(event.target.value)}
+                              className="h-9 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                            >
+                              {config.stationKinds.map((kind) => (
+                                <option key={kind.id} value={kind.id}>
+                                  {kind.name} {stationKindShapeGlyph(kind.shape)}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentQuery, nodeAssignmentKindId)}
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add new station
+                            </Button>
                           </div>
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentQuery)}
-                          >
-                            <Plus className="h-4 w-4" />
-                            Add new station
-                          </Button>
-                        </div>
+                        ) : null}
                       </>
                     ) : null}
                     <button
@@ -3591,6 +3645,17 @@ export default function RailwayMapEditor() {
                         <div className="text-sm font-semibold text-ink">Quick Add</div>
                         <div className="flex gap-2">
                           <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
+                          <select
+                            value={newStationKindId}
+                            onChange={(event) => setNewStationKindId(event.target.value)}
+                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                          >
+                            {config.stationKinds.map((kind) => (
+                              <option key={kind.id} value={kind.id}>
+                                {kind.name} {stationKindShapeGlyph(kind.shape)}
+                              </option>
+                            ))}
+                          </select>
                           <Button onClick={addStation}>
                             <Plus className="h-4 w-4" />
                           </Button>
@@ -3636,6 +3701,56 @@ export default function RailwayMapEditor() {
                             </div>
                           ))}
                         </div>
+                      </section>
+
+                      <section className="space-y-3">
+                        <div className="text-sm font-semibold text-ink">Selected Station</div>
+                        {selectedStation ? (
+                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                            <Input
+                              value={selectedStation.name}
+                              onChange={(event) => updateStation(selectedStation.id, { name: event.target.value })}
+                              placeholder="Station name"
+                            />
+                            <select
+                              value={selectedStation.kindId}
+                              onChange={(event) => updateStation(selectedStation.id, { kindId: event.target.value })}
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                            >
+                              {config.stationKinds.map((kind) => (
+                                <option key={kind.id} value={kind.id}>
+                                  {kind.name} {stationKindShapeGlyph(kind.shape)}
+                                </option>
+                              ))}
+                            </select>
+                            {selectedStation.nodeId ? (
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedStationId(selectedStation.id);
+                                  fixLabelForStation(selectedStation.id);
+                                }}
+                              >
+                                Fix label
+                              </Button>
+                            ) : null}
+                            {selectedStationId === selectedStation.id && labelDiagnostics.get(selectedStation.id)?.colliding ? (
+                              <p className="text-xs font-medium text-rose-700">
+                                Label collision detected with
+                                {labelDiagnostics.get(selectedStation.id)?.overlapsLabel && labelDiagnostics.get(selectedStation.id)?.overlapsSegment
+                                  ? " another label and a segment."
+                                  : labelDiagnostics.get(selectedStation.id)?.overlapsSegment
+                                    ? " a segment."
+                                    : " another label."}
+                              </p>
+                            ) : null}
+                            {!selectedStation.nodeId ? (
+                              <p className="text-xs text-muted">This station is currently unassigned. Use a track point context menu to assign it to the map.</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted">Select a station from the list or canvas.</p>
+                        )}
                       </section>
 
                       <section className="space-y-3">
@@ -3752,47 +3867,26 @@ export default function RailwayMapEditor() {
                             <div className="space-y-2">
                               {selectedNodeStations.map((station) => (
                                 <div key={station.id} className="rounded-xl bg-white px-3 py-2 text-sm text-ink">
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      value={station.name}
-                                      onFocus={() => setSelectedStationId(station.id)}
-                                      onChange={(event) => updateStation(station.id, { name: event.target.value })}
-                                    />
+                                  <div className="flex items-center justify-between gap-2">
+                                    <button
+                                      type="button"
+                                      className="min-w-0 flex-1 text-left"
+                                      onClick={() => setSelectedStationId(station.id)}
+                                    >
+                                      <div className="truncate font-medium">{station.name}</div>
+                                      <div className="text-xs text-muted">{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</div>
+                                    </button>
                                     <Button
                                       variant="outline"
                                       className="shrink-0"
                                       onClick={() => {
                                         setSelectedStationId(station.id);
-                                        fixLabelForStation(station.id);
+                                        unassignStation(station.id);
                                       }}
                                     >
-                                      Fix label
+                                      Unassign
                                     </Button>
                                   </div>
-                                  <select
-                                    value={station.kindId}
-                                    onChange={(event) => {
-                                      setSelectedStationId(station.id);
-                                      updateStation(station.id, { kindId: event.target.value });
-                                    }}
-                                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                                  >
-                                    {config.stationKinds.map((kind) => (
-                                      <option key={kind.id} value={kind.id}>
-                                        {kind.name} {stationKindShapeGlyph(kind.shape)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  {selectedStationId === station.id && labelDiagnostics.get(station.id)?.colliding ? (
-                                    <p className="mt-2 text-xs font-medium text-rose-700">
-                                      Label collision detected with
-                                      {labelDiagnostics.get(station.id)?.overlapsLabel && labelDiagnostics.get(station.id)?.overlapsSegment
-                                        ? " another label and a segment."
-                                        : labelDiagnostics.get(station.id)?.overlapsSegment
-                                          ? " a segment."
-                                          : " another label."}
-                                    </p>
-                                  ) : null}
                                 </div>
                               ))}
                               {selectedNodeStations.length === 0 ? <p className="text-xs text-muted">No station is attached to this node.</p> : null}
