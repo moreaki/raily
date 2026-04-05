@@ -7,6 +7,9 @@ const DEFAULT_STATION_SYMBOL_SIZE = 1;
 const DEFAULT_PARALLEL_TRACK_SPACING = 22;
 const DEFAULT_NODE_GROUP_CELL_WIDTH = 22;
 const DEFAULT_NODE_GROUP_CELL_HEIGHT = 22;
+const DEFAULT_HUB_OUTLINE_MODE = "box" as const;
+const DEFAULT_HUB_OUTLINE_COLOR = "#111827";
+const DEFAULT_HUB_OUTLINE_STROKE_STYLE = "solid" as const;
 const DEFAULT_HUB_OUTLINE_SCALE = 1;
 const DEFAULT_HUB_OUTLINE_CORNER_RADIUS = 10;
 const DEFAULT_HUB_OUTLINE_STROKE_WIDTH = 3.25;
@@ -40,6 +43,9 @@ export const INITIAL_MAP: RailwayMap = {
     parallelTrackSpacing: DEFAULT_PARALLEL_TRACK_SPACING,
     nodeGroupCellWidth: DEFAULT_NODE_GROUP_CELL_WIDTH,
     nodeGroupCellHeight: DEFAULT_NODE_GROUP_CELL_HEIGHT,
+    hubOutlineMode: DEFAULT_HUB_OUTLINE_MODE,
+    hubOutlineColor: DEFAULT_HUB_OUTLINE_COLOR,
+    hubOutlineStrokeStyle: DEFAULT_HUB_OUTLINE_STROKE_STYLE,
     hubOutlineScale: DEFAULT_HUB_OUTLINE_SCALE,
     hubOutlineCornerRadius: DEFAULT_HUB_OUTLINE_CORNER_RADIUS,
     hubOutlineStrokeWidth: DEFAULT_HUB_OUTLINE_STROKE_WIDTH,
@@ -116,25 +122,25 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Stop",
         "shape": "circle",
         "symbolSize": 1,
-        "fontFamily": "\"Avenir Next\", \"Helvetica Neue\", Arial, sans-serif",
-        "fontWeight": "600",
-        "fontSize": 14
+        "fontFamily": "\"Helvetica Neue\", Arial, sans-serif",
+        "fontWeight": "400",
+        "fontSize": 12
       },
       {
         "id": "sk-hub",
         "name": "Hub",
         "shape": "interchange",
         "symbolSize": 1,
-        "fontFamily": "\"Avenir Next\", \"Helvetica Neue\", Arial, sans-serif",
-        "fontWeight": "700",
-        "fontSize": 15
+        "fontFamily": "\"Helvetica Neue\", Arial, sans-serif",
+        "fontWeight": "500",
+        "fontSize": 14
       },
       {
         "id": "sk-terminal",
         "name": "Terminal",
         "shape": "terminal",
         "symbolSize": 1,
-        "fontFamily": "\"Avenir Next\", \"Helvetica Neue\", Arial, sans-serif",
+        "fontFamily": "\"Helvetica Neue\", Arial, sans-serif",
         "fontWeight": "600",
         "fontSize": 14
       }
@@ -186,14 +192,17 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
     "parallelTrackSpacing": 22,
     "nodeGroupCellWidth": 22,
     "nodeGroupCellHeight": 22,
-    "hubOutlineScale": 1,
-    "hubOutlineCornerRadius": 10,
-    "hubOutlineStrokeWidth": 3.25,
-    "hubOutlineConcaveFactor": 0.45,
+    "hubOutlineScale": 0.75,
+    "hubOutlineCornerRadius": 8,
+    "hubOutlineStrokeWidth": 1,
+    "hubOutlineConcaveFactor": 1,
     "segmentIndicatorWidth": 16,
-    "gridLineOpacity": 0.45,
     "selectedSegmentIndicatorBoost": 4,
-    "labelAxisSnapSensitivity": 10
+    "gridLineOpacity": 0.45,
+    "labelAxisSnapSensitivity": 10,
+    "hubOutlineMode": "box",
+    "hubOutlineColor": "#111827",
+    "hubOutlineStrokeStyle": "solid"
   },
   "model": {
     "sheets": [
@@ -351,7 +360,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "x": 660,
         "y": 776,
         "id": "n-roca-cuper",
-        "sheetId": "sh-ov"
+        "sheetId": "sh-ov",
+        "groupOutlineMode": "box"
       },
       {
         "x": 660,
@@ -363,13 +373,18 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "x": 652,
         "y": 871,
         "id": "n-font",
-        "sheetId": "sh-ov"
+        "sheetId": "sh-ov",
+        "showGroupOutline": true,
+        "groupOutlineMode": "box",
+        "groupOutlineColor": "#161207",
+        "groupOutlineStrokeStyle": "solid"
       },
       {
         "x": 632,
         "y": 919,
         "id": "n-nord",
-        "sheetId": "sh-ov"
+        "sheetId": "sh-ov",
+        "showGroupOutline": true
       },
       {
         "x": -114,
@@ -450,10 +465,11 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "sheetId": "sh-ov"
       },
       {
-        "x": 508,
-        "y": 871,
+        "x": 507,
+        "y": 861,
         "id": "n-c3-9",
-        "sheetId": "sh-ov"
+        "sheetId": "sh-ov",
+        "showGroupOutline": true
       },
       {
         "x": 596,
@@ -600,8 +616,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "sheetId": "sh-ov"
       },
       {
-        "x": 473,
-        "y": 807,
+        "x": 450,
+        "y": 774,
         "id": "n1775378474326-7",
         "sheetId": "sh-ov"
       }
@@ -610,427 +626,528 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
       {
         "id": "nl-n-c5-0-l-c5",
         "nodeId": "n-c5-0",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-c5-1-l-c5",
         "nodeId": "n-c5-1",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-c5-2-l-c5",
         "nodeId": "n-c5-2",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-c5-3-l-c5",
         "nodeId": "n-c5-3",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-c5-4-l-c5",
         "nodeId": "n-c5-4",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-c5-5-l-c5",
         "nodeId": "n-c5-5",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-c5-6-l-c5",
         "nodeId": "n-c5-6",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-c5-7-l-c5",
         "nodeId": "n-c5-7",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-c5-8-l-c5",
         "nodeId": "n-c5-8",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-sagunt-l-c5",
         "nodeId": "n-sagunt",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-sagunt-l-c6",
         "nodeId": "n-sagunt",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-0-l-c6",
         "nodeId": "n-c6-0",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-1-l-c6",
         "nodeId": "n-c6-1",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-2-l-c6",
         "nodeId": "n-c6-2",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-2a-l-c6",
         "nodeId": "n-c6-2a",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-3-l-c6",
         "nodeId": "n-c6-3",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-4-l-c6",
         "nodeId": "n-c6-4",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-5-l-c6",
         "nodeId": "n-c6-5",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-6-l-c6",
         "nodeId": "n-c6-6",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-7-l-c6",
         "nodeId": "n-c6-7",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c6-8-l-c6",
         "nodeId": "n-c6-8",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-pucol-l-c5",
         "nodeId": "n-pucol",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-pucol-l-c6",
         "nodeId": "n-pucol",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-puig-l-c5",
         "nodeId": "n-puig",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-puig-l-c6",
         "nodeId": "n-puig",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-massalfassar-l-c5",
         "nodeId": "n-massalfassar",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-massalfassar-l-c6",
         "nodeId": "n-massalfassar",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-albuixech-l-c5",
         "nodeId": "n-albuixech",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-albuixech-l-c6",
         "nodeId": "n-albuixech",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-roca-cuper-l-c5",
         "nodeId": "n-roca-cuper",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-roca-cuper-l-c6",
         "nodeId": "n-roca-cuper",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-cabanyal-l-c5",
         "nodeId": "n-cabanyal",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-cabanyal-l-c6",
         "nodeId": "n-cabanyal",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-font-l-c3",
         "nodeId": "n-font",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3",
+        "gridColumn": 2,
+        "gridRow": 1
       },
       {
         "id": "nl-n-font-l-c5",
         "nodeId": "n-font",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c5",
+        "gridColumn": 3,
+        "gridRow": 1
       },
       {
         "id": "nl-n-font-l-c6",
         "nodeId": "n-font",
-        "order": 2
+        "order": 2,
+        "lineId": "l-c6",
+        "gridColumn": 4,
+        "gridRow": 1
       },
       {
         "id": "nl-n-nord-l-c2",
         "nodeId": "n-nord",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-nord-l-c1",
         "nodeId": "n-nord",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-nord-l-c3",
         "nodeId": "n-nord",
-        "order": 2
+        "order": 2,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-nord-l-c5",
         "nodeId": "n-nord",
-        "order": 3
+        "order": 3,
+        "lineId": "l-c5"
       },
       {
         "id": "nl-n-nord-l-c6",
         "nodeId": "n-nord",
-        "order": 4
+        "order": 4,
+        "lineId": "l-c6"
       },
       {
         "id": "nl-n-c3-0-l-c3",
         "nodeId": "n-c3-0",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-0a-l-c3",
         "nodeId": "n-c3-0a",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-1-l-c3",
         "nodeId": "n-c3-1",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-2-l-c3",
         "nodeId": "n-c3-2",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-2a-l-c3",
         "nodeId": "n-c3-2a",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-3-l-c3",
         "nodeId": "n-c3-3",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-4-l-c3",
         "nodeId": "n-c3-4",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-5-l-c3",
         "nodeId": "n-c3-5",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-6-l-c3",
         "nodeId": "n-c3-6",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-6a-l-c3",
         "nodeId": "n-c3-6a",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-7-l-c3",
         "nodeId": "n-c3-7",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-8-l-c3",
         "nodeId": "n-c3-8",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-8a-l-c3",
         "nodeId": "n-c3-8a",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3"
       },
       {
         "id": "nl-n-c3-9-l-c3",
         "nodeId": "n-c3-9",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c3",
+        "gridColumn": 1,
+        "gridRow": 2
+      },
+      {
+        "id": "nl-n-c3-9-manual-2",
+        "nodeId": "n-c3-9",
+        "order": 1,
+        "lineId": "l1775378342355-5",
+        "gridColumn": 1,
+        "gridRow": 1
       },
       {
         "id": "nl-n-alfafar-l-c2",
         "nodeId": "n-alfafar",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-alfafar-l-c1",
         "nodeId": "n-alfafar",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-massanassa-l-c2",
         "nodeId": "n-massanassa",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-massanassa-l-c1",
         "nodeId": "n-massanassa",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-catarroja-l-c2",
         "nodeId": "n-catarroja",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-catarroja-l-c1",
         "nodeId": "n-catarroja",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-albal-l-c2",
         "nodeId": "n-albal",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-albal-l-c1",
         "nodeId": "n-albal",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-silla-l-c2",
         "nodeId": "n-silla",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-silla-l-c1",
         "nodeId": "n-silla",
-        "order": 1
+        "order": 1,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-c1-0a-l-c1",
         "nodeId": "n-c1-0a",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-c1-0-l-c1",
         "nodeId": "n-c1-0",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-c1-1-l-c1",
         "nodeId": "n-c1-1",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-c1-2-l-c1",
         "nodeId": "n-c1-2",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-c1-3-l-c1",
         "nodeId": "n-c1-3",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-c1-4-l-c1",
         "nodeId": "n-c1-4",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-c1-5-l-c1",
         "nodeId": "n-c1-5",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-c1-6-auto-segment-sg1775382230143-1",
         "nodeId": "n-c1-6",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c1"
       },
       {
         "id": "nl-n-c2-0-l-c2",
         "nodeId": "n-c2-0",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-1-l-c2",
         "nodeId": "n-c2-1",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-2-l-c2",
         "nodeId": "n-c2-2",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-3-l-c2",
         "nodeId": "n-c2-3",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-3a-l-c2",
         "nodeId": "n-c2-3a",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-4-l-c2",
         "nodeId": "n-c2-4",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-5-l-c2",
         "nodeId": "n-c2-5",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-6-l-c2",
         "nodeId": "n-c2-6",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-7-l-c2",
         "nodeId": "n-c2-7",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-8-l-c2",
         "nodeId": "n-c2-8",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n-c2-9-l-c2",
         "nodeId": "n-c2-9",
-        "order": 0
+        "order": 0,
+        "lineId": "l-c2"
       },
       {
         "id": "nl-n1775378474326-7-auto-segment-sg1775378705279-11",
         "nodeId": "n1775378474326-7",
-        "order": 0
+        "order": 0,
+        "lineId": "l1775378342355-5"
       }
     ],
     "stations": [
@@ -1040,8 +1157,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Caudiel",
         "kindId": "sk-terminal",
         "label": {
-          "x": 208,
-          "y": 82,
+          "x": 136,
+          "y": 124,
           "align": "left",
           "rotation": 0
         }
@@ -1052,9 +1169,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Jérica-Viver",
         "kindId": "sk-stop",
         "label": {
-          "x": 149,
-          "y": 158,
-          "align": "right",
+          "x": 161,
+          "y": 170,
+          "align": "left",
           "rotation": 0
         }
       },
@@ -1064,7 +1181,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Navajas",
         "kindId": "sk-stop",
         "label": {
-          "x": 234,
+          "x": 210,
           "y": 206,
           "align": "left",
           "rotation": 0
@@ -1077,8 +1194,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 230,
-          "y": 254,
-          "align": "right",
+          "y": 266,
+          "align": "left",
           "rotation": 0
         }
       },
@@ -1088,9 +1205,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Segorbe Ciudad",
         "kindId": "sk-stop",
         "label": {
-          "x": 275,
-          "y": 305,
-          "align": "right",
+          "x": 287,
+          "y": 317,
+          "align": "left",
           "rotation": 0
         }
       },
@@ -1100,7 +1217,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Soneja",
         "kindId": "sk-stop",
         "label": {
-          "x": 385,
+          "x": 361,
           "y": 351,
           "align": "left",
           "rotation": 0
@@ -1112,9 +1229,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Algimia Ciudad",
         "kindId": "sk-stop",
         "label": {
-          "x": 391,
-          "y": 400,
-          "align": "right",
+          "x": 403,
+          "y": 424,
+          "align": "left",
           "rotation": 0
         }
       },
@@ -1125,7 +1242,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 337.08,
-          "y": 447,
+          "y": 465,
           "align": "left",
           "rotation": 0
         }
@@ -1137,7 +1254,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 550,
-          "y": 498,
+          "y": 510,
           "align": "left",
           "rotation": 0
         }
@@ -1148,7 +1265,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Sagunt/Sagunto",
         "kindId": "sk-stop",
         "label": {
-          "x": 700,
+          "x": 706,
           "y": 545,
           "align": "right",
           "rotation": 0
@@ -1160,9 +1277,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Castelló de la Plana",
         "kindId": "sk-terminal",
         "label": {
-          "x": 1094,
-          "y": 30,
-          "align": "top",
+          "x": 1164,
+          "y": 76,
+          "align": "right",
           "rotation": 0
         }
       },
@@ -1172,7 +1289,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Almassora",
         "kindId": "sk-stop",
         "label": {
-          "x": 1118,
+          "x": 1130,
           "y": 118,
           "align": "right",
           "rotation": 0
@@ -1184,8 +1301,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Vila-real",
         "kindId": "sk-stop",
         "label": {
-          "x": 1075,
-          "y": 163,
+          "x": 1081,
+          "y": 175,
           "align": "right",
           "rotation": 0
         }
@@ -1196,7 +1313,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Borriana/Burriana-les Alqueries/Alquerías del Niño Perdido",
         "kindId": "sk-stop",
         "label": {
-          "x": 1024,
+          "x": 1042,
           "y": 208,
           "align": "right",
           "rotation": 0
@@ -1208,7 +1325,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Nules-La Vilavella",
         "kindId": "sk-stop",
         "label": {
-          "x": 982,
+          "x": 994,
           "y": 260,
           "align": "right",
           "rotation": 0
@@ -1220,9 +1337,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Moncofa",
         "kindId": "sk-stop",
         "label": {
-          "x": 935,
+          "x": 947,
           "y": 305,
-          "align": "left",
+          "align": "right",
           "rotation": 0
         }
       },
@@ -1232,7 +1349,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Xilxes/Chilches",
         "kindId": "sk-stop",
         "label": {
-          "x": 884,
+          "x": 896,
           "y": 354,
           "align": "right",
           "rotation": 0
@@ -1257,7 +1374,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 787,
-          "y": 450,
+          "y": 462,
           "align": "right",
           "rotation": 0
         }
@@ -1268,7 +1385,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "les Valls",
         "kindId": "sk-stop",
         "label": {
-          "x": 744,
+          "x": 756,
           "y": 497,
           "align": "right",
           "rotation": 0
@@ -1293,7 +1410,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 700,
-          "y": 636,
+          "y": 648,
           "align": "right",
           "rotation": 0
         }
@@ -1317,7 +1434,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 700,
-          "y": 737,
+          "y": 749,
           "align": "right",
           "rotation": 0
         }
@@ -1343,7 +1460,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
           "x": 708,
           "y": 831,
           "align": "right",
-          "rotation": 1
+          "rotation": 0
         }
       },
       {
@@ -1352,7 +1469,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "València la Font de Sant Lluís",
         "kindId": "sk-hub",
         "label": {
-          "x": 716,
+          "x": 698,
           "y": 878.5,
           "align": "right",
           "rotation": 0
@@ -1364,8 +1481,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "València Estació del Nord",
         "kindId": "sk-hub",
         "label": {
-          "x": 719,
-          "y": 926,
+          "x": 705,
+          "y": 926.5,
           "align": "right",
           "rotation": 0
         }
@@ -1376,9 +1493,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Utiel",
         "kindId": "sk-terminal",
         "label": {
-          "x": -128,
-          "y": 560,
-          "align": "left",
+          "x": -168,
+          "y": 562,
+          "align": "top",
           "rotation": 0
         }
       },
@@ -1389,8 +1506,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": -65.715,
-          "y": 565.285,
-          "align": "right",
+          "y": 577.285,
+          "align": "top",
           "rotation": -45
         }
       },
@@ -1402,7 +1519,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "label": {
           "x": -1.1700000000000017,
           "y": 644.83,
-          "align": "left",
+          "align": "top",
           "rotation": -45
         }
       },
@@ -1414,7 +1531,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "label": {
           "x": 38.394999999999996,
           "y": 691.395,
-          "align": "right",
+          "align": "top",
           "rotation": -45
         }
       },
@@ -1426,7 +1543,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "label": {
           "x": 89.765,
           "y": 734.765,
-          "align": "right",
+          "align": "top",
           "rotation": -45
         }
       },
@@ -1437,8 +1554,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 127.53,
-          "y": 756.53,
-          "align": "right",
+          "y": 768.53,
+          "align": "top",
           "rotation": -45
         }
       },
@@ -1449,8 +1566,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 120.46000000000001,
-          "y": 912.46,
-          "align": "left",
+          "y": 930.46,
+          "align": "bottom",
           "rotation": -45
         }
       },
@@ -1461,8 +1578,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 164.96,
-          "y": 915.96,
-          "align": "top",
+          "y": 927.96,
+          "align": "bottom",
           "rotation": -45
         }
       },
@@ -1472,9 +1589,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Cheste",
         "kindId": "sk-stop",
         "label": {
-          "x": 205.87,
-          "y": 919.55,
-          "align": "top",
+          "x": 217.87,
+          "y": 943.55,
+          "align": "bottom",
           "rotation": -45
         }
       },
@@ -1484,8 +1601,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Circuit Ricardo Tormo",
         "kindId": "sk-stop",
         "label": {
-          "x": 170.39,
-          "y": 952.77,
+          "x": 194.39,
+          "y": 964.77,
           "align": "left",
           "rotation": -45
         }
@@ -1496,8 +1613,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Loriguilla-Reva",
         "kindId": "sk-stop",
         "label": {
-          "x": 252.27999999999997,
-          "y": 941.98,
+          "x": 262.28,
+          "y": 958.98,
           "align": "left",
           "rotation": -45
         }
@@ -1509,8 +1626,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 348.9999999999999,
-          "y": 921.6800000000001,
-          "align": "top",
+          "y": 945.6800000000001,
+          "align": "bottom",
           "rotation": -46
         }
       },
@@ -1520,8 +1637,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Xirivella Alqueries",
         "kindId": "sk-stop",
         "label": {
-          "x": 336.59000000000015,
-          "y": 945.4099999999999,
+          "x": 360.59000000000015,
+          "y": 957.4099999999999,
           "align": "left",
           "rotation": -45
         }
@@ -1532,9 +1649,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "València Sant Isidre",
         "kindId": "sk-stop",
         "label": {
-          "x": 375,
-          "y": 949,
-          "align": "bottom",
+          "x": 410,
+          "y": 951,
+          "align": "left",
           "rotation": -45
         }
       },
@@ -1545,7 +1662,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 639,
-          "y": 980,
+          "y": 992,
           "align": "right",
           "rotation": 0
         }
@@ -1604,7 +1721,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "el Romaní",
         "kindId": "sk-stop",
         "label": {
-          "x": 638,
+          "x": 656,
           "y": 1223,
           "align": "right",
           "rotation": 0
@@ -1616,7 +1733,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Sollana",
         "kindId": "sk-stop",
         "label": {
-          "x": 642,
+          "x": 654,
           "y": 1265,
           "align": "right",
           "rotation": 0
@@ -1628,7 +1745,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Sueca",
         "kindId": "sk-stop",
         "label": {
-          "x": 645,
+          "x": 657,
           "y": 1316,
           "align": "right",
           "rotation": 0
@@ -1642,7 +1759,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "label": {
           "x": 649,
           "y": 1371,
-          "align": "top",
+          "align": "right",
           "rotation": 0
         }
       },
@@ -1652,9 +1769,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Tavernes de la Valldigna",
         "kindId": "sk-stop",
         "label": {
-          "x": 643,
-          "y": 1424,
-          "align": "top",
+          "x": 644,
+          "y": 1423,
+          "align": "right",
           "rotation": 0
         }
       },
@@ -1665,8 +1782,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-stop",
         "label": {
           "x": 651,
-          "y": 1479,
-          "align": "top",
+          "y": 1478,
+          "align": "right",
           "rotation": 0
         }
       },
@@ -1677,8 +1794,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-terminal",
         "label": {
           "x": 669.04,
-          "y": 1623,
-          "align": "top",
+          "y": 1617,
+          "align": "bottom",
           "rotation": 0
         }
       },
@@ -1689,7 +1806,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "kindId": "sk-terminal",
         "label": {
           "x": 588.4200000000001,
-          "y": 1621,
+          "y": 1613,
           "align": "right",
           "rotation": 0
         }
@@ -1712,7 +1829,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Algemesí",
         "kindId": "sk-stop",
         "label": {
-          "x": 313.52,
+          "x": 325.52,
           "y": 1269,
           "align": "left",
           "rotation": 0
@@ -1724,8 +1841,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Alzira",
         "kindId": "sk-stop",
         "label": {
-          "x": 333.64,
-          "y": 1315,
+          "x": 326,
+          "y": 1307,
           "align": "left",
           "rotation": 0
         }
@@ -1736,8 +1853,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Carcaixent",
         "kindId": "sk-stop",
         "label": {
-          "x": 309.4,
-          "y": 1364,
+          "x": 316,
+          "y": 1379,
           "align": "left",
           "rotation": 0
         }
@@ -1772,7 +1889,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Xàtiva",
         "kindId": "sk-stop",
         "label": {
-          "x": 331.64,
+          "x": 322,
           "y": 1511,
           "align": "left",
           "rotation": 0
@@ -1784,7 +1901,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "l'Alcúdia de Crespins",
         "kindId": "sk-stop",
         "label": {
-          "x": 239.24,
+          "x": 251.24,
           "y": 1555,
           "align": "left",
           "rotation": 0
@@ -1808,8 +1925,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Vallada",
         "kindId": "sk-stop",
         "label": {
-          "x": 325.08,
-          "y": 1652,
+          "x": 322,
+          "y": 1655,
           "align": "left",
           "rotation": 0
         }
@@ -1820,9 +1937,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Moixent/Mogente",
         "kindId": "sk-terminal",
         "label": {
-          "x": 258.6,
-          "y": 1701,
-          "align": "left",
+          "x": 336,
+          "y": 1729,
+          "align": "bottom",
           "rotation": 0
         }
       },
@@ -1832,9 +1949,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Xirvella L'Alter",
         "kindId": "sk-terminal",
         "label": {
-          "x": 423.93,
-          "y": 786,
-          "align": "right",
+          "x": 372,
+          "y": 762,
+          "align": "left",
           "rotation": 0
         }
       }
@@ -2704,7 +2821,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "fromNodeId": "n1775378474326-7",
         "toNodeId": "n-c3-9",
         "fromLaneId": "nl-n1775378474326-7-auto-segment-sg1775378705279-11",
-        "toLaneId": "nl-n-c3-9-l-c3",
+        "toLaneId": "nl-n-c3-9-manual-2",
         "geometry": {
           "kind": "straight"
         }

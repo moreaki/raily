@@ -1501,6 +1501,27 @@ export default function RailwayMapEditor() {
     }));
   }
 
+  function updateHubOutlineMode(value: "box" | "cells") {
+    updateMap((current) => ({
+      ...current,
+      config: { ...current.config, hubOutlineMode: value },
+    }));
+  }
+
+  function updateHubOutlineColor(value: string) {
+    updateMap((current) => ({
+      ...current,
+      config: { ...current.config, hubOutlineColor: value },
+    }));
+  }
+
+  function updateHubOutlineStrokeStyle(value: "solid" | "dashed" | "dotted") {
+    updateMap((current) => ({
+      ...current,
+      config: { ...current.config, hubOutlineStrokeStyle: value },
+    }));
+  }
+
   function updateHubOutlineStrokeWidth(value: number) {
     updateMap((current) => ({
       ...current,
@@ -1839,6 +1860,9 @@ export default function RailwayMapEditor() {
             setGridStepY={setGridStepY}
             nodeGroupCellWidth={config.nodeGroupCellWidth}
             nodeGroupCellHeight={config.nodeGroupCellHeight}
+            hubOutlineMode={config.hubOutlineMode}
+            hubOutlineColor={config.hubOutlineColor}
+            hubOutlineStrokeStyle={config.hubOutlineStrokeStyle}
             hubOutlineScale={config.hubOutlineScale}
             hubOutlineCornerRadius={config.hubOutlineCornerRadius}
             hubOutlineStrokeWidth={config.hubOutlineStrokeWidth}
@@ -2047,6 +2071,9 @@ export default function RailwayMapEditor() {
                     <RailwayMapSettings
                       nodeGroupCellWidth={nodeGroupCellWidth}
                       nodeGroupCellHeight={nodeGroupCellHeight}
+                      hubOutlineMode={config.hubOutlineMode}
+                      hubOutlineColor={config.hubOutlineColor}
+                      hubOutlineStrokeStyle={config.hubOutlineStrokeStyle}
                       hubOutlineScale={config.hubOutlineScale}
                       hubOutlineCornerRadius={config.hubOutlineCornerRadius}
                       hubOutlineStrokeWidth={config.hubOutlineStrokeWidth}
@@ -2057,6 +2084,9 @@ export default function RailwayMapEditor() {
                       labelAxisSnapSensitivity={config.labelAxisSnapSensitivity}
                       updateNodeGroupCellWidth={updateNodeGroupCellWidth}
                       updateNodeGroupCellHeight={updateNodeGroupCellHeight}
+                      updateHubOutlineMode={updateHubOutlineMode}
+                      updateHubOutlineColor={updateHubOutlineColor}
+                      updateHubOutlineStrokeStyle={updateHubOutlineStrokeStyle}
                       updateHubOutlineScale={updateHubOutlineScale}
                       updateHubOutlineCornerRadius={updateHubOutlineCornerRadius}
                       updateHubOutlineStrokeWidth={updateHubOutlineStrokeWidth}

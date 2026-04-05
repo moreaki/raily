@@ -3,6 +3,9 @@ import { Input } from "@/shared/ui/input";
 type RailwayMapSettingsProps = {
   nodeGroupCellWidth: number;
   nodeGroupCellHeight: number;
+  hubOutlineMode: "box" | "cells";
+  hubOutlineColor: string;
+  hubOutlineStrokeStyle: "solid" | "dashed" | "dotted";
   hubOutlineScale: number;
   hubOutlineCornerRadius: number;
   hubOutlineStrokeWidth: number;
@@ -13,6 +16,9 @@ type RailwayMapSettingsProps = {
   labelAxisSnapSensitivity: number;
   updateNodeGroupCellWidth: (value: number) => void;
   updateNodeGroupCellHeight: (value: number) => void;
+  updateHubOutlineMode: (value: "box" | "cells") => void;
+  updateHubOutlineColor: (value: string) => void;
+  updateHubOutlineStrokeStyle: (value: "solid" | "dashed" | "dotted") => void;
   updateHubOutlineScale: (value: number) => void;
   updateHubOutlineCornerRadius: (value: number) => void;
   updateHubOutlineStrokeWidth: (value: number) => void;
@@ -26,6 +32,9 @@ type RailwayMapSettingsProps = {
 export function RailwayMapSettings({
   nodeGroupCellWidth,
   nodeGroupCellHeight,
+  hubOutlineMode,
+  hubOutlineColor,
+  hubOutlineStrokeStyle,
   hubOutlineScale,
   hubOutlineCornerRadius,
   hubOutlineStrokeWidth,
@@ -36,6 +45,9 @@ export function RailwayMapSettings({
   labelAxisSnapSensitivity,
   updateNodeGroupCellWidth,
   updateNodeGroupCellHeight,
+  updateHubOutlineMode,
+  updateHubOutlineColor,
+  updateHubOutlineStrokeStyle,
   updateHubOutlineScale,
   updateHubOutlineCornerRadius,
   updateHubOutlineStrokeWidth,
@@ -47,6 +59,9 @@ export function RailwayMapSettings({
 }: RailwayMapSettingsProps) {
   const safeNodeGroupCellWidth = nodeGroupCellWidth ?? 22;
   const safeNodeGroupCellHeight = nodeGroupCellHeight ?? 22;
+  const safeHubOutlineMode = hubOutlineMode ?? "box";
+  const safeHubOutlineColor = hubOutlineColor ?? "#111827";
+  const safeHubOutlineStrokeStyle = hubOutlineStrokeStyle ?? "solid";
   const safeHubOutlineScale = hubOutlineScale ?? 1;
   const safeHubOutlineCornerRadius = hubOutlineCornerRadius ?? 10;
   const safeHubOutlineStrokeWidth = hubOutlineStrokeWidth ?? 3.25;
@@ -92,6 +107,33 @@ export function RailwayMapSettings({
       <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Hub Outline</div>
         <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Mode</span>
+            <select
+              value={safeHubOutlineMode}
+              onChange={(event) => updateHubOutlineMode(event.target.value as "box" | "cells")}
+              className="h-9 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+            >
+              <option value="box">Bounding box</option>
+              <option value="cells">Follow cells</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Color</span>
+            <Input type="color" value={safeHubOutlineColor} onChange={(event) => updateHubOutlineColor(event.target.value)} className="h-9 w-14 bg-white p-1" />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Style</span>
+            <select
+              value={safeHubOutlineStrokeStyle}
+              onChange={(event) => updateHubOutlineStrokeStyle(event.target.value as "solid" | "dashed" | "dotted")}
+              className="h-9 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+            >
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+            </select>
+          </label>
           <label className="flex items-center gap-2 text-sm text-ink">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Scale</span>
             <Input

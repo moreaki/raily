@@ -104,6 +104,9 @@ export interface RailwayMapConfig {
   parallelTrackSpacing: number;
   nodeGroupCellWidth: number;
   nodeGroupCellHeight: number;
+  hubOutlineMode: "box" | "cells";
+  hubOutlineColor: string;
+  hubOutlineStrokeStyle: LineStrokeStyle;
   hubOutlineScale: number;
   hubOutlineCornerRadius: number;
   hubOutlineStrokeWidth: number;

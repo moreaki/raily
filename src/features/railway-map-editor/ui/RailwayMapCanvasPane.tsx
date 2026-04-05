@@ -107,6 +107,9 @@ type RailwayMapCanvasPaneProps = {
   setGridStepY: (value: number) => void;
   nodeGroupCellWidth: number;
   nodeGroupCellHeight: number;
+  hubOutlineMode: "box" | "cells";
+  hubOutlineColor: string;
+  hubOutlineStrokeStyle: "solid" | "dashed" | "dotted";
   hubOutlineScale: number;
   hubOutlineCornerRadius: number;
   hubOutlineStrokeWidth: number;
@@ -253,6 +256,9 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
   setGridStepY,
   nodeGroupCellWidth,
   nodeGroupCellHeight,
+  hubOutlineMode,
+  hubOutlineColor,
+  hubOutlineStrokeStyle,
   hubOutlineScale,
   hubOutlineCornerRadius,
   hubOutlineStrokeWidth,
@@ -633,10 +639,10 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                 const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
                 const symbolSize = primaryStation ? stationKindsById.get(primaryStation.kindId)?.symbolSize ?? DEFAULT_STATION_SYMBOL_SIZE : DEFAULT_STATION_SYMBOL_SIZE;
                 const showGroupOutline = (node.showGroupOutline ?? (markers.length > 1)) && markers.length > 1;
-                const groupOutlineMode = node.groupOutlineMode ?? "box";
+                const groupOutlineMode = node.groupOutlineMode ?? hubOutlineMode;
                 const outlineStrokeWidth = node.groupOutlineStrokeWidth ?? hubOutlineStrokeWidth;
-                const outlineStrokeColor = node.groupOutlineColor ?? "#111827";
-                const outlineStrokeStyle = node.groupOutlineStrokeStyle ?? "solid";
+                const outlineStrokeColor = node.groupOutlineColor ?? hubOutlineColor;
+                const outlineStrokeStyle = node.groupOutlineStrokeStyle ?? hubOutlineStrokeStyle;
                 const xs = markers.map((marker) => marker.center.x);
                 const ys = markers.map((marker) => marker.center.y);
                 const outlinePaddingX = Math.max(nodeGroupCellWidth * 0.38, 12 * symbolSize) * hubOutlineScale;

@@ -334,10 +334,11 @@ export function RailwayMapInspector({
                   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink">
                     <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Outline</span>
                     <select
-                      value={selectedNode.groupOutlineMode ?? "box"}
-                      onChange={(event) => updateNode({ groupOutlineMode: event.target.value as "box" | "cells" })}
+                      value={selectedNode.groupOutlineMode ?? ""}
+                      onChange={(event) => updateNode({ groupOutlineMode: (event.target.value || undefined) as "box" | "cells" | undefined })}
                       className="h-9 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
                     >
+                      <option value="">Global mode</option>
                       <option value="box">Bounding box</option>
                       <option value="cells">Follow cells</option>
                     </select>
@@ -357,11 +358,17 @@ export function RailwayMapInspector({
                       onChange={(event) => updateNode({ groupOutlineColor: event.target.value })}
                       className="h-9 w-14 bg-white p-1"
                     />
+                    <Button type="button" variant="outline" className="h-9 px-2" onClick={() => updateNode({ groupOutlineColor: undefined })}>
+                      Global color
+                    </Button>
                     <select
-                      value={selectedNode.groupOutlineStrokeStyle ?? "solid"}
-                      onChange={(event) => updateNode({ groupOutlineStrokeStyle: event.target.value as "solid" | "dashed" | "dotted" })}
+                      value={selectedNode.groupOutlineStrokeStyle ?? ""}
+                      onChange={(event) =>
+                        updateNode({ groupOutlineStrokeStyle: (event.target.value || undefined) as "solid" | "dashed" | "dotted" | undefined })
+                      }
                       className="h-9 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
                     >
+                      <option value="">Global style</option>
                       <option value="solid">Solid</option>
                       <option value="dashed">Dashed</option>
                       <option value="dotted">Dotted</option>
