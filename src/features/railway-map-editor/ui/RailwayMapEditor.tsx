@@ -13,6 +13,7 @@ import {
   getClampedMenuPosition,
   getNodeSide,
   NodeSide,
+  getSvgPoint,
   normalizeSearchValue,
   offsetPoints,
   snapCoordinate,
@@ -53,7 +54,6 @@ import {
   DEFAULT_STATION_FONT_WEIGHT,
   DEFAULT_STATION_SYMBOL_SIZE,
   estimateLabelBox,
-  findNearbyFreePoint,
   getStationKindFontSize,
   getStationLabelPosition,
   pointToSegmentDistance,
@@ -213,6 +213,7 @@ export default function RailwayMapEditor() {
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
   const [sheetNameDraft, setSheetNameDraft] = useState("");
   const [highlightedStationId, setHighlightedStationId] = useState("");
+  const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number; point: MapPoint } | null>(null);
   const {
     nodeContextMenu,
     setNodeContextMenu,
@@ -834,13 +835,13 @@ export default function RailwayMapEditor() {
     }, 1800);
   }
 
-  function addNode() {
+  function createTrackPointAtCanvasPoint(point: MapPoint) {
     if (!currentSheet) return;
     updateMap((current) => {
-      const placement = findNearbyFreePoint(current, currentSheet.id, viewportCenter);
-      const snappedPlacement = snapToGrid ? snapPointToGrid(placement) : placement;
+      const snappedPlacement = snapToGrid ? snapPointToGrid(point) : point;
       return addNodeToSheet(current, currentSheet.id, snappedPlacement);
     });
+    setCanvasContextMenu(null);
   }
 
   function attachStationToSelectedNode() {
@@ -1256,6 +1257,7 @@ export default function RailwayMapEditor() {
   function handleStationContextMenu(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
     event.preventDefault();
     event.stopPropagation();
+    setCanvasContextMenu(null);
     const nextMenu = prepareStationContextMenu(stationId, nodeId, event.clientX, event.clientY);
     setNodeContextMenu(nextMenu);
   }
@@ -1263,6 +1265,7 @@ export default function RailwayMapEditor() {
   function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string, markerKey: string, segmentIds: string[], laneId: string | null) {
     event.preventDefault();
     event.stopPropagation();
+    setCanvasContextMenu(null);
     const nextMenu = prepareNodeContextMenu(nodeId, markerKey, segmentIds, laneId, event.clientX, event.clientY);
     setNodeContextMenu(nextMenu);
   }
@@ -1270,11 +1273,26 @@ export default function RailwayMapEditor() {
   function handleSegmentContextMenu(event: MouseEvent<SVGPathElement>, segmentId: string) {
     event.preventDefault();
     event.stopPropagation();
+    setCanvasContextMenu(null);
     prepareSegmentSelectionForContextMenu(event, segmentId);
     setSegmentContextMenu({
       segmentId,
       x: event.clientX,
       y: event.clientY,
+    });
+  }
+
+  function handleCanvasContextMenu(event: MouseEvent<SVGSVGElement>) {
+    if (event.target !== event.currentTarget || !svgRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeAllContextMenus();
+    const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+    if (!point) return;
+    setCanvasContextMenu({
+      x: getClampedMenuPosition(event.clientX, event.clientY, 240, 80)?.left ?? event.clientX,
+      y: getClampedMenuPosition(event.clientX, event.clientY, 240, 80)?.top ?? event.clientY,
+      point,
     });
   }
 
@@ -1300,7 +1318,7 @@ export default function RailwayMapEditor() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant={sidePanel === "edit" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "edit" ? "closed" : "edit")}>
-              Edit Panel
+              Inspect
             </Button>
             <Button variant={sidePanel === "manage" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "manage" ? "closed" : "manage")}>
               Manage
@@ -1339,7 +1357,6 @@ export default function RailwayMapEditor() {
             minGridStep={MIN_GRID_STEP}
             setGridStepX={setGridStepX}
             setGridStepY={setGridStepY}
-            addNode={addNode}
             canvasViewportRef={canvasViewportRef}
             svgRef={svgRef}
             canvasWidth={CANVAS_WIDTH}
@@ -1347,6 +1364,7 @@ export default function RailwayMapEditor() {
             viewBox={viewBox}
             worldSize={WORLD_SIZE}
             handleCanvasMouseDown={handleCanvasMouseDown}
+            handleCanvasContextMenu={handleCanvasContextMenu}
             handleSvgMouseMove={handleSvgMouseMove}
             handleSvgMouseUp={handleSvgMouseUp}
             gridLines={gridLines}
@@ -1417,6 +1435,8 @@ export default function RailwayMapEditor() {
             insertTrackPointOnSegment={insertTrackPointOnSegment}
             duplicateSegment={duplicateSegment}
             deleteSegment={deleteSegment}
+            canvasContextMenu={canvasContextMenu}
+            createTrackPointAtCanvasPoint={createTrackPointAtCanvasPoint}
             sheets={model.sheets}
             currentSheetId={currentSheetId}
             renamingSheetId={renamingSheetId}
@@ -1435,7 +1455,7 @@ export default function RailwayMapEditor() {
               <Card className="flex h-full min-h-0 flex-col overflow-hidden border-slate-200 bg-white/95 backdrop-blur">
                 <CardHeader className="flex flex-row items-center justify-between gap-3 px-5 py-4">
                   <div>
-                    <CardTitle>{sidePanel === "edit" ? "Edit Panel" : sidePanel === "settings" ? "Settings" : "Management"}</CardTitle>
+                    <CardTitle>{sidePanel === "edit" ? "Inspector" : sidePanel === "settings" ? "Settings" : "Management"}</CardTitle>
                     {sidePanel === "edit" ? <p className="mt-1 text-xs text-muted">Contextual tools for the selected map elements.</p> : null}
                   </div>
                   <Button variant="outline" className="px-3" onClick={() => setSidePanel("closed")}>

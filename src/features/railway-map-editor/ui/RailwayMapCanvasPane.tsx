@@ -88,7 +88,6 @@ type RailwayMapCanvasPaneProps = {
   minGridStep: number;
   setGridStepX: (value: number) => void;
   setGridStepY: (value: number) => void;
-  addNode: () => void;
   canvasViewportRef: RefObject<HTMLDivElement | null>;
   svgRef: RefObject<SVGSVGElement | null>;
   canvasWidth: number;
@@ -96,6 +95,7 @@ type RailwayMapCanvasPaneProps = {
   viewBox: { x: number; y: number; width: number; height: number };
   worldSize: number;
   handleCanvasMouseDown: (event: ReactMouseEvent<SVGSVGElement>) => void;
+  handleCanvasContextMenu: (event: ReactMouseEvent<SVGSVGElement>) => void;
   handleSvgMouseMove: (event: ReactMouseEvent<SVGSVGElement>) => void;
   handleSvgMouseUp: (event: ReactMouseEvent<SVGSVGElement>) => void;
   gridLines: { vertical: number[]; horizontal: number[] };
@@ -172,6 +172,8 @@ type RailwayMapCanvasPaneProps = {
   insertTrackPointOnSegment: (segmentId: string) => void;
   duplicateSegment: (segmentId: string) => void;
   deleteSegment: (segmentId: string) => void;
+  canvasContextMenu: { x: number; y: number; point: MapPoint } | null;
+  createTrackPointAtCanvasPoint: (point: MapPoint) => void;
   sheets: Sheet[];
   currentSheetId: string;
   renamingSheetId: string | null;
@@ -205,7 +207,6 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     minGridStep,
     setGridStepX,
     setGridStepY,
-    addNode,
     canvasViewportRef,
     svgRef,
     canvasWidth,
@@ -213,6 +214,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     viewBox,
     worldSize,
     handleCanvasMouseDown,
+    handleCanvasContextMenu,
     handleSvgMouseMove,
     handleSvgMouseUp,
     gridLines,
@@ -283,6 +285,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     insertTrackPointOnSegment,
     duplicateSegment,
     deleteSegment,
+    canvasContextMenu,
+    createTrackPointAtCanvasPoint,
     sheets,
     currentSheetId,
     renamingSheetId,
@@ -355,10 +359,6 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                   Reset
                 </button>
               </div>
-              <Button variant="outline" className="h-9 bg-white/90 backdrop-blur" onClick={addNode}>
-                <Plus className="h-4 w-4" />
-                Track Point
-              </Button>
             </div>
           </div>
 
@@ -370,6 +370,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
               className="h-full w-full"
               onMouseDown={handleCanvasMouseDown}
+              onContextMenu={handleCanvasContextMenu}
               onMouseMove={handleSvgMouseMove}
               onMouseUp={handleSvgMouseUp}
               onMouseLeave={handleSvgMouseUp}
@@ -702,6 +703,22 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               duplicateSegment={duplicateSegment}
               deleteSegment={deleteSegment}
             />
+          ) : null}
+
+          {canvasContextMenu ? (
+            <div
+              className="fixed z-30 min-w-[220px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+              style={{ left: canvasContextMenu.x, top: canvasContextMenu.y }}
+            >
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                onClick={() => createTrackPointAtCanvasPoint(canvasContextMenu.point)}
+              >
+                <Plus className="h-4 w-4" />
+                Add track point here
+              </button>
+            </div>
           ) : null}
 
           <div
