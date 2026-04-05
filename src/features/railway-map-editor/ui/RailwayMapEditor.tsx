@@ -1277,11 +1277,11 @@ export default function RailwayMapEditor() {
   const visibleStations = useMemo(() => [...currentStations, ...unassignedStations], [currentStations, unassignedStations]);
 
   return (
-    <div className="min-h-screen px-4 py-5 sm:px-6">
-      <div className="mx-auto max-w-[1500px] space-y-4">
-        <header className="flex flex-col gap-3 rounded-3xl border border-slate-200/80 bg-white/75 px-5 py-4 shadow-panel backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+    <div className="min-h-screen px-3 py-3 sm:px-4">
+      <div className="mx-auto max-w-[1600px] space-y-3">
+        <header className="flex flex-col gap-2 rounded-3xl border border-slate-200/80 bg-white/75 px-4 py-3 shadow-panel backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight text-sky-700 sm:text-3xl">Raily Editor</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-sky-700">Raily Editor</h1>
             <p className="text-xs text-muted">Copyright © R. &amp; K. Nibali</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1302,7 +1302,7 @@ export default function RailwayMapEditor() {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
           <RailwayMapCanvasPane
             pendingSegmentStart={pendingSegmentStart}
             laneDisplayNameById={laneDisplayNameById}
@@ -1410,8 +1410,8 @@ export default function RailwayMapEditor() {
 
           {sidePanel !== "closed" ? (
             <div className="min-w-0">
-              <Card className="flex h-full min-h-[78vh] flex-col overflow-hidden border-slate-200 bg-white/95 backdrop-blur">
-                <CardHeader className="flex flex-row items-center justify-between gap-3">
+              <Card className="flex h-full min-h-[82vh] flex-col overflow-hidden border-slate-200 bg-white/95 backdrop-blur">
+                <CardHeader className="flex flex-row items-center justify-between gap-3 px-5 py-4">
                   <div>
                     <CardTitle>{sidePanel === "edit" ? "Edit Panel" : "Management"}</CardTitle>
                     {sidePanel === "edit" ? <p className="mt-1 text-xs text-muted">Contextual tools for the selected map elements.</p> : null}
@@ -1420,7 +1420,7 @@ export default function RailwayMapEditor() {
                     Close
                   </Button>
                 </CardHeader>
-                <CardContent className="flex-1 overflow-auto space-y-6">
+                <CardContent className="flex-1 space-y-6 overflow-auto px-5 pb-5 pt-0">
                   {sidePanel === "edit" ? (
                     <RailwayMapInspector
                       hasNodeOrStationSelection={hasNodeOrStationSelection}

@@ -280,8 +280,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
-        <div className="relative min-h-[78vh] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.08),transparent_28%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 p-4">
+        <div className="relative h-[82vh] min-h-[760px] bg-slate-50">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 p-3">
             {pendingSegmentStart ? (
               <div className="pointer-events-auto rounded-2xl border border-sky-200 bg-sky-50/95 px-3 py-2 text-xs text-sky-800 shadow-sm">
                 Segment start: {pendingSegmentStart.nodeId}
@@ -289,7 +289,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               </div>
             ) : null}
             <div className="pointer-events-auto ml-auto flex gap-2">
-              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm backdrop-blur">
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-1.5 text-sm shadow-sm backdrop-blur">
                 <button type="button" className="font-semibold text-ink" onClick={() => applyZoom(zoom / zoomStep)}>
                   -
                 </button>
@@ -301,7 +301,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                   Reset
                 </button>
               </div>
-              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-1.5 text-xs shadow-sm backdrop-blur">
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
                   Grid
@@ -323,14 +323,14 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                   className="h-8 w-20 px-2 py-1 text-xs"
                 />
               </div>
-              <Button variant="outline" className="bg-white/90 backdrop-blur" onClick={addNode}>
+              <Button variant="outline" className="h-9 bg-white/90 backdrop-blur" onClick={addNode}>
                 <Plus className="h-4 w-4" />
                 Track Point
               </Button>
             </div>
           </div>
 
-          <div ref={canvasViewportRef} className="h-[78vh] overflow-auto overscroll-contain touch-none">
+          <div ref={canvasViewportRef} className="h-full overflow-hidden overscroll-contain touch-none">
             <svg
               ref={svgRef}
               width={canvasWidth}
@@ -557,10 +557,10 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
             </svg>
           </div>
 
-          <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-wrap gap-2">
-            <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">{currentStations.length} stations</div>
-            <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">{currentSegments.length} segments</div>
-            <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">{currentSheet?.name ?? "Sheet"}</div>
+          <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap gap-2">
+            <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-1.5 text-sm shadow-sm">{currentStations.length} stations</div>
+            <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-1.5 text-sm shadow-sm">{currentSegments.length} segments</div>
+            <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-1.5 text-sm shadow-sm">{currentSheet?.name ?? "Sheet"}</div>
           </div>
 
           {nodeContextMenu ? (
@@ -606,14 +606,21 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
             />
           ) : null}
 
-          <div className="absolute inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/92 px-3 py-2 backdrop-blur">
-            <div className="flex items-center gap-2 overflow-x-auto">
+          <div className="absolute inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/94 px-3 py-1.5 backdrop-blur">
+            <div className="flex items-end gap-1 overflow-x-auto">
               {sheets.map((sheet) => {
                 const active = currentSheetId === sheet.id;
                 const renaming = renamingSheetId === sheet.id;
 
                 return (
-                  <div key={sheet.id} className={`flex items-center gap-2 rounded-t-2xl border px-3 py-2 text-sm shadow-sm ${active ? "border-slate-300 bg-white text-ink" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+                  <div
+                    key={sheet.id}
+                    className={`flex items-center gap-2 rounded-t-lg border border-b-0 px-3 py-2 text-sm ${
+                      active
+                        ? "border-slate-300 bg-slate-50 text-ink"
+                        : "border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
                     {renaming ? (
                       <Input
                         autoFocus
@@ -632,14 +639,18 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       </button>
                     )}
                     {active && sheets.length > 1 ? (
-                      <button type="button" className="rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100" onClick={deleteCurrentSheet}>
+                      <button type="button" className="rounded-full px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-200" onClick={deleteCurrentSheet}>
                         ×
                       </button>
                     ) : null}
                   </div>
                 );
               })}
-              <button type="button" className="rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50" onClick={addSheet}>
+              <button
+                type="button"
+                className="mb-0.5 rounded-t-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                onClick={addSheet}
+              >
                 +
               </button>
             </div>
