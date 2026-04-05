@@ -1,0 +1,381 @@
+import { Plus, Trash2 } from "lucide-react";
+import type { Line, LineRun, MapNode, Segment, Station, StationKind } from "@/entities/railway-map/model/types";
+import { lineStrokeDasharray } from "@/entities/railway-map/model/utils";
+import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+
+type SelectedNodeLane = {
+  id: string;
+  lineNames: Array<string | undefined>;
+  lineColors: string[];
+  segmentIds: string[];
+};
+
+type LabelDiagnostic = {
+  overlapsLabel: boolean;
+  overlapsSegment: boolean;
+  colliding: boolean;
+};
+
+type RailwayMapInspectorProps = {
+  hasNodeOrStationSelection: boolean;
+  hasSegmentOrLineSelection: boolean;
+  newStationName: string;
+  newStationKindId: string;
+  setNewStationName: (value: string) => void;
+  setNewStationKindId: (value: string) => void;
+  addStation: () => void;
+  visibleStations: Station[];
+  selectedStationId: string;
+  stationKinds: StationKind[];
+  stationKindsById: Map<string, StationKind>;
+  stationKindShapeGlyph: (shape: StationKind["shape"]) => string;
+  setSelectedNodeId: (value: string) => void;
+  setSelectedNodeIds: (value: string[]) => void;
+  setSelectedStationId: (value: string) => void;
+  deleteNode: (nodeId: string) => void;
+  deleteStation: (stationId: string) => void;
+  selectedNode: MapNode | null;
+  updateNode: (patch: Partial<MapNode>) => void;
+  selectedNodeLanes: SelectedNodeLane[];
+  selectedNodeLaneAxis: "horizontal" | "vertical";
+  selectedNodeMarkerLaneId: string | null;
+  selectedNodeLaneMoveLabels: { backward: string; forward: string; hint: string };
+  moveLaneOrder: (nodeId: string, laneId: string, direction: -1 | 1) => void;
+  selectedNodeStations: Station[];
+  attachStationToSelectedNode: () => void;
+  unassignStation: (stationId: string) => void;
+  selectedStation: Station | null;
+  updateStation: (stationId: string, patch: Partial<Station>) => void;
+  labelDiagnostics: Map<string, LabelDiagnostic>;
+  selectedSegment: Segment | null;
+  selectedLine: Line | null;
+  selectedLineId: string;
+  lines: Line[];
+  selectedLineRun: LineRun | null;
+  segmentsById: Map<string, Segment>;
+  handleSelectedLineInspectorChange: (lineId: string) => void;
+};
+
+export function RailwayMapInspector({
+  hasNodeOrStationSelection,
+  hasSegmentOrLineSelection,
+  newStationName,
+  newStationKindId,
+  setNewStationName,
+  setNewStationKindId,
+  addStation,
+  visibleStations,
+  selectedStationId,
+  stationKinds,
+  stationKindsById,
+  stationKindShapeGlyph,
+  setSelectedNodeId,
+  setSelectedNodeIds,
+  setSelectedStationId,
+  deleteNode,
+  deleteStation,
+  selectedNode,
+  updateNode,
+  selectedNodeLanes,
+  selectedNodeLaneAxis,
+  selectedNodeMarkerLaneId,
+  selectedNodeLaneMoveLabels,
+  moveLaneOrder,
+  selectedNodeStations,
+  attachStationToSelectedNode,
+  unassignStation,
+  selectedStation,
+  updateStation,
+  labelDiagnostics,
+  selectedSegment,
+  selectedLine,
+  selectedLineId,
+  lines,
+  selectedLineRun,
+  segmentsById,
+  handleSelectedLineInspectorChange,
+}: RailwayMapInspectorProps) {
+  return (
+    <>
+      {!hasNodeOrStationSelection && !hasSegmentOrLineSelection ? (
+        <>
+          <section className="space-y-3">
+            <div className="text-sm font-semibold text-ink">Quick Add</div>
+            <div className="flex gap-2">
+              <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
+              <select
+                value={newStationKindId}
+                onChange={(event) => setNewStationKindId(event.target.value)}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+              >
+                {stationKinds.map((kind) => (
+                  <option key={kind.id} value={kind.id}>
+                    {kind.name} {stationKindShapeGlyph(kind.shape)}
+                  </option>
+                ))}
+              </select>
+              <Button onClick={addStation}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted">Quick add creates an unassigned station object. Use the canvas to assign it to a track point later.</p>
+          </section>
+
+          <section className="space-y-3">
+            <div className="text-sm font-semibold text-ink">Stations</div>
+            <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
+              {visibleStations.map((station) => (
+                <div
+                  key={station.id}
+                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
+                    selectedStationId === station.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedNodeId(station.nodeId ?? "");
+                      setSelectedNodeIds(station.nodeId ? [station.nodeId] : []);
+                      setSelectedStationId(station.id);
+                    }}
+                    className="flex min-w-0 flex-1 items-center justify-between text-left"
+                  >
+                    <span className="truncate">{station.name}</span>
+                    <div className="flex items-center gap-2">
+                      {!station.nodeId ? <Badge>Unassigned</Badge> : null}
+                      <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${station.name}`}
+                    className={`rounded-lg px-2 py-1 ${
+                      selectedStationId === station.id ? "bg-white/15 text-white hover:bg-white/25" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                    onClick={() => (station.nodeId ? deleteNode(station.nodeId) : deleteStation(station.id))}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {hasNodeOrStationSelection ? (
+        <>
+          <section className="space-y-3">
+            <div className="text-sm font-semibold text-ink">Selected Node</div>
+            {selectedNode ? (
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <Input type="number" value={selectedNode.x} onChange={(event) => updateNode({ x: Number(event.target.value) })} />
+                  <Input type="number" value={selectedNode.y} onChange={(event) => updateNode({ y: Number(event.target.value) })} />
+                </div>
+                {selectedNodeLanes.length > 1 ? (
+                  <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Lane Order</div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <svg viewBox="0 0 180 56" className="h-14 w-full" aria-hidden="true">
+                        {selectedNodeLanes.map((lane, index) => {
+                          const offset = (index - (selectedNodeLanes.length - 1) / 2) * 22;
+                          const cx = selectedNodeLaneAxis === "horizontal" ? 90 + offset : 90;
+                          const cy = selectedNodeLaneAxis === "vertical" ? 28 + offset : 28;
+                          const stroke = lane.lineColors[0] ?? "#64748b";
+                          const isActive = selectedNodeMarkerLaneId === lane.id;
+                          return (
+                            <g key={lane.id}>
+                              <circle cx={cx} cy={cy} r={isActive ? 9 : 7} fill="white" stroke={stroke} strokeWidth={isActive ? 4 : 3} />
+                              {isActive ? <circle cx={cx} cy={cy} r="13" fill="none" stroke="#0f172a" strokeDasharray="4 3" /> : null}
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    </div>
+                    <div className="space-y-2">
+                      {selectedNodeLanes.map((lane, index) => (
+                        <div
+                          key={lane.id}
+                          className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
+                            selectedNodeMarkerLaneId === lane.id ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200" : "bg-slate-50 text-ink"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 font-medium">
+                              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: lane.lineColors[0] ?? "#94a3b8" }} />
+                              <span>{lane.lineNames.length > 0 ? lane.lineNames.join(", ") : "Unassigned lane"}</span>
+                            </div>
+                            <div className="text-xs text-muted">
+                              {lane.segmentIds.length} segment{lane.segmentIds.length === 1 ? "" : "s"}
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button type="button" variant="outline" className="h-8 px-2" disabled={index === 0} onClick={() => moveLaneOrder(selectedNode.id, lane.id, -1)}>
+                              {selectedNodeLaneMoveLabels.backward}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-8 px-2"
+                              disabled={index === selectedNodeLanes.length - 1}
+                              onClick={() => moveLaneOrder(selectedNode.id, lane.id, 1)}
+                            >
+                              {selectedNodeLaneMoveLabels.forward}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted">
+                      {selectedNodeLaneMoveLabels.hint} Use this when parallel tracks at this node need a different visual ordering.
+                    </p>
+                  </div>
+                ) : null}
+                {selectedNodeStations.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-ink">This track point has no station yet.</p>
+                      <p className="text-xs text-muted">Attach a station here to give it a name, kind, and label.</p>
+                      <div className="flex gap-2">
+                        <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
+                        <Button onClick={attachStationToSelectedNode}>
+                          <Plus className="h-4 w-4" />
+                          Attach station
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  {selectedNodeStations.map((station) => (
+                    <div key={station.id} className="rounded-xl bg-white px-3 py-2 text-sm text-ink">
+                      <div className="flex items-center justify-between gap-2">
+                        <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setSelectedStationId(station.id)}>
+                          <div className="truncate font-medium">{station.name}</div>
+                          <div className="text-xs text-muted">{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</div>
+                        </button>
+                        <Button
+                          variant="outline"
+                          className="shrink-0"
+                          onClick={() => {
+                            setSelectedStationId(station.id);
+                            unassignStation(station.id);
+                          }}
+                        >
+                          Unassign
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {selectedNodeStations.length === 0 ? <p className="text-xs text-muted">No station is attached to this node.</p> : null}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">Select a node on the canvas.</p>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <div className="text-sm font-semibold text-ink">Selected Station</div>
+            {selectedStation ? (
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <Input value={selectedStation.name} onChange={(event) => updateStation(selectedStation.id, { name: event.target.value })} placeholder="Station name" />
+                <select
+                  value={selectedStation.kindId}
+                  onChange={(event) => updateStation(selectedStation.id, { kindId: event.target.value })}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                >
+                  {stationKinds.map((kind) => (
+                    <option key={kind.id} value={kind.id}>
+                      {kind.name} {stationKindShapeGlyph(kind.shape)}
+                    </option>
+                  ))}
+                </select>
+                {selectedStationId === selectedStation.id && labelDiagnostics.get(selectedStation.id)?.colliding ? (
+                  <p className="text-xs font-medium text-rose-700">
+                    Label collision detected with
+                    {labelDiagnostics.get(selectedStation.id)?.overlapsLabel && labelDiagnostics.get(selectedStation.id)?.overlapsSegment
+                      ? " another label and a segment."
+                      : labelDiagnostics.get(selectedStation.id)?.overlapsSegment
+                        ? " a segment."
+                        : " another label."}
+                  </p>
+                ) : null}
+                {!selectedStation.nodeId ? (
+                  <p className="text-xs text-muted">This station is currently unassigned. Use a track point context menu to assign it to the map.</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-muted">Select a station from the list or canvas.</p>
+            )}
+          </section>
+        </>
+      ) : null}
+
+      {hasSegmentOrLineSelection ? (
+        <>
+          <section className="space-y-3">
+            <div className="text-sm font-semibold text-ink">Selected Segment</div>
+            {selectedSegment ? (
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-sm font-medium text-ink">{selectedSegment.id}</div>
+                <div className="text-xs text-muted">
+                  {selectedSegment.fromNodeId} to {selectedSegment.toNodeId}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">Select a segment on the canvas.</p>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <div className="text-sm font-semibold text-ink">Selected Line</div>
+            {selectedLine ? (
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <select
+                  value={selectedLineId}
+                  onChange={(event) => handleSelectedLineInspectorChange(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                >
+                  {lines.map((line) => (
+                    <option key={line.id} value={line.id}>
+                      {line.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-3">
+                  <div className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: selectedLine.color }} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-ink">{selectedLine.name}</div>
+                    <div className="text-xs text-muted">
+                      {selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0} segment
+                      {(selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0) === 1 ? "" : "s"} on this sheet
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                  <svg viewBox="0 0 180 24" className="h-6 w-full">
+                    <path
+                      d="M 8 12 L 172 12"
+                      fill="none"
+                      stroke={selectedLine.color}
+                      strokeWidth={selectedLine.strokeWidth}
+                      strokeDasharray={lineStrokeDasharray(selectedLine)}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
+                <p className="text-xs text-muted">Management contains the full line editing controls and segment assignment helper.</p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">Click a line or a segment on the canvas.</p>
+            )}
+          </section>
+        </>
+      ) : null}
+    </>
+  );
+}

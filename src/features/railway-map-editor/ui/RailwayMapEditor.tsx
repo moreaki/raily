@@ -53,6 +53,8 @@ import {
   segmentIntersectsLabelBox,
   STATION_FONT_WEIGHT_OPTIONS,
 } from "@/features/railway-map-editor/lib/labels";
+import { RailwayMapInspector } from "@/features/railway-map-editor/ui/RailwayMapInspector";
+import { RailwayMapManagement } from "@/features/railway-map-editor/ui/RailwayMapManagement";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -3137,611 +3139,84 @@ export default function RailwayMapEditor() {
                 </CardHeader>
                 <CardContent className="flex-1 overflow-auto space-y-6">
                   {sidePanel === "edit" ? (
-                    <>
-                      {!hasNodeOrStationSelection && !hasSegmentOrLineSelection ? (
-                        <>
-                          <section className="space-y-3">
-                            <div className="text-sm font-semibold text-ink">Quick Add</div>
-                            <div className="flex gap-2">
-                              <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
-                              <select
-                                value={newStationKindId}
-                                onChange={(event) => setNewStationKindId(event.target.value)}
-                                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                              >
-                                {config.stationKinds.map((kind) => (
-                                  <option key={kind.id} value={kind.id}>
-                                    {kind.name} {stationKindShapeGlyph(kind.shape)}
-                                  </option>
-                                ))}
-                              </select>
-                              <Button onClick={addStation}>
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <p className="text-xs text-muted">Quick add creates an unassigned station object. Use the canvas to assign it to a track point later.</p>
-                          </section>
-
-                          <section className="space-y-3">
-                            <div className="text-sm font-semibold text-ink">Stations</div>
-                            <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                              {visibleStations.map((station) => (
-                                <div
-                                  key={station.id}
-                                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
-                                    selectedStationId === station.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
-                                  }`}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedNodeId(station.nodeId ?? "");
-                                      setSelectedNodeIds(station.nodeId ? [station.nodeId] : []);
-                                      setSelectedStationId(station.id);
-                                    }}
-                                    className="flex min-w-0 flex-1 items-center justify-between text-left"
-                                  >
-                                    <span className="truncate">{station.name}</span>
-                                    <div className="flex items-center gap-2">
-                                      {!station.nodeId ? <Badge>Unassigned</Badge> : null}
-                                      <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
-                                    </div>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    aria-label={`Delete ${station.name}`}
-                                    className={`rounded-lg px-2 py-1 ${
-                                      selectedStationId === station.id ? "bg-white/15 text-white hover:bg-white/25" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                                    }`}
-                                    onClick={() => (station.nodeId ? deleteNode(station.nodeId) : deleteStation(station.id))}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </section>
-                        </>
-                      ) : null}
-
-                      {hasNodeOrStationSelection ? (
-                        <>
-                          <section className="space-y-3">
-                            <div className="text-sm font-semibold text-ink">Selected Node</div>
-                            {selectedNode ? (
-                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="grid grid-cols-2 gap-2">
-                              <Input type="number" value={selectedNode.x} onChange={(event) => updateNode({ x: Number(event.target.value) })} />
-                              <Input type="number" value={selectedNode.y} onChange={(event) => updateNode({ y: Number(event.target.value) })} />
-                            </div>
-                            {selectedNodeLanes.length > 1 ? (
-                              <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
-                                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Lane Order</div>
-                                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                                  <svg viewBox="0 0 180 56" className="h-14 w-full" aria-hidden="true">
-                                    {selectedNodeLanes.map((lane, index) => {
-                                      const offset = (index - (selectedNodeLanes.length - 1) / 2) * 22;
-                                      const cx = selectedNodeLaneAxis === "horizontal" ? 90 + offset : 90;
-                                      const cy = selectedNodeLaneAxis === "vertical" ? 28 + offset : 28;
-                                      const stroke = lane.lineColors[0] ?? "#64748b";
-                                      const isActive = selectedNodeMarkerLaneId === lane.id;
-                                      return (
-                                        <g key={lane.id}>
-                                          <circle
-                                            cx={cx}
-                                            cy={cy}
-                                            r={isActive ? 9 : 7}
-                                            fill="white"
-                                            stroke={stroke}
-                                            strokeWidth={isActive ? 4 : 3}
-                                          />
-                                          {isActive ? (
-                                            <circle
-                                              cx={cx}
-                                              cy={cy}
-                                              r="13"
-                                              fill="none"
-                                              stroke="#0f172a"
-                                              strokeDasharray="4 3"
-                                            />
-                                          ) : null}
-                                        </g>
-                                      );
-                                    })}
-                                  </svg>
-                                </div>
-                                <div className="space-y-2">
-                                  {selectedNodeLanes.map((lane, index) => (
-                                    <div
-                                      key={lane.id}
-                                      className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
-                                        selectedNodeMarkerLaneId === lane.id ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200" : "bg-slate-50 text-ink"
-                                      }`}
-                                    >
-                                      <div className="min-w-0">
-                                        <div className="flex items-center gap-2 font-medium">
-                                          <span
-                                            className="inline-block h-2.5 w-2.5 rounded-full"
-                                            style={{ backgroundColor: lane.lineColors[0] ?? "#94a3b8" }}
-                                          />
-                                          <span>{lane.lineNames.length > 0 ? lane.lineNames.join(", ") : "Unassigned lane"}</span>
-                                        </div>
-                                        <div className="text-xs text-muted">
-                                          {lane.segmentIds.length} segment{lane.segmentIds.length === 1 ? "" : "s"}
-                                        </div>
-                                      </div>
-                                      <div className="flex gap-1">
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          className="h-8 px-2"
-                                          disabled={index === 0}
-                                          onClick={() => moveLaneOrder(selectedNode.id, lane.id, -1)}
-                                        >
-                                          {selectedNodeLaneMoveLabels.backward}
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          className="h-8 px-2"
-                                          disabled={index === selectedNodeLanes.length - 1}
-                                          onClick={() => moveLaneOrder(selectedNode.id, lane.id, 1)}
-                                        >
-                                          {selectedNodeLaneMoveLabels.forward}
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                                <p className="text-xs text-muted">
-                                  {selectedNodeLaneMoveLabels.hint} Use this when parallel tracks at this node need a different visual ordering.
-                                </p>
-                              </div>
-                            ) : null}
-                            {selectedNodeStations.length === 0 ? (
-                              <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3">
-                                <div className="space-y-2">
-                                  <p className="text-sm font-medium text-ink">This track point has no station yet.</p>
-                                  <p className="text-xs text-muted">Attach a station here to give it a name, kind, and label.</p>
-                                  <div className="flex gap-2">
-                                    <Input
-                                      value={newStationName}
-                                      onChange={(event) => setNewStationName(event.target.value)}
-                                      placeholder="Station name"
-                                    />
-                                    <Button onClick={attachStationToSelectedNode}>
-                                      <Plus className="h-4 w-4" />
-                                      Attach station
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : null}
-                            <div className="space-y-2">
-                              {selectedNodeStations.map((station) => (
-                                <div key={station.id} className="rounded-xl bg-white px-3 py-2 text-sm text-ink">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <button
-                                      type="button"
-                                      className="min-w-0 flex-1 text-left"
-                                      onClick={() => setSelectedStationId(station.id)}
-                                    >
-                                      <div className="truncate font-medium">{station.name}</div>
-                                      <div className="text-xs text-muted">{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</div>
-                                    </button>
-                                    <Button
-                                      variant="outline"
-                                      className="shrink-0"
-                                      onClick={() => {
-                                        setSelectedStationId(station.id);
-                                        unassignStation(station.id);
-                                      }}
-                                    >
-                                      Unassign
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                              {selectedNodeStations.length === 0 ? <p className="text-xs text-muted">No station is attached to this node.</p> : null}
-                            </div>
-                              </div>
-                            ) : (
-                              <p className="text-sm text-muted">Select a node on the canvas.</p>
-                            )}
-                          </section>
-
-                          <section className="space-y-3">
-                            <div className="text-sm font-semibold text-ink">Selected Station</div>
-                            {selectedStation ? (
-                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                <Input
-                                  value={selectedStation.name}
-                                  onChange={(event) => updateStation(selectedStation.id, { name: event.target.value })}
-                                  placeholder="Station name"
-                                />
-                                <select
-                                  value={selectedStation.kindId}
-                                  onChange={(event) => updateStation(selectedStation.id, { kindId: event.target.value })}
-                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                                >
-                                  {config.stationKinds.map((kind) => (
-                                    <option key={kind.id} value={kind.id}>
-                                      {kind.name} {stationKindShapeGlyph(kind.shape)}
-                                    </option>
-                                  ))}
-                                </select>
-                                {selectedStationId === selectedStation.id && labelDiagnostics.get(selectedStation.id)?.colliding ? (
-                                  <p className="text-xs font-medium text-rose-700">
-                                    Label collision detected with
-                                    {labelDiagnostics.get(selectedStation.id)?.overlapsLabel && labelDiagnostics.get(selectedStation.id)?.overlapsSegment
-                                      ? " another label and a segment."
-                                      : labelDiagnostics.get(selectedStation.id)?.overlapsSegment
-                                        ? " a segment."
-                                        : " another label."}
-                                  </p>
-                                ) : null}
-                                {!selectedStation.nodeId ? (
-                                  <p className="text-xs text-muted">This station is currently unassigned. Use a track point context menu to assign it to the map.</p>
-                                ) : null}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-muted">Select a station from the list or canvas.</p>
-                            )}
-                          </section>
-                        </>
-                      ) : null}
-
-                      {hasSegmentOrLineSelection ? (
-                        <>
-                          <section className="space-y-3">
-                            <div className="text-sm font-semibold text-ink">Selected Segment</div>
-                            {selectedSegment ? (
-                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                <div className="text-sm font-medium text-ink">{selectedSegment.id}</div>
-                                <div className="text-xs text-muted">
-                                  {selectedSegment.fromNodeId} to {selectedSegment.toNodeId}
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-sm text-muted">Select a segment on the canvas.</p>
-                            )}
-                          </section>
-
-                          <section className="space-y-3">
-                            <div className="text-sm font-semibold text-ink">Selected Line</div>
-                            {selectedLine ? (
-                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                <select
-                                  value={selectedLineId}
-                                  onChange={(event) => handleSelectedLineInspectorChange(event.target.value)}
-                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                                >
-                                  {config.lines.map((line) => (
-                                    <option key={line.id} value={line.id}>
-                                      {line.name}
-                                    </option>
-                                  ))}
-                                </select>
-                                <div className="flex items-center gap-3">
-                                  <div
-                                    className="h-3 w-3 rounded-full border border-slate-300"
-                                    style={{ backgroundColor: selectedLine.color }}
-                                  />
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-medium text-ink">{selectedLine.name}</div>
-                                <div className="text-xs text-muted">
-                                  {selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0} segment
-                                    {(selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0) === 1 ? "" : "s"} on this sheet
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                                <svg viewBox="0 0 180 24" className="h-6 w-full">
-                                  <path
-                                    d="M 8 12 L 172 12"
-                                    fill="none"
-                                  stroke={selectedLine.color}
-                                  strokeWidth={selectedLine.strokeWidth}
-                                  strokeDasharray={lineStrokeDasharray(selectedLine)}
-                                  strokeLinecap="round"
-                                  />
-                                </svg>
-                              </div>
-                            <p className="text-xs text-muted">Management contains the full line editing controls and segment assignment helper.</p>
-                              </div>
-                            ) : (
-                              <p className="text-sm text-muted">Click a line or a segment on the canvas.</p>
-                            )}
-                          </section>
-                        </>
-                      ) : null}
-
-                    </>
+                    <RailwayMapInspector
+                      hasNodeOrStationSelection={hasNodeOrStationSelection}
+                      hasSegmentOrLineSelection={hasSegmentOrLineSelection}
+                      newStationName={newStationName}
+                      newStationKindId={newStationKindId}
+                      setNewStationName={setNewStationName}
+                      setNewStationKindId={setNewStationKindId}
+                      addStation={addStation}
+                      visibleStations={visibleStations}
+                      selectedStationId={selectedStationId}
+                      stationKinds={config.stationKinds}
+                      stationKindsById={stationKindsById}
+                      stationKindShapeGlyph={stationKindShapeGlyph}
+                      setSelectedNodeId={setSelectedNodeId}
+                      setSelectedNodeIds={setSelectedNodeIds}
+                      setSelectedStationId={setSelectedStationId}
+                      deleteNode={deleteNode}
+                      deleteStation={deleteStation}
+                      selectedNode={selectedNode}
+                      updateNode={updateNode}
+                      selectedNodeLanes={selectedNodeLanes}
+                      selectedNodeLaneAxis={selectedNodeLaneAxis}
+                      selectedNodeMarkerLaneId={selectedNodeMarkerLaneId}
+                      selectedNodeLaneMoveLabels={selectedNodeLaneMoveLabels}
+                      moveLaneOrder={moveLaneOrder}
+                      selectedNodeStations={selectedNodeStations}
+                      attachStationToSelectedNode={attachStationToSelectedNode}
+                      unassignStation={unassignStation}
+                      selectedStation={selectedStation}
+                      updateStation={updateStation}
+                      labelDiagnostics={labelDiagnostics}
+                      selectedSegment={selectedSegment}
+                      selectedLine={selectedLine}
+                      selectedLineId={selectedLineId}
+                      lines={config.lines}
+                      selectedLineRun={selectedLineRun}
+                      segmentsById={segmentsById}
+                      handleSelectedLineInspectorChange={handleSelectedLineInspectorChange}
+                    />
                   ) : (
-                    <>
-                      <div className="space-y-4">
-                        <div className="flex gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                          {[
-                            { id: "lines", label: "Lines" },
-                            { id: "stationKinds", label: "Station Kinds" },
-                            { id: "development", label: "Development" },
-                          ].map((section) => (
-                            <button
-                              key={section.id}
-                              type="button"
-                              onClick={() => setManageSection(section.id as "development" | "lines" | "stationKinds")}
-                              className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition ${
-                                manageSection === section.id ? "bg-white text-ink shadow-sm" : "text-slate-600 hover:bg-white/70"
-                              }`}
-                            >
-                              {section.label}
-                            </button>
-                          ))}
-                        </div>
-
-                        {manageSection === "development" ? (
-                          <section className="space-y-3">
-                            <div className="text-sm font-semibold text-ink">Development Tools</div>
-                            <div className="grid gap-2">
-                              <Button className="w-full" onClick={bootstrapDevelopmentModel}>
-                                Bootstrap Model
-                              </Button>
-                              <Button variant="outline" className="w-full" onClick={autoPlaceCurrentSheetLabels}>
-                                Auto-place labels on this sheet
-                              </Button>
-                            </div>
-                            <p className="text-xs text-muted">
-                              Bootstrap seeds the editor with multiple overview/detail sheets, station kinds, line styles, and ready-made runs.
-                            </p>
-                          </section>
-                        ) : null}
-
-                        {manageSection === "lines" ? (
-                          <section className="space-y-3">
-                            <div className="text-sm font-semibold text-ink">Line Definitions</div>
-                            <div className="flex gap-2">
-                              <select
-                                value={selectedLineId}
-                                onChange={(event) => setSelectedLineId(event.target.value)}
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                              >
-                                {config.lines.map((line) => (
-                                  <option key={line.id} value={line.id}>
-                                    {line.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <Button onClick={addLine}>
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            {selectedLine ? (
-                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                <Input value={selectedLine.name} onChange={(event) => updateLine({ name: event.target.value })} />
-                                <div className="grid grid-cols-3 gap-2">
-                                  <Input type="color" value={selectedLine.color} onChange={(event) => updateLine({ color: event.target.value })} />
-                                  <Input
-                                    type="number"
-                                    min={1}
-                                    max={32}
-                                    value={selectedLine.strokeWidth}
-                                    onChange={(event) =>
-                                      updateLine({
-                                        strokeWidth: Math.min(32, Math.max(1, Number(event.target.value) || 1)),
-                                      })
-                                    }
-                                  />
-                                  <select
-                                    value={selectedLine.strokeStyle}
-                                    onChange={(event) => updateLine({ strokeStyle: event.target.value as Line["strokeStyle"] })}
-                                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                                  >
-                                    <option value="solid">Solid</option>
-                                    <option value="dashed">Dashed</option>
-                                    <option value="dotted">Dotted</option>
-                                  </select>
-                                </div>
-                                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                                  <svg viewBox="0 0 180 24" className="h-6 w-full">
-                                    <path
-                                      d="M 8 12 L 172 12"
-                                      fill="none"
-                                      stroke={selectedLine.color}
-                                      strokeWidth={selectedLine.strokeWidth}
-                                      strokeDasharray={lineStrokeDasharray(selectedLine)}
-                                      strokeLinecap="round"
-                                    />
-                                  </svg>
-                                </div>
-                                <div className="space-y-2">
-                                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Segments On Current Sheet</div>
-                                  <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-white p-2">
-                                    {currentSegments.map((segment) => {
-                                      const ownerLineId = lineIdBySegmentId.get(segment.id) ?? null;
-                                      const active = ownerLineId === selectedLine?.id;
-                                      const ownerLine = ownerLineId ? linesById.get(ownerLineId) ?? null : null;
-                                      return (
-                                        <label key={segment.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm text-ink">
-                                          <span className="flex min-w-0 flex-col">
-                                            <span>{segment.id}</span>
-                                            <span className="text-xs text-muted">{ownerLine ? `Assigned to ${ownerLine.name}` : "Unassigned"}</span>
-                                          </span>
-                                          <input type="checkbox" checked={active} onChange={() => toggleSegmentOnSelectedLine(segment.id)} />
-                                        </label>
-                                      );
-                                    })}
-                                    {currentSegments.length === 0 ? <p className="px-3 py-2 text-xs text-muted">No segments on the active sheet yet.</p> : null}
-                                  </div>
-                                  <p className="text-xs text-muted">
-                                    Each segment can belong to one line at most. This helper reassigns the segment to the selected line or clears it if it is already selected.
-                                  </p>
-                                </div>
-                                <Button variant="destructive" className="w-full" onClick={deleteSelectedLine}>
-                                  <Trash2 className="h-4 w-4" />
-                                  Delete line
-                                </Button>
-                              </div>
-                            ) : null}
-                          </section>
-                        ) : null}
-
-                        {manageSection === "stationKinds" ? (
-                          <section className="space-y-3">
-                            <div className="text-sm font-semibold text-ink">Station Kinds</div>
-                            <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                              <Input value={newStationKindName} onChange={(event) => setNewStationKindName(event.target.value)} placeholder="New station kind" />
-                              <Input
-                                value={newStationKindFontFamily}
-                                onChange={(event) => setNewStationKindFontFamily(event.target.value)}
-                                placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
-                              />
-                              <div className="flex gap-2">
-                                <select
-                                  value={newStationKindShape}
-                                  onChange={(event) => setNewStationKindShape(event.target.value as StationKindShape)}
-                                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                                >
-                                  <option value="circle">Circle</option>
-                                  <option value="interchange">Interchange</option>
-                                  <option value="terminal">Terminal</option>
-                                </select>
-                                <select
-                                  value={newStationKindFontWeight}
-                                  onChange={(event) => setNewStationKindFontWeight(event.target.value as StationLabelFontWeight)}
-                                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                                >
-                                  {STATION_FONT_WEIGHT_OPTIONS.map((weight) => (
-                                    <option key={weight} value={weight}>
-                                      {weight}
-                                    </option>
-                                  ))}
-                                </select>
-                                <Input
-                                  type="number"
-                                  min={8}
-                                  max={72}
-                                  step={1}
-                                  value={newStationKindFontSize}
-                                  onChange={(event) => setNewStationKindFontSize(Number(event.target.value) || DEFAULT_STATION_FONT_SIZE)}
-                                  className="w-24"
-                                  placeholder="Size"
-                                />
-                                <Input
-                                  type="number"
-                                  min={0.6}
-                                  max={2.5}
-                                  step={0.1}
-                                  value={newStationKindSymbolSize}
-                                  onChange={(event) => setNewStationKindSymbolSize(Number(event.target.value) || DEFAULT_STATION_SYMBOL_SIZE)}
-                                  className="w-24"
-                                  placeholder="Symbol"
-                                />
-                                <Button onClick={addStationKind}>
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                              {config.stationKinds.map((kind) => (
-                                <button
-                                  key={kind.id}
-                                  type="button"
-                                  onClick={() => setSelectedStationKindId(kind.id)}
-                                  className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
-                                    selectedStationKindId === kind.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-1">
-                              {renderStationKindPreview(kind.shape, kind.symbolSize)}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <div className="font-medium">{kind.name}</div>
-                                      <div
-                                        className="mt-1 truncate text-sm opacity-90"
-                                        style={{ fontFamily: kind.fontFamily, fontWeight: kind.fontWeight, fontSize: `${kind.fontSize}px` }}
-                                      >
-                                        Sample label ({kind.fontWeight}, {kind.fontSize}px)
-                                      </div>
-                                    </div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                            {selectedStationKind ? (
-                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                <Input value={selectedStationKind.name} onChange={(event) => updateStationKind(selectedStationKind.id, { name: event.target.value })} />
-                                <Input
-                                  value={selectedStationKind.fontFamily}
-                                  onChange={(event) => updateStationKind(selectedStationKind.id, { fontFamily: event.target.value || DEFAULT_STATION_FONT_FAMILY })}
-                                  placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
-                                />
-                                <Input
-                                  type="number"
-                                  min={8}
-                                  max={72}
-                                  step={1}
-                                  value={selectedStationKind.fontSize}
-                                  onChange={(event) =>
-                                    updateStationKind(selectedStationKind.id, {
-                                      fontSize: clamp(Number(event.target.value) || DEFAULT_STATION_FONT_SIZE, 8, 72),
-                                    })
-                                  }
-                                  placeholder="Font size"
-                                />
-                                <Input
-                                  type="number"
-                                  min={0.6}
-                                  max={2.5}
-                                  step={0.1}
-                                  value={selectedStationKind.symbolSize}
-                                  onChange={(event) =>
-                                    updateStationKind(selectedStationKind.id, {
-                                      symbolSize: clamp(Number(event.target.value) || DEFAULT_STATION_SYMBOL_SIZE, 0.6, 2.5),
-                                    })
-                                  }
-                                  placeholder="Symbol size"
-                                />
-                                <select
-                                  value={selectedStationKind.shape}
-                                  onChange={(event) => updateStationKind(selectedStationKind.id, { shape: event.target.value as StationKindShape })}
-                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                                >
-                                  <option value="circle">Circle</option>
-                                  <option value="interchange">Interchange</option>
-                                  <option value="terminal">Terminal</option>
-                                </select>
-                                <select
-                                  value={selectedStationKind.fontWeight}
-                                  onChange={(event) => updateStationKind(selectedStationKind.id, { fontWeight: event.target.value as StationLabelFontWeight })}
-                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                                >
-                                  {STATION_FONT_WEIGHT_OPTIONS.map((weight) => (
-                                    <option key={weight} value={weight}>
-                                      {weight}
-                                    </option>
-                                  ))}
-                                </select>
-                                <div
-                                  className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-ink"
-                                  style={{
-                                    fontFamily: selectedStationKind.fontFamily,
-                                    fontWeight: selectedStationKind.fontWeight,
-                                    fontSize: `${selectedStationKind.fontSize}px`,
-                                  }}
-                                >
-                                  Preview label for {selectedStationKind.name} ({selectedStationKind.fontSize}px)
-                                </div>
-                                <Button variant="destructive" className="w-full" onClick={deleteSelectedStationKind} disabled={config.stationKinds.length <= 1}>
-                                  <Trash2 className="h-4 w-4" />
-                                  Delete station kind
-                                </Button>
-                              </div>
-                            ) : null}
-                          </section>
-                        ) : null}
-                      </div>
-                    </>
+                    <RailwayMapManagement
+                      manageSection={manageSection}
+                      setManageSection={setManageSection}
+                      bootstrapDevelopmentModel={bootstrapDevelopmentModel}
+                      autoPlaceCurrentSheetLabels={autoPlaceCurrentSheetLabels}
+                      selectedLineId={selectedLineId}
+                      setSelectedLineId={setSelectedLineId}
+                      addLine={addLine}
+                      selectedLine={selectedLine}
+                      lines={config.lines}
+                      currentSegments={currentSegments}
+                      lineIdBySegmentId={lineIdBySegmentId}
+                      linesById={linesById}
+                      updateLine={updateLine}
+                      toggleSegmentOnSelectedLine={toggleSegmentOnSelectedLine}
+                      deleteSelectedLine={deleteSelectedLine}
+                      newStationKindName={newStationKindName}
+                      setNewStationKindName={setNewStationKindName}
+                      newStationKindFontFamily={newStationKindFontFamily}
+                      setNewStationKindFontFamily={setNewStationKindFontFamily}
+                      newStationKindShape={newStationKindShape}
+                      setNewStationKindShape={setNewStationKindShape}
+                      newStationKindFontWeight={newStationKindFontWeight}
+                      setNewStationKindFontWeight={setNewStationKindFontWeight}
+                      newStationKindFontSize={newStationKindFontSize}
+                      setNewStationKindFontSize={setNewStationKindFontSize}
+                      newStationKindSymbolSize={newStationKindSymbolSize}
+                      setNewStationKindSymbolSize={setNewStationKindSymbolSize}
+                      addStationKind={addStationKind}
+                      stationKinds={config.stationKinds}
+                      selectedStationKindId={selectedStationKindId}
+                      setSelectedStationKindId={setSelectedStationKindId}
+                      renderStationKindPreview={renderStationKindPreview}
+                      selectedStationKind={selectedStationKind}
+                      updateStationKind={updateStationKind}
+                      deleteSelectedStationKind={deleteSelectedStationKind}
+                      stationKindsCount={config.stationKinds.length}
+                    />
                   )}
                 </CardContent>
               </Card>
