@@ -55,7 +55,7 @@ import {
 } from "@/features/railway-map-editor/lib/labels";
 import { RailwayMapInspector } from "@/features/railway-map-editor/ui/RailwayMapInspector";
 import { RailwayMapManagement } from "@/features/railway-map-editor/ui/RailwayMapManagement";
-import { Badge } from "@/shared/ui/badge";
+import { RailwayMapCanvasPane } from "@/features/railway-map-editor/ui/RailwayMapCanvasPane";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -2479,651 +2479,113 @@ export default function RailwayMapEditor() {
         </header>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <Card className="overflow-hidden">
-            <CardContent className="p-0">
-              <div className="relative min-h-[78vh] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.08),transparent_28%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
-                <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 p-4">
-                  <div className="pointer-events-auto text-xl font-semibold text-ink">
-                    Canvas Editor
-                  </div>
-                  {pendingSegmentStart ? (
-                    <div className="pointer-events-auto rounded-2xl border border-sky-200 bg-sky-50/95 px-3 py-2 text-xs text-sky-800 shadow-sm">
-                      Segment start: {pendingSegmentStart.nodeId}
-                      {pendingSegmentStart.laneId ? ` (${laneDisplayNameById.get(pendingSegmentStart.laneId) ?? "Unassigned lane"})` : ""}. Right-click another track point to connect it.
-                    </div>
-                  ) : null}
-                  <div className="pointer-events-auto ml-auto flex gap-2">
-                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm backdrop-blur">
-                      <button type="button" className="font-semibold text-ink" onClick={() => applyZoom(zoom / ZOOM_STEP)}>
-                        -
-                      </button>
-                      <span className="min-w-[3.5rem] text-center text-xs font-semibold text-ink">{Math.round(zoom * 100)}%</span>
-                      <button type="button" className="font-semibold text-ink" onClick={() => applyZoom(zoom * ZOOM_STEP)}>
-                        +
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-muted"
-                        onClick={resetViewportToSheet}
-                      >
-                        Reset
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
-                        Grid
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapToGrid(event.target.checked)} />
-                        Snap
-                      </label>
-                      <Input
-                        type="number"
-                        value={gridStepX}
-                        onChange={(event) => setGridStepX(Math.max(MIN_GRID_STEP, Number(event.target.value) || MIN_GRID_STEP))}
-                        className="h-8 w-20 px-2 py-1 text-xs"
-                      />
-                      <Input
-                        type="number"
-                        value={gridStepY}
-                        onChange={(event) => setGridStepY(Math.max(MIN_GRID_STEP, Number(event.target.value) || MIN_GRID_STEP))}
-                        className="h-8 w-20 px-2 py-1 text-xs"
-                      />
-                    </div>
-                    <Button variant="outline" className="bg-white/90 backdrop-blur" onClick={addNode}>
-                      <Plus className="h-4 w-4" />
-                      Track Point
-                    </Button>
-                  </div>
-                </div>
-
-                <div ref={canvasViewportRef} className="h-[78vh] overflow-auto overscroll-contain touch-none">
-                  <svg
-                    ref={svgRef}
-                    width={CANVAS_WIDTH}
-                    height={CANVAS_HEIGHT}
-                    viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
-                    className="h-full w-full"
-                    onMouseDown={handleCanvasMouseDown}
-                    onMouseMove={handleSvgMouseMove}
-                    onMouseUp={handleSvgMouseUp}
-                    onMouseLeave={handleSvgMouseUp}
-                  >
-                    <rect x={-WORLD_SIZE / 2} y={-WORLD_SIZE / 2} width={WORLD_SIZE} height={WORLD_SIZE} fill="white" pointerEvents="none" />
-
-                    {showGrid ? (
-                      <g pointerEvents="none">
-                        {gridLines.vertical.map((x) => (
-                          <line
-                            key={`grid-x-${x}`}
-                            x1={x}
-                            y1={viewBox.y - viewBox.height}
-                            x2={x}
-                            y2={viewBox.y + viewBox.height * 2}
-                            stroke="#cbd5e1"
-                            strokeOpacity="0.45"
-                            strokeWidth="1"
-                          />
-                        ))}
-                        {gridLines.horizontal.map((y) => (
-                          <line
-                            key={`grid-y-${y}`}
-                            x1={viewBox.x - viewBox.width}
-                            y1={y}
-                            x2={viewBox.x + viewBox.width * 2}
-                            y2={y}
-                            stroke="#cbd5e1"
-                            strokeOpacity="0.45"
-                            strokeWidth="1"
-                          />
-                        ))}
-                      </g>
-                    ) : null}
-
-                    {currentSegments.map((segment) => {
-                      const segmentPoints = buildSegmentPoints(segment, nodesById);
-                      const offsetPointsForSegment = withAnchoredSegmentEndpoints(
-                        segment,
-                        offsetPoints(segmentPoints, segmentOffsetById.get(segment.id) ?? 0),
-                        anchoredEndpointBySegmentNodeKey,
-                      );
-                      return (
-                        <path
-                          key={segment.id}
-                          d={pathFromPoints(offsetPointsForSegment)}
-                          fill="none"
-                          stroke={selectedSegmentId === segment.id ? "#94a3b8" : assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee"}
-                          strokeWidth={selectedSegmentId === segment.id ? "22" : "18"}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          onMouseDown={() => handleSegmentMouseDown(segment.id)}
-                          onContextMenu={(event) => handleSegmentContextMenu(event, segment.id)}
-                        />
-                      );
-                    })}
-
-                    {model.lineRuns.map((lineRun) => {
-                      const line = linesById.get(lineRun.lineId);
-                      if (!line) return null;
-
-                      const visibleSegments = lineRun.segmentIds
-                        .map((segmentId) => segmentsById.get(segmentId))
-                        .filter((segment): segment is Segment => !!segment);
-
-                      return visibleSegments.map((segment) => {
-                        const points = buildSegmentPoints(segment, nodesById);
-                        const offsetSegmentPoints = withAnchoredSegmentEndpoints(
-                          segment,
-                          offsetPoints(points, segmentOffsetById.get(segment.id) ?? 0),
-                          anchoredEndpointBySegmentNodeKey,
-                        );
-
-                        return (
-                          <path
-                            key={`${lineRun.id}-${segment.id}`}
-                            d={pathFromPoints(offsetSegmentPoints)}
-                            fill="none"
-                            stroke={line.color}
-                            strokeWidth={line.strokeWidth}
-                            strokeDasharray={lineStrokeDasharray(line)}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            pointerEvents="none"
-                          />
-                        );
-                      });
-                    })}
-
-                    {segmentDrawState ? (
-                      <line
-                        x1={(nodeMarkerCenterByKey.get(segmentDrawState.markerKey) ?? nodesById.get(segmentDrawState.nodeId) ?? segmentDrawState.currentPoint).x}
-                        y1={(nodeMarkerCenterByKey.get(segmentDrawState.markerKey) ?? nodesById.get(segmentDrawState.nodeId) ?? segmentDrawState.currentPoint).y}
-                        x2={segmentDrawState.currentPoint.x}
-                        y2={segmentDrawState.currentPoint.y}
-                        stroke="#64748b"
-                        strokeWidth="3"
-                        strokeDasharray="8 6"
-                        strokeLinecap="round"
-                        pointerEvents="none"
-                      />
-                    ) : null}
-
-                    {currentNodes.map((node) => {
-                      const stations = stationsByNodeId.get(node.id) ?? [];
-                      const isSelected = selectedNodeIdsSet.has(node.id);
-                      const primaryStation = stations[0];
-                      const isTrackPoint = stations.length === 0;
-                      const markers = nodeMarkerCentersById.get(node.id) ?? [
-                        { key: `${node.id}:base`, center: { x: node.x, y: node.y }, segmentIds: [], laneId: null },
-                      ];
-                      const hasSelectedMarker = markers.some((marker) => marker.key === selectedNodeMarkerKey);
-                      const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
-                      const symbolSize = primaryStation ? stationKindsById.get(primaryStation.kindId)?.symbolSize ?? DEFAULT_STATION_SYMBOL_SIZE : DEFAULT_STATION_SYMBOL_SIZE;
-
-                      return (
-                        <g
-                          key={node.id}
-                          style={{ cursor: "grab" }}
-                        >
-                          {markers.map((marker) => (
-                            <g
-                              key={marker.key}
-                              onMouseDown={(event) => handleNodeMouseDown(event, node.id, marker.key, marker.segmentIds, marker.laneId)}
-                              onMouseUp={(event) => handleNodeMouseUp(event, node.id, marker.key, marker.laneId)}
-                              onContextMenu={(event) => handleNodeContextMenu(event, node.id, marker.key, marker.segmentIds, marker.laneId)}
-                            >
-                              {renderNodeSymbol(shape, marker.center, isTrackPoint, symbolSize)}
-                              {selectedNodeMarkerKey === marker.key ? (
-                                <circle
-                                  cx={marker.center.x}
-                                  cy={marker.center.y}
-                                  r={isTrackPoint ? "14" : "16"}
-                                  fill="none"
-                                  stroke="#0f172a"
-                                  strokeDasharray="4 3"
-                                />
-                              ) : null}
-                            </g>
-                          ))}
-                          {isSelected && !hasSelectedMarker ? (
-                            <circle cx={node.x} cy={node.y} r={isTrackPoint ? "14" : "16"} fill="none" stroke="#0f172a" strokeDasharray="4 3" />
-                          ) : null}
-                        </g>
-                      );
-                    })}
-
-                    {currentStations.map((station) => {
-                      const node = nodesById.get(station.nodeId);
-                      if (!node) return null;
-                      const stationKind = stationKindsById.get(station.kindId);
-                      const position = getStationLabelPosition(station, node);
-                      const labelX = position.x;
-                      const labelY = position.y;
-                      const labelRotation = position.rotation;
-                      const isDragging = draggingLabelStationId === station.id;
-                      const isNodeDragging =
-                        !!draggingNodeId &&
-                        !!station.nodeId &&
-                        !!nodeDragSnapshotRef.current?.positionsByNodeId.has(station.nodeId);
-                      const isRotating = rotatingLabelState?.stationId === station.id;
-                      const isSelected = selectedStationId === station.id;
-                      const diagnostics = labelDiagnostics.get(station.id);
-                      const box =
-                        diagnostics?.box ??
-                        estimateLabelBox(station.name, labelX, labelY, getStationKindFontSize(stationKind), labelRotation);
-                      const shouldShowLeader = (isDragging || isNodeDragging) && (diagnostics?.leaderLine ?? false);
-                      const labelCenterX = box.center.x;
-                      const labelCenterY = box.center.y;
-                      const labelTransform = labelRotation
-                        ? `rotate(${labelRotation} ${labelCenterX} ${labelCenterY})`
-                        : undefined;
-                      const rotationLabel = `${normalizeRotation(labelRotation)}°`;
-                      const rotationBadgeWidth = Math.max(42, rotationLabel.length * 7.2 + 14);
-
-                      return (
-                        <g
-                          key={station.id}
-                          onMouseDown={(event) => handleLabelMouseDown(event, station.id, node.id)}
-                          onContextMenu={(event) => handleStationContextMenu(event, station.id, node.id)}
-                          style={{ cursor: "grab" }}
-                        >
-                          {shouldShowLeader ? (
-                            <line
-                              x1={node.x}
-                              y1={node.y}
-                              x2={labelCenterX}
-                              y2={labelCenterY}
-                              stroke={diagnostics?.colliding ? "#dc2626" : "#94a3b8"}
-                              strokeWidth="1.5"
-                              strokeDasharray="3 3"
-                            />
-                          ) : null}
-                          <g transform={labelTransform}>
-                            {diagnostics?.colliding || isDragging || isRotating || isSelected ? (
-                              <rect
-                                x={box.localMinX}
-                                y={box.localMinY}
-                                width={box.localMaxX - box.localMinX}
-                                height={box.localMaxY - box.localMinY}
-                                rx="6"
-                                fill={diagnostics?.colliding ? "#fff1f2" : "white"}
-                                fillOpacity="0.92"
-                                stroke={diagnostics?.colliding ? "#dc2626" : isSelected ? "#0f172a" : "#94a3b8"}
-                                strokeDasharray="4 3"
-                              />
-                            ) : null}
-                            {isSelected ? (
-                              <rect
-                                x={box.localMinX}
-                                y={box.localMinY}
-                                width={box.localMaxX - box.localMinX}
-                                height={box.localMaxY - box.localMinY}
-                                rx="6"
-                                fill="none"
-                                stroke="transparent"
-                                strokeWidth="12"
-                                pointerEvents="stroke"
-                                onMouseDown={(event) =>
-                                  handleLabelRotateMouseDown(event, station.id, node.id, { x: labelCenterX, y: labelCenterY }, labelRotation)
-                                }
-                                style={{ cursor: ROTATE_CURSOR }}
-                              />
-                            ) : null}
-                            <text
-                              x={labelX}
-                              y={labelY}
-                              fontSize={getStationKindFontSize(stationKind)}
-                              fontFamily={stationKind?.fontFamily ?? DEFAULT_STATION_FONT_FAMILY}
-                              fontWeight={stationKind?.fontWeight ?? DEFAULT_STATION_FONT_WEIGHT}
-                              fill={diagnostics?.colliding ? "#991b1b" : "#111827"}
-                            >
-                              {station.name}
-                            </text>
-                          </g>
-                          {isRotating ? (
-                            <g pointerEvents="none">
-                              <rect
-                                x={labelCenterX - rotationBadgeWidth / 2}
-                                y={box.minY - 28}
-                                width={rotationBadgeWidth}
-                                height="20"
-                                rx="10"
-                                fill="#0f172a"
-                                fillOpacity="0.92"
-                              />
-                              <text
-                                x={labelCenterX}
-                                y={box.minY - 14}
-                                textAnchor="middle"
-                                fontSize="11"
-                                fontFamily={DEFAULT_STATION_FONT_FAMILY}
-                                fontWeight="700"
-                                fill="white"
-                              >
-                                {rotationLabel}
-                              </text>
-                            </g>
-                          ) : null}
-                        </g>
-                      );
-                    })}
-
-                    {marqueeSelection ? (
-                      <rect
-                        x={normalizeRect(marqueeSelection.start, marqueeSelection.end).minX}
-                        y={normalizeRect(marqueeSelection.start, marqueeSelection.end).minY}
-                        width={normalizeRect(marqueeSelection.start, marqueeSelection.end).width}
-                        height={normalizeRect(marqueeSelection.start, marqueeSelection.end).height}
-                        fill="#0ea5e9"
-                        fillOpacity="0.08"
-                        stroke="#0284c7"
-                        strokeDasharray="6 4"
-                        strokeWidth="1.5"
-                        pointerEvents="none"
-                      />
-                    ) : null}
-                  </svg>
-                </div>
-
-                <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-wrap gap-2">
-                  <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
-                    {currentStations.length} stations
-                  </div>
-                  <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
-                    {currentSegments.length} segments
-                  </div>
-                  <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-sm">
-                    {currentSheet?.name ?? "Sheet"}
-                  </div>
-                </div>
-
-                {nodeContextMenu ? (
-                  <div
-                    className="fixed z-30 min-w-[240px] max-w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
-                    style={{
-                      left: nodeContextMenuPosition?.left ?? nodeContextMenu.x,
-                      top: nodeContextMenuPosition?.top ?? nodeContextMenu.y,
-                      maxHeight: "calc(100vh - 24px)",
-                    }}
-                  >
-                    {nodeContextMenu.nodeIds.length === 1 ? (
-                      <>
-                        {contextMenuStation ? (
-                          <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Station</div>
-                            <Input
-                              value={contextMenuStation.name}
-                              onFocus={() => setSelectedStationId(contextMenuStation.id)}
-                              onChange={(event) => {
-                                setSelectedStationId(contextMenuStation.id);
-                                updateStation(contextMenuStation.id, { name: event.target.value });
-                              }}
-                              placeholder="Station name"
-                              className="h-9"
-                            />
-                            <select
-                              value={contextMenuStation.kindId}
-                              onChange={(event) => {
-                                setSelectedStationId(contextMenuStation.id);
-                                updateStation(contextMenuStation.id, { kindId: event.target.value });
-                              }}
-                              className="h-9 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                            >
-                              {config.stationKinds.map((kind) => (
-                                <option key={kind.id} value={kind.id}>
-                                  {kind.name} {stationKindShapeGlyph(kind.shape)}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                              onClick={() => unassignStation(contextMenuStation.id)}
-                            >
-                              Unassign station
-                            </button>
-                          </div>
-                        ) : null}
-                        <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Track</div>
-                          {nodeContextMenu.laneId ? (
-                            <div className="mt-1 text-xs text-muted">
-                              Lane: {laneDisplayNameById.get(nodeContextMenu.laneId) ?? "Unassigned lane"}
-                            </div>
-                          ) : null}
-                          {pendingSegmentStart && (pendingSegmentStart.nodeId !== nodeContextMenu.nodeIds[0] || pendingSegmentStart.laneId !== nodeContextMenu.laneId) ? (
-                            <button
-                              type="button"
-                              className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                              onClick={() => completeSegmentAtNode(nodeContextMenu.nodeIds[0], nodeContextMenu.laneId, nodeContextMenu.markerKey)}
-                            >
-                              Create segment to here
-                            </button>
-                          ) : pendingSegmentStart && pendingSegmentStart.nodeId === nodeContextMenu.nodeIds[0] && pendingSegmentStart.laneId === nodeContextMenu.laneId ? (
-                            <button
-                              type="button"
-                              className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                              onClick={cancelPendingSegment}
-                            >
-                              Cancel pending segment
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                              onClick={() => startSegmentFromNode(nodeContextMenu.nodeIds[0], nodeContextMenu.laneId, nodeContextMenu.markerKey)}
-                            >
-                              Start segment here
-                            </button>
-                          )}
-                        </div>
-                        {!contextMenuStation ? (
-                          <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Station</div>
-                            <Input
-                              value={nodeAssignmentQuery}
-                              onChange={(event) => setNodeAssignmentQuery(event.target.value)}
-                              placeholder="Search unassigned stations"
-                              className="h-9"
-                            />
-                            <div className="max-h-40 space-y-1 overflow-auto">
-                              {stationAssignmentResults.slice(0, 8).map((station) => (
-                                <button
-                                  key={station.id}
-                                  type="button"
-                                  className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                                  onClick={() => assignStationToNode(station.id, nodeContextMenu.nodeIds[0])}
-                                >
-                                  <span className="truncate">{station.name}</span>
-                                  <span className="ml-3 shrink-0 text-xs text-slate-500">
-                                    {stationKindsById.get(station.kindId)?.name ?? "Unknown"}
-                                  </span>
-                                </button>
-                              ))}
-                              {stationAssignmentResults.length === 0 ? (
-                                <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div>
-                              ) : null}
-                            </div>
-                            <div className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Add New Station</div>
-                            <Input
-                              value={nodeAssignmentName}
-                              onChange={(event) => setNodeAssignmentName(event.target.value)}
-                              placeholder="Optional station name"
-                              className="h-9"
-                            />
-                            <select
-                              value={nodeAssignmentKindId}
-                              onChange={(event) => setNodeAssignmentKindId(event.target.value)}
-                              className="h-9 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                            >
-                              {config.stationKinds.map((kind) => (
-                                <option key={kind.id} value={kind.id}>
-                                  {kind.name} {stationKindShapeGlyph(kind.shape)}
-                                </option>
-                              ))}
-                            </select>
-                            <Button
-                              variant="outline"
-                              className="w-full"
-                              onClick={() => createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentName, nodeAssignmentKindId)}
-                            >
-                              <Plus className="h-4 w-4" />
-                              Add new station
-                            </Button>
-                          </div>
-                        ) : null}
-                      </>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
-                      onClick={() => deleteNodes(nodeContextMenu.nodeIds)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {nodeContextMenu.nodeIds.length > 1 ? "Delete nodes" : "Delete node"}
-                    </button>
-                  </div>
-                ) : null}
-
-                {segmentContextMenu && contextMenuSegment ? (
-                  <div
-                    className="fixed z-30 min-w-[240px] max-w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
-                    style={{
-                      left: segmentContextMenuPosition?.left ?? segmentContextMenu.x,
-                      top: segmentContextMenuPosition?.top ?? segmentContextMenu.y,
-                      maxHeight: "calc(100vh - 24px)",
-                    }}
-                  >
-                    {assignedLineForContextSegment ? (
-                      <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Unassign Line</div>
-                        <div className="mt-2 space-y-1">
-                          <button
-                            type="button"
-                            className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                            onClick={() => unassignLineFromSegment(assignedLineForContextSegment.id, contextMenuSegment.id)}
-                          >
-                            <span className="truncate">{assignedLineForContextSegment.name}</span>
-                            <span
-                              className="ml-3 h-3 w-3 shrink-0 rounded-full border border-slate-200"
-                              style={{ backgroundColor: assignedLineForContextSegment.color }}
-                            />
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Line</div>
-                      <div className="mt-2 max-h-40 space-y-1 overflow-auto">
-                        {assignableLinesForContextSegment.map((line) => (
-                          <button
-                            key={line.id}
-                            type="button"
-                            className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                            onClick={() => assignLineToSegment(line.id, contextMenuSegment.id)}
-                          >
-                            <span className="truncate">{line.name}</span>
-                            <span
-                              className="ml-3 h-3 w-3 shrink-0 rounded-full border border-slate-200"
-                              style={{ backgroundColor: line.color }}
-                            />
-                          </button>
-                        ))}
-                        {assignableLinesForContextSegment.length === 0 ? (
-                          <div className="px-2 py-2 text-xs text-slate-500">All available lines are already assigned to this segment.</div>
-                        ) : null}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                      onClick={() => insertTrackPointOnSegment(contextMenuSegment.id)}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Insert track point
-                    </button>
-                    <button
-                      type="button"
-                      className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                      onClick={() => duplicateSegment(contextMenuSegment.id)}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Duplicate segment
-                    </button>
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
-                      onClick={() => deleteSegment(contextMenuSegment.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Remove segment
-                    </button>
-                  </div>
-                ) : null}
-
-                <div className="absolute inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/92 px-3 py-2 backdrop-blur">
-                  <div className="flex items-center gap-2 overflow-x-auto">
-                    {model.sheets.map((sheet) => {
-                      const active = currentSheetId === sheet.id;
-                      const renaming = renamingSheetId === sheet.id;
-
-                      return (
-                        <div
-                          key={sheet.id}
-                          className={`flex items-center gap-2 rounded-t-2xl border px-3 py-2 text-sm shadow-sm ${
-                            active ? "border-slate-300 bg-white text-ink" : "border-slate-200 bg-slate-50 text-slate-600"
-                          }`}
-                        >
-                          {renaming ? (
-                            <Input
-                              autoFocus
-                              value={sheetNameDraft}
-                              onChange={(event) => setSheetNameDraft(event.target.value)}
-                              onBlur={commitSheetRename}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") commitSheetRename();
-                                if (event.key === "Escape") {
-                                  setRenamingSheetId(null);
-                                  setSheetNameDraft("");
-                                }
-                              }}
-                              className="h-8 min-w-[10rem] px-2 py-1 text-sm"
-                            />
-                          ) : (
-                            <button
-                              type="button"
-                              className="whitespace-nowrap font-medium"
-                              onClick={() => setCurrentSheetId(sheet.id)}
-                              onDoubleClick={() => startRenamingSheet(sheet.id, sheet.name)}
-                            >
-                              {sheet.name}
-                            </button>
-                          )}
-                          {active && model.sheets.length > 1 ? (
-                            <button
-                              type="button"
-                              className="rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                              onClick={deleteCurrentSheet}
-                            >
-                              ×
-                            </button>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      className="rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                      onClick={addSheet}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <RailwayMapCanvasPane
+            sidePanel={sidePanel}
+            setSidePanel={setSidePanel}
+            exportSvg={exportSvg}
+            exportJson={exportJson}
+            pendingSegmentStart={pendingSegmentStart}
+            laneDisplayNameById={laneDisplayNameById}
+            zoom={zoom}
+            zoomStep={ZOOM_STEP}
+            applyZoom={applyZoom}
+            resetViewportToSheet={resetViewportToSheet}
+            showGrid={showGrid}
+            setShowGrid={setShowGrid}
+            snapToGrid={snapToGrid}
+            setSnapToGrid={setSnapToGrid}
+            gridStepX={gridStepX}
+            gridStepY={gridStepY}
+            minGridStep={MIN_GRID_STEP}
+            setGridStepX={setGridStepX}
+            setGridStepY={setGridStepY}
+            addNode={addNode}
+            canvasViewportRef={canvasViewportRef}
+            svgRef={svgRef}
+            canvasWidth={CANVAS_WIDTH}
+            canvasHeight={CANVAS_HEIGHT}
+            viewBox={viewBox}
+            worldSize={WORLD_SIZE}
+            handleCanvasMouseDown={handleCanvasMouseDown}
+            handleSvgMouseMove={handleSvgMouseMove}
+            handleSvgMouseUp={handleSvgMouseUp}
+            gridLines={gridLines}
+            currentSegments={currentSegments}
+            nodesById={nodesById}
+            segmentOffsetById={segmentOffsetById}
+            anchoredEndpointBySegmentNodeKey={anchoredEndpointBySegmentNodeKey}
+            selectedSegmentId={selectedSegmentId}
+            assignedSegmentIds={assignedSegmentIds}
+            handleSegmentMouseDown={handleSegmentMouseDown}
+            handleSegmentContextMenu={handleSegmentContextMenu}
+            lineRuns={model.lineRuns}
+            linesById={linesById}
+            segmentsById={segmentsById}
+            segmentDrawState={segmentDrawState}
+            nodeMarkerCenterByKey={nodeMarkerCenterByKey}
+            nodeMarkerCentersById={nodeMarkerCentersById}
+            currentNodes={currentNodes}
+            stationsByNodeId={stationsByNodeId}
+            selectedNodeIdsSet={selectedNodeIdsSet}
+            selectedNodeMarkerKey={selectedNodeMarkerKey}
+            stationKindsById={stationKindsById}
+            renderNodeSymbol={renderNodeSymbol}
+            handleNodeMouseDown={handleNodeMouseDown}
+            handleNodeMouseUp={handleNodeMouseUp}
+            handleNodeContextMenu={handleNodeContextMenu}
+            currentStations={currentStations}
+            draggingLabelStationId={draggingLabelStationId}
+            draggingNodeId={draggingNodeId}
+            nodeDragSnapshotRef={nodeDragSnapshotRef}
+            rotatingLabelState={rotatingLabelState}
+            selectedStationId={selectedStationId}
+            labelDiagnostics={labelDiagnostics}
+            handleLabelMouseDown={handleLabelMouseDown}
+            handleStationContextMenu={handleStationContextMenu}
+            handleLabelRotateMouseDown={handleLabelRotateMouseDown}
+            marqueeSelection={marqueeSelection}
+            currentSheet={currentSheet}
+            nodeContextMenu={nodeContextMenu}
+            nodeContextMenuPosition={nodeContextMenuPosition}
+            contextMenuStation={contextMenuStation}
+            updateStation={updateStation}
+            unassignStation={unassignStation}
+            configStationKinds={config.stationKinds}
+            stationKindShapeGlyph={stationKindShapeGlyph}
+            nodeAssignmentQuery={nodeAssignmentQuery}
+            setNodeAssignmentQuery={setNodeAssignmentQuery}
+            stationAssignmentResults={stationAssignmentResults}
+            assignStationToNode={assignStationToNode}
+            nodeAssignmentName={nodeAssignmentName}
+            setNodeAssignmentName={setNodeAssignmentName}
+            nodeAssignmentKindId={nodeAssignmentKindId}
+            setNodeAssignmentKindId={setNodeAssignmentKindId}
+            createStationAtNode={createStationAtNode}
+            deleteNodes={deleteNodes}
+            completeSegmentAtNode={completeSegmentAtNode}
+            cancelPendingSegment={cancelPendingSegment}
+            startSegmentFromNode={startSegmentFromNode}
+            segmentContextMenu={segmentContextMenu}
+            contextMenuSegment={contextMenuSegment}
+            segmentContextMenuPosition={segmentContextMenuPosition}
+            assignedLineForContextSegment={assignedLineForContextSegment}
+            assignableLinesForContextSegment={assignableLinesForContextSegment}
+            unassignLineFromSegment={unassignLineFromSegment}
+            assignLineToSegment={assignLineToSegment}
+            insertTrackPointOnSegment={insertTrackPointOnSegment}
+            duplicateSegment={duplicateSegment}
+            deleteSegment={deleteSegment}
+            sheets={model.sheets}
+            currentSheetId={currentSheetId}
+            renamingSheetId={renamingSheetId}
+            sheetNameDraft={sheetNameDraft}
+            setSheetNameDraft={setSheetNameDraft}
+            commitSheetRename={commitSheetRename}
+            startRenamingSheet={startRenamingSheet}
+            deleteCurrentSheet={deleteCurrentSheet}
+            addSheet={addSheet}
+            setCurrentSheetId={setCurrentSheetId}
+          />
 
           {sidePanel !== "closed" ? (
             <div className="min-w-0">
