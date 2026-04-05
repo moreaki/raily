@@ -2330,21 +2330,58 @@ export default function RailwayMapEditor() {
   function assignLineToSegment(lineId: string, segmentId: string) {
     updateMap((current) => {
       const { current: ensuredCurrent, lineRun } = ensureLineRun(current, lineId);
+      const segmentsByNodeId = new Map<string, Segment[]>();
+      for (const segment of ensuredCurrent.model.segments) {
+        const fromSegments = segmentsByNodeId.get(segment.fromNodeId) ?? [];
+        fromSegments.push(segment);
+        segmentsByNodeId.set(segment.fromNodeId, fromSegments);
+
+        const toSegments = segmentsByNodeId.get(segment.toNodeId) ?? [];
+        toSegments.push(segment);
+        segmentsByNodeId.set(segment.toNodeId, toSegments);
+      }
+
+      const segmentIdsToAssign = new Set<string>();
+      const queue = [segmentId];
+
+      while (queue.length > 0) {
+        const currentSegmentId = queue.shift();
+        if (!currentSegmentId || segmentIdsToAssign.has(currentSegmentId)) continue;
+        segmentIdsToAssign.add(currentSegmentId);
+
+        const currentSegment = ensuredCurrent.model.segments.find((segment) => segment.id === currentSegmentId);
+        if (!currentSegment) continue;
+
+        for (const nodeId of [currentSegment.fromNodeId, currentSegment.toNodeId]) {
+          const connectedSegments = segmentsByNodeId.get(nodeId) ?? [];
+          if (connectedSegments.length !== 2) continue;
+
+          for (const connectedSegment of connectedSegments) {
+            if (!segmentIdsToAssign.has(connectedSegment.id)) {
+              queue.push(connectedSegment.id);
+            }
+          }
+        }
+      }
+
       return {
         ...ensuredCurrent,
         model: {
           ...ensuredCurrent.model,
           lineRuns: ensuredCurrent.model.lineRuns.map((candidate) => {
             if (candidate.id === lineRun.id) {
-              const segmentIds = candidate.segmentIds.includes(segmentId)
-                ? candidate.segmentIds
-                : [...candidate.segmentIds.filter((value) => value !== segmentId), segmentId];
+              const segmentIds = [...candidate.segmentIds.filter((value) => !segmentIdsToAssign.has(value))];
+              for (const propagatedSegmentId of segmentIdsToAssign) {
+                if (!segmentIds.includes(propagatedSegmentId)) {
+                  segmentIds.push(propagatedSegmentId);
+                }
+              }
               return { ...candidate, segmentIds };
             }
 
             return {
               ...candidate,
-              segmentIds: candidate.segmentIds.filter((value) => value !== segmentId),
+              segmentIds: candidate.segmentIds.filter((value) => !segmentIdsToAssign.has(value)),
             };
           }),
         },
@@ -2371,6 +2408,15 @@ export default function RailwayMapEditor() {
       },
     }));
     setSegmentContextMenu(null);
+  }
+
+  function handleSelectedLineInspectorChange(lineId: string) {
+    if (selectedSegment) {
+      assignLineToSegment(lineId, selectedSegment.id);
+      return;
+    }
+
+    setSelectedLineId(lineId);
   }
 
   function deleteNodes(nodeIds: string[]) {
@@ -4221,32 +4267,43 @@ export default function RailwayMapEditor() {
                             <div className="text-sm font-semibold text-ink">Selected Line</div>
                             {selectedLine ? (
                               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="h-3 w-3 rounded-full border border-slate-300"
-                                style={{ backgroundColor: selectedLine.color }}
-                              />
+                                <select
+                                  value={selectedLineId}
+                                  onChange={(event) => handleSelectedLineInspectorChange(event.target.value)}
+                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                                >
+                                  {config.lines.map((line) => (
+                                    <option key={line.id} value={line.id}>
+                                      {line.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className="h-3 w-3 rounded-full border border-slate-300"
+                                    style={{ backgroundColor: selectedLine.color }}
+                                  />
                               <div className="min-w-0">
                                 <div className="truncate text-sm font-medium text-ink">{selectedLine.name}</div>
                                 <div className="text-xs text-muted">
                                   {selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0} segment
-                                  {(selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0) === 1 ? "" : "s"} on this sheet
+                                    {(selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0) === 1 ? "" : "s"} on this sheet
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                              <svg viewBox="0 0 180 24" className="h-6 w-full">
-                                <path
-                                  d="M 8 12 L 172 12"
-                                  fill="none"
+                              <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                                <svg viewBox="0 0 180 24" className="h-6 w-full">
+                                  <path
+                                    d="M 8 12 L 172 12"
+                                    fill="none"
                                   stroke={selectedLine.color}
                                   strokeWidth={selectedLine.strokeWidth}
                                   strokeDasharray={lineStrokeDasharray(selectedLine)}
                                   strokeLinecap="round"
-                                />
-                              </svg>
-                            </div>
-                            <p className="text-xs text-muted">Line definitions can be edited in Management.</p>
+                                  />
+                                </svg>
+                              </div>
+                            <p className="text-xs text-muted">Management contains the full line editing controls and segment assignment helper.</p>
                               </div>
                             ) : (
                               <p className="text-sm text-muted">Click a line or a segment on the canvas.</p>
