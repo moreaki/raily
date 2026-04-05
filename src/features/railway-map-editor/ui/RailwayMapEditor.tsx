@@ -53,6 +53,7 @@ import {
 } from "@/features/railway-map-editor/lib/labels";
 import { useRailwayMapContextMenus } from "@/features/railway-map-editor/lib/useRailwayMapContextMenus";
 import { useRailwayMapHistory } from "@/features/railway-map-editor/lib/useRailwayMapHistory";
+import { useRailwayMapSelection } from "@/features/railway-map-editor/lib/useRailwayMapSelection";
 import { useRailwayMapViewport } from "@/features/railway-map-editor/lib/useRailwayMapViewport";
 import { RailwayMapInspector } from "@/features/railway-map-editor/ui/RailwayMapInspector";
 import { RailwayMapManagement } from "@/features/railway-map-editor/ui/RailwayMapManagement";
@@ -195,13 +196,6 @@ export default function RailwayMapEditor() {
   });
   const model = map.model;
   const config = map.config;
-  const [selectedNodeId, setSelectedNodeId] = useState(initialMap.model.nodes[0]?.id ?? "");
-  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(initialMap.model.nodes[0]?.id ? [initialMap.model.nodes[0].id] : []);
-  const [selectedNodeMarkerKey, setSelectedNodeMarkerKey] = useState<string | null>(null);
-  const [selectedStationId, setSelectedStationId] = useState(initialMap.model.stations[0]?.id ?? "");
-  const [selectedSegmentId, setSelectedSegmentId] = useState(initialMap.model.segments[0]?.id ?? "");
-  const [selectedLineId, setSelectedLineId] = useState(initialMap.config.lines[0]?.id ?? "");
-  const [selectedStationKindId, setSelectedStationKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
   const [currentSheetId, setCurrentSheetId] = useState(initialMap.model.sheets[0]?.id ?? "");
   const [newStationName, setNewStationName] = useState("");
   const [newStationKindId, setNewStationKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
@@ -262,11 +256,6 @@ export default function RailwayMapEditor() {
     startPoint: MapPoint;
   } | null>(null);
 
-  const selectedNode = model.nodes.find((node) => node.id === selectedNodeId) ?? null;
-  const selectedStation = model.stations.find((station) => station.id === selectedStationId) ?? null;
-  const selectedSegment = model.segments.find((segment) => segment.id === selectedSegmentId) ?? null;
-  const selectedLine = config.lines.find((line) => line.id === selectedLineId) ?? null;
-  const selectedStationKind = config.stationKinds.find((kind) => kind.id === selectedStationKindId) ?? null;
   const currentSheet = model.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
   const pendingSegmentStartNodeId = pendingSegmentStart?.nodeId ?? null;
   const contextMenuNodeId = nodeContextMenu?.nodeIds.length === 1 ? nodeContextMenu.nodeIds[0] : null;
@@ -274,7 +263,6 @@ export default function RailwayMapEditor() {
   const contextMenuSegment = segmentContextMenu ? model.segments.find((segment) => segment.id === segmentContextMenu.segmentId) ?? null : null;
 
   const currentNodes = useMemo(() => model.nodes.filter((node) => node.sheetId === currentSheetId), [currentSheetId, model.nodes]);
-  const selectedNodeIdsSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
   const currentNodeIds = useMemo(() => new Set(currentNodes.map((node) => node.id)), [currentNodes]);
   const currentStations = useMemo(
     () =>
@@ -509,6 +497,43 @@ export default function RailwayMapEditor() {
     }
     return next;
   }, [nodeMarkerCentersById]);
+  const markerKeys = useMemo(() => new Set(nodeMarkerCenterByKey.keys()), [nodeMarkerCenterByKey]);
+  const {
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedNodeIds,
+    setSelectedNodeIds,
+    selectedNodeIdsSet,
+    selectedNodeMarkerKey,
+    setSelectedNodeMarkerKey,
+    selectedStationId,
+    setSelectedStationId,
+    selectedSegmentId,
+    setSelectedSegmentId,
+    selectedLineId,
+    setSelectedLineId,
+    selectedStationKindId,
+    setSelectedStationKindId,
+    selectSingleNode,
+    selectAllNodesOnCurrentSheet,
+    clearPrimarySelection,
+  } = useRailwayMapSelection({
+    initialMap,
+    currentNodes,
+    currentStations,
+    currentSegments,
+    modelStations: model.stations,
+    configLines: config.lines,
+    configStationKinds: config.stationKinds,
+    nodeExistsById: nodesById,
+    segmentExistsById: segmentsById,
+    markerKeys,
+  });
+  const selectedNode = model.nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const selectedStation = model.stations.find((station) => station.id === selectedStationId) ?? null;
+  const selectedSegment = model.segments.find((segment) => segment.id === selectedSegmentId) ?? null;
+  const selectedLine = config.lines.find((line) => line.id === selectedLineId) ?? null;
+  const selectedStationKind = config.stationKinds.find((kind) => kind.id === selectedStationKindId) ?? null;
   const stationsByNodeId = useMemo(() => {
     const next = new Map<string, Station[]>();
 
@@ -781,12 +806,7 @@ export default function RailwayMapEditor() {
 
       if (hasPrimaryModifier && key === "a") {
         event.preventDefault();
-        const nextSelectedNodeIds = currentNodes.map((node) => node.id);
-        setSelectedNodeIds(nextSelectedNodeIds);
-        setSelectedNodeId(nextSelectedNodeIds[0] ?? "");
-        setSelectedNodeMarkerKey(null);
-        const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
-        setSelectedStationId(firstStation?.id ?? "");
+        selectAllNodesOnCurrentSheet();
         return;
       }
 
@@ -802,53 +822,7 @@ export default function RailwayMapEditor() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [currentNodes, currentStations, deleteCurrentSelection, selectedNodeIds.length, selectedSegment, selectedStation]);
-
-  useEffect(() => {
-    const currentNodeIdSet = new Set(currentNodes.map((node) => node.id));
-    const filteredSelectedIds = selectedNodeIds.filter((nodeId) => currentNodeIdSet.has(nodeId));
-    if (filteredSelectedIds.length !== selectedNodeIds.length) {
-      setSelectedNodeIds(filteredSelectedIds);
-    }
-
-    if (selectedNodeId && (!selectedNode || !nodesById.has(selectedNode.id))) {
-      setSelectedNodeId(filteredSelectedIds[0] ?? "");
-    }
-  }, [currentNodes, nodesById, selectedNode, selectedNodeId, selectedNodeIds]);
-
-  useEffect(() => {
-    if (!selectedNodeMarkerKey) return;
-    const markerStillExists = [...nodeMarkerCentersById.values()].some((markers) =>
-      markers.some((marker) => marker.key === selectedNodeMarkerKey),
-    );
-    if (!markerStillExists) {
-      setSelectedNodeMarkerKey(null);
-    }
-  }, [nodeMarkerCentersById, selectedNodeMarkerKey]);
-
-  useEffect(() => {
-    if (!selectedLine || !config.lines.some((line) => line.id === selectedLine.id)) {
-      setSelectedLineId(config.lines[0]?.id ?? "");
-    }
-  }, [config.lines, selectedLine]);
-
-  useEffect(() => {
-    if (selectedStationId && (!selectedStation || !model.stations.some((station) => station.id === selectedStation.id))) {
-      setSelectedStationId("");
-    }
-  }, [model.stations, selectedStation, selectedStationId]);
-
-  useEffect(() => {
-    if (selectedSegmentId && (!selectedSegment || !segmentsById.has(selectedSegment.id))) {
-      setSelectedSegmentId("");
-    }
-  }, [currentSegments, segmentsById, selectedSegment, selectedSegmentId]);
-
-  useEffect(() => {
-    if (!selectedStationKind || !config.stationKinds.some((kind) => kind.id === selectedStationKind.id)) {
-      setSelectedStationKindId(config.stationKinds[0]?.id ?? "");
-    }
-  }, [config.stationKinds, selectedStationKind]);
+  }, [deleteCurrentSelection, selectAllNodesOnCurrentSheet, selectedNodeIds.length, selectedSegment, selectedStation]);
 
   useEffect(() => {
     if (!config.stationKinds.some((kind) => kind.id === newStationKindId)) {
@@ -872,27 +846,13 @@ export default function RailwayMapEditor() {
   }
 
   function clearCanvasSelections() {
-    setSelectedNodeId("");
-    setSelectedNodeIds([]);
-    setSelectedNodeMarkerKey(null);
-    setSelectedStationId("");
-    setSelectedSegmentId("");
+    clearPrimarySelection();
     setPendingSegmentStart(null);
     setSegmentDrawState(null);
     setNodeContextMenu(null);
     setRotatingLabelState(null);
     clearNodeLongPress();
   }
-
-  function selectSingleNode(nodeId: string) {
-    setSelectedNodeId(nodeId);
-    setSelectedNodeIds([nodeId]);
-    setSelectedNodeMarkerKey(null);
-    setSelectedSegmentId("");
-    const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
-    setSelectedStationId(station?.id ?? "");
-  }
-
   function addStation() {
     const nextKindId = newStationKindId || (config.stationKinds[0]?.id ?? "");
     updateMap((current) => ({
