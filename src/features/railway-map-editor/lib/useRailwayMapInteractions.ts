@@ -112,6 +112,7 @@ type UseRailwayMapInteractionsArgs = {
   setSelectedNodeMarkerKey: (value: string | null) => void;
   setSelectedStationId: (value: string) => void;
   setSelectedSegmentId: (value: string) => void;
+  setSelectedSegmentPolylinePoint: (value: { segmentId: string; pointIndex: number } | null) => void;
   setSelectedLineId: (value: string) => void;
   setSidePanel: (value: "closed" | "edit" | "manage") => void;
   closeAllContextMenus: () => void;
@@ -159,6 +160,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     setSelectedNodeMarkerKey,
     setSelectedStationId,
     setSelectedSegmentId,
+    setSelectedSegmentPolylinePoint,
     setSelectedLineId,
     setSidePanel,
     closeAllContextMenus,
@@ -567,6 +569,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     setSidePanel("edit");
     setSelectedNodeMarkerKey(null);
     setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint(null);
     setSelectedLineId(lineIdBySegmentId.get(segmentId) ?? "");
     setSelectedNodeId("");
     setSelectedNodeIds([]);
@@ -580,6 +583,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     closeNodeContextMenu();
     setSelectedNodeMarkerKey(null);
     setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint(null);
     setSelectedLineId(lineIdBySegmentId.get(segmentId) ?? "");
     setSelectedNodeId("");
     setSelectedNodeIds([]);
@@ -594,6 +598,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     beginTransientMapChange();
     setDraggingSegmentElbowState({ segmentId });
     setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint(null);
+    setSelectedLineId(lineIdBySegmentId.get(segmentId) ?? "");
     setSelectedNodeMarkerKey(null);
     setSelectedNodeId("");
     setSelectedNodeIds([]);
@@ -609,6 +615,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     beginTransientMapChange();
     setDraggingSegmentPolylinePointState({ segmentId, pointIndex });
     setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint({ segmentId, pointIndex });
+    setSelectedLineId(lineIdBySegmentId.get(segmentId) ?? "");
     setSelectedNodeMarkerKey(null);
     setSelectedNodeId("");
     setSelectedNodeIds([]);

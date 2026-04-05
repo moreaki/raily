@@ -453,6 +453,34 @@ export function updateSegmentPolylinePoint(map: RailwayMap, segmentId: string, p
   };
 }
 
+export function removeSegmentPolylinePoint(map: RailwayMap, segmentId: string, pointIndex: number) {
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      segments: map.model.segments.map((segment) => {
+        if (segment.id !== segmentId || segment.geometry.kind !== "polyline") return segment;
+        const remainingPoints = segment.geometry.points.filter((_, index) => index !== pointIndex);
+        if (remainingPoints.length === 0) {
+          return {
+            ...segment,
+            geometry: {
+              kind: "straight" as const,
+            },
+          };
+        }
+        return {
+          ...segment,
+          geometry: {
+            ...segment.geometry,
+            points: remainingPoints,
+          },
+        };
+      }),
+    },
+  };
+}
+
 export function duplicateSegment(map: RailwayMap, segmentId: string) {
   const source = map.model.segments.find((segment) => segment.id === segmentId);
   if (!source) return { map, duplicated: null as Segment | null };

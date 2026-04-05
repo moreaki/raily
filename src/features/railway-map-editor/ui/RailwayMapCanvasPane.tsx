@@ -32,6 +32,13 @@ type SegmentContextMenuState = {
   point?: MapPoint;
 };
 
+type BendPointContextMenuState = {
+  segmentId: string;
+  pointIndex: number;
+  x: number;
+  y: number;
+};
+
 type SegmentDrawState = {
   nodeId: string;
   markerKey: string;
@@ -142,6 +149,7 @@ type RailwayMapCanvasPaneProps = {
   rotatingLabelState: RotatingLabelState | null;
   draggingSegmentElbowState: DraggingSegmentElbowState | null;
   draggingSegmentPolylinePointState: DraggingSegmentPolylinePointState | null;
+  selectedSegmentPolylinePoint: { segmentId: string; pointIndex: number } | null;
   labelAxisGuide: LabelAxisGuide | null;
   selectedStationId: string;
   highlightedStationId: string;
@@ -157,6 +165,7 @@ type RailwayMapCanvasPaneProps = {
   ) => void;
   handleSegmentElbowMouseDown: (event: ReactMouseEvent<SVGCircleElement>, segmentId: string) => void;
   handleSegmentPolylinePointMouseDown: (event: ReactMouseEvent<SVGCircleElement>, segmentId: string, pointIndex: number) => void;
+  handleSegmentPolylinePointContextMenu: (event: ReactMouseEvent<SVGCircleElement>, segmentId: string, pointIndex: number) => void;
   marqueeSelection: MarqueeSelection | null;
   currentSheet: Sheet | null;
   nodeContextMenu: NodeContextMenuState | null;
@@ -182,6 +191,8 @@ type RailwayMapCanvasPaneProps = {
   segmentContextMenu: SegmentContextMenuState | null;
   contextMenuSegment: Segment | null;
   segmentContextMenuPosition: { left: number; top: number } | null;
+  bendPointContextMenu: BendPointContextMenuState | null;
+  bendPointContextMenuPosition: { left: number; top: number } | null;
   assignedLineForContextSegment: Line | null;
   assignableLinesForContextSegment: Line[];
   unassignLineFromSegment: (lineId: string, segmentId: string) => void;
@@ -191,6 +202,7 @@ type RailwayMapCanvasPaneProps = {
   makeSegmentOrthogonal: (segmentId: string) => void;
   makeSegmentPolyline: (segmentId: string) => void;
   addSegmentPolylinePoint: (segmentId: string, point?: MapPoint) => void;
+  removeSegmentPolylinePoint: (segmentId: string, pointIndex: number) => void;
   duplicateSegment: (segmentId: string) => void;
   deleteSegment: (segmentId: string) => void;
   canvasContextMenu: { x: number; y: number; point: MapPoint } | null;
@@ -272,6 +284,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     rotatingLabelState,
     draggingSegmentElbowState,
     draggingSegmentPolylinePointState,
+    selectedSegmentPolylinePoint,
     labelAxisGuide,
     selectedStationId,
     highlightedStationId,
@@ -281,6 +294,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     handleLabelRotateMouseDown,
     handleSegmentElbowMouseDown,
     handleSegmentPolylinePointMouseDown,
+    handleSegmentPolylinePointContextMenu,
     marqueeSelection,
     currentSheet,
     nodeContextMenu,
@@ -306,6 +320,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     segmentContextMenu,
     contextMenuSegment,
     segmentContextMenuPosition,
+    bendPointContextMenu,
+    bendPointContextMenuPosition,
     assignedLineForContextSegment,
     assignableLinesForContextSegment,
     unassignLineFromSegment,
@@ -315,6 +331,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     makeSegmentOrthogonal,
     makeSegmentPolyline,
     addSegmentPolylinePoint,
+    removeSegmentPolylinePoint,
     duplicateSegment,
     deleteSegment,
     canvasContextMenu,
@@ -502,40 +519,53 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                 if (selectedSegment.geometry.kind === "polyline") {
                   return (
                     <g>
-                      {selectedSegment.geometry.points.map((point, pointIndex) => (
-                        <g key={`${selectedSegment.id}:point:${pointIndex}`}>
-                          <circle
-                            cx={point.x}
-                            cy={point.y}
-                            r={
-                              draggingSegmentPolylinePointState?.segmentId === selectedSegment.id &&
-                              draggingSegmentPolylinePointState.pointIndex === pointIndex
-                                ? "9"
-                                : "7"
-                            }
-                            fill="white"
-                            stroke="#0f172a"
-                            strokeWidth="2"
-                            onMouseDown={(event) => handleSegmentPolylinePointMouseDown(event, selectedSegment.id, pointIndex)}
-                            style={{ cursor: "move" }}
-                          />
-                          <circle
-                            cx={point.x}
-                            cy={point.y}
-                            r="13"
-                            fill="none"
-                            stroke="#0f172a"
-                            strokeDasharray="4 3"
-                            pointerEvents="none"
-                            opacity={
-                              draggingSegmentPolylinePointState?.segmentId === selectedSegment.id &&
-                              draggingSegmentPolylinePointState.pointIndex === pointIndex
-                                ? 1
-                                : 0.75
-                            }
-                          />
-                        </g>
-                      ))}
+                      {selectedSegment.geometry.points.map((point, pointIndex) => {
+                        const isDraggingPoint =
+                          draggingSegmentPolylinePointState?.segmentId === selectedSegment.id &&
+                          draggingSegmentPolylinePointState.pointIndex === pointIndex;
+                        const isSelectedPoint =
+                          selectedSegmentPolylinePoint?.segmentId === selectedSegment.id &&
+                          selectedSegmentPolylinePoint.pointIndex === pointIndex;
+                        const isActivePoint = isDraggingPoint || isSelectedPoint;
+
+                        return (
+                          <g key={`${selectedSegment.id}:point:${pointIndex}`}>
+                            <circle
+                              cx={point.x}
+                              cy={point.y}
+                              r={isDraggingPoint ? "10" : isActivePoint ? "8" : "7"}
+                              fill={isActivePoint ? "#e0f2fe" : "white"}
+                              stroke="#0f172a"
+                              strokeWidth={isActivePoint ? "3" : "2"}
+                              onMouseDown={(event) => handleSegmentPolylinePointMouseDown(event, selectedSegment.id, pointIndex)}
+                              onContextMenu={(event) => handleSegmentPolylinePointContextMenu(event, selectedSegment.id, pointIndex)}
+                              style={{ cursor: "move" }}
+                            />
+                            <circle
+                              cx={point.x}
+                              cy={point.y}
+                              r="13"
+                              fill="none"
+                              stroke="#0f172a"
+                              strokeDasharray="4 3"
+                              pointerEvents="none"
+                              opacity={isActivePoint ? 1 : 0.75}
+                            />
+                            {isActivePoint ? (
+                              <circle
+                                cx={point.x}
+                                cy={point.y}
+                                r="17"
+                                fill="none"
+                                stroke="#0369a1"
+                                strokeWidth="1.75"
+                                pointerEvents="none"
+                                opacity="0.9"
+                              />
+                            ) : null}
+                          </g>
+                        );
+                      })}
                     </g>
                   );
                 }
@@ -814,6 +844,25 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               duplicateSegment={duplicateSegment}
               deleteSegment={deleteSegment}
             />
+          ) : null}
+
+          {bendPointContextMenu ? (
+            <div
+              className="fixed z-30 min-w-[200px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+              style={{
+                left: bendPointContextMenuPosition?.left ?? bendPointContextMenu.x,
+                top: bendPointContextMenuPosition?.top ?? bendPointContextMenu.y,
+              }}
+            >
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
+                onClick={() => removeSegmentPolylinePoint(bendPointContextMenu.segmentId, bendPointContextMenu.pointIndex)}
+              >
+                <Plus className="h-4 w-4 rotate-45" />
+                Remove bend point
+              </button>
+            </div>
           ) : null}
 
           {canvasContextMenu ? (

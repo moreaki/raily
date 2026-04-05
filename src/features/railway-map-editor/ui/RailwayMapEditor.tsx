@@ -44,6 +44,7 @@ import {
   makeSegmentPolyline as makeSegmentPolylineCommand,
   makeSegmentStraight as makeSegmentStraightCommand,
   moveLaneOrder as moveLaneOrderCommand,
+  removeSegmentPolylinePoint as removeSegmentPolylinePointCommand,
   renameSheet,
   unassignLineFromSegment as unassignLineFromSegmentCommand,
   updateSegmentOrthogonalElbow as updateSegmentOrthogonalElbowCommand,
@@ -216,6 +217,7 @@ export default function RailwayMapEditor() {
   const [newStationKindSymbolSize, setNewStationKindSymbolSize] = useState(DEFAULT_STATION_SYMBOL_SIZE);
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage" | "settings">("edit");
   const [manageSection, setManageSection] = useState<"lines" | "stations" | "stationKinds">("lines");
+  const [selectedSegmentPolylinePoint, setSelectedSegmentPolylinePoint] = useState<{ segmentId: string; pointIndex: number } | null>(null);
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
   const [sheetNameDraft, setSheetNameDraft] = useState("");
   const [highlightedStationId, setHighlightedStationId] = useState("");
@@ -227,6 +229,9 @@ export default function RailwayMapEditor() {
     segmentContextMenu,
     setSegmentContextMenu,
     closeSegmentContextMenu,
+    bendPointContextMenu,
+    setBendPointContextMenu,
+    closeBendPointContextMenu,
     closeAllContextMenus,
     nodeAssignmentQuery,
     setNodeAssignmentQuery,
@@ -711,6 +716,10 @@ export default function RailwayMapEditor() {
     if (!segmentContextMenu) return null;
     return getClampedMenuPosition(segmentContextMenu.x, segmentContextMenu.y, 320, 420);
   }, [segmentContextMenu]);
+  const bendPointContextMenuPosition = useMemo(() => {
+    if (!bendPointContextMenu) return null;
+    return getClampedMenuPosition(bendPointContextMenu.x, bendPointContextMenu.y, 240, 80);
+  }, [bendPointContextMenu]);
   const snapPointToGrid = (point: MapPoint) => ({
     x: snapCoordinate(point.x, effectiveGridStepX),
     y: snapCoordinate(point.y, effectiveGridStepY),
@@ -750,6 +759,11 @@ export default function RailwayMapEditor() {
   }, [assignedLineForContextSegment, config.lines, contextMenuSegment]);
 
   const deleteCurrentSelection = useCallback(() => {
+    if (selectedSegmentPolylinePoint) {
+      removeSegmentPolylinePoint(selectedSegmentPolylinePoint.segmentId, selectedSegmentPolylinePoint.pointIndex);
+      return;
+    }
+
     if (selectedNodeIds.length > 0) {
       deleteNodes(selectedNodeIds);
       return;
@@ -768,13 +782,13 @@ export default function RailwayMapEditor() {
       deleteSegment(selectedSegment.id);
       return;
     }
-  }, [selectedNodeIds, selectedSegment, selectedStation]);
+  }, [deleteNodes, removeSegmentPolylinePoint, selectedNodeIds, selectedSegment, selectedSegmentPolylinePoint, selectedStation]);
 
   useRailwayMapKeyboardShortcuts({
     onUndo: undoEditorChange,
     onSelectAllNodes: selectAllNodesOnCurrentSheet,
     onDeleteSelection: deleteCurrentSelection,
-    hasDeletionTarget: !!selectedStation || !!selectedSegment || selectedNodeIds.length > 0,
+    hasDeletionTarget: !!selectedSegmentPolylinePoint || !!selectedStation || !!selectedSegment || selectedNodeIds.length > 0,
   });
 
   useEffect(() => {
@@ -799,6 +813,21 @@ export default function RailwayMapEditor() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedSegmentPolylinePoint) return;
+    const selectedPointSegment = model.segments.find((segment) => segment.id === selectedSegmentPolylinePoint.segmentId);
+    if (!selectedPointSegment || selectedPointSegment.geometry.kind !== "polyline" || !selectedPointSegment.geometry.points[selectedSegmentPolylinePoint.pointIndex]) {
+      setSelectedSegmentPolylinePoint(null);
+    }
+  }, [model.segments, selectedSegmentPolylinePoint]);
+
+  useEffect(() => {
+    if (!selectedSegmentPolylinePoint) return;
+    if (selectedSegmentPolylinePoint.segmentId !== selectedSegmentId) {
+      setSelectedSegmentPolylinePoint(null);
+    }
+  }, [selectedSegmentId, selectedSegmentPolylinePoint]);
 
   function undoEditorChange() {
     if (undoLastChange()) {
@@ -1054,7 +1083,9 @@ export default function RailwayMapEditor() {
     if (selectedSegmentId === segmentId) {
       setSelectedSegmentId("");
     }
+    setSelectedSegmentPolylinePoint(null);
     setSegmentContextMenu(null);
+    setBendPointContextMenu(null);
   }
 
   function duplicateSegment(segmentId: string) {
@@ -1065,7 +1096,9 @@ export default function RailwayMapEditor() {
     if (!duplicated) return;
     updateMap((current) => duplicateSegmentCommand(current, segmentId).map);
     setSelectedSegmentId(duplicated.id);
+    setSelectedSegmentPolylinePoint(null);
     setSegmentContextMenu(null);
+    setBendPointContextMenu(null);
   }
 
   function insertTrackPointOnSegment(segmentId: string) {
@@ -1081,25 +1114,33 @@ export default function RailwayMapEditor() {
     setSelectedNodeIds([insertedNode.id]);
     setSelectedNodeMarkerKey(null);
     setSelectedStationId("");
+    setSelectedSegmentPolylinePoint(null);
     setSegmentContextMenu(null);
+    setBendPointContextMenu(null);
   }
 
   function makeSegmentStraight(segmentId: string) {
     updateMap((current) => makeSegmentStraightCommand(current, segmentId));
     setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint(null);
     setSegmentContextMenu(null);
+    setBendPointContextMenu(null);
   }
 
   function makeSegmentOrthogonal(segmentId: string) {
     updateMap((current) => makeSegmentOrthogonalCommand(current, segmentId));
     setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint(null);
     setSegmentContextMenu(null);
+    setBendPointContextMenu(null);
   }
 
   function makeSegmentPolyline(segmentId: string) {
     updateMap((current) => makeSegmentPolylineCommand(current, segmentId));
     setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint(null);
     setSegmentContextMenu(null);
+    setBendPointContextMenu(null);
   }
 
   function updateSegmentOrthogonalElbow(segmentId: string, elbow: MapPoint, options?: { trackHistory?: boolean }) {
@@ -1112,11 +1153,20 @@ export default function RailwayMapEditor() {
       snapPoint: snapToGrid ? snapPointToGrid : undefined,
     }));
     setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint(null);
     setSegmentContextMenu(null);
   }
 
   function updateSegmentPolylinePoint(segmentId: string, pointIndex: number, point: MapPoint, options?: { trackHistory?: boolean }) {
     updateMap((current) => updateSegmentPolylinePointCommand(current, segmentId, pointIndex, point), options);
+  }
+
+  function removeSegmentPolylinePoint(segmentId: string, pointIndex: number) {
+    updateMap((current) => removeSegmentPolylinePointCommand(current, segmentId, pointIndex));
+    setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint(null);
+    setSegmentContextMenu(null);
+    setBendPointContextMenu(null);
   }
 
   function assignLineToSegment(lineId: string, segmentId: string) {
@@ -1332,6 +1382,7 @@ export default function RailwayMapEditor() {
     setSelectedNodeMarkerKey,
     setSelectedStationId,
     setSelectedSegmentId,
+    setSelectedSegmentPolylinePoint,
     setSelectedLineId,
     setSidePanel,
     closeAllContextMenus,
@@ -1346,6 +1397,7 @@ export default function RailwayMapEditor() {
     event.preventDefault();
     event.stopPropagation();
     setCanvasContextMenu(null);
+    setSelectedSegmentPolylinePoint(null);
     const nextMenu = prepareStationContextMenu(stationId, nodeId, event.clientX, event.clientY);
     setNodeContextMenu(nextMenu);
   }
@@ -1354,6 +1406,7 @@ export default function RailwayMapEditor() {
     event.preventDefault();
     event.stopPropagation();
     setCanvasContextMenu(null);
+    setSelectedSegmentPolylinePoint(null);
     const nextMenu = prepareNodeContextMenu(nodeId, markerKey, segmentIds, laneId, event.clientX, event.clientY);
     setNodeContextMenu(nextMenu);
   }
@@ -1362,6 +1415,7 @@ export default function RailwayMapEditor() {
     event.preventDefault();
     event.stopPropagation();
     setCanvasContextMenu(null);
+    setSelectedSegmentPolylinePoint(null);
     prepareSegmentSelectionForContextMenu(event, segmentId);
     const point = svgRef.current ? getSvgPoint(svgRef.current, event.clientX, event.clientY) : null;
     setSegmentContextMenu({
@@ -1369,6 +1423,28 @@ export default function RailwayMapEditor() {
       x: event.clientX,
       y: event.clientY,
       point: point ?? undefined,
+    });
+  }
+
+  function handleSegmentPolylinePointContextMenu(event: MouseEvent<SVGCircleElement>, segmentId: string, pointIndex: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    setCanvasContextMenu(null);
+    closeNodeContextMenu();
+    closeSegmentContextMenu();
+    setSelectedSegmentId(segmentId);
+    setSelectedSegmentPolylinePoint({ segmentId, pointIndex });
+    setSelectedNodeMarkerKey(null);
+    setSelectedNodeId("");
+    setSelectedNodeIds([]);
+    setSelectedStationId("");
+    setSelectedLineId(lineIdBySegmentId.get(segmentId) ?? "");
+    setSidePanel("edit");
+    setBendPointContextMenu({
+      segmentId,
+      pointIndex,
+      x: event.clientX,
+      y: event.clientY,
     });
   }
 
@@ -1503,6 +1579,7 @@ export default function RailwayMapEditor() {
             rotatingLabelState={rotatingLabelState}
             draggingSegmentElbowState={draggingSegmentElbowState}
             draggingSegmentPolylinePointState={draggingSegmentPolylinePointState}
+            selectedSegmentPolylinePoint={selectedSegmentPolylinePoint}
             labelAxisGuide={labelAxisGuide}
             selectedStationId={selectedStationId}
             highlightedStationId={highlightedStationId}
@@ -1512,6 +1589,7 @@ export default function RailwayMapEditor() {
             handleLabelRotateMouseDown={handleLabelRotateMouseDown}
             handleSegmentElbowMouseDown={handleSegmentElbowMouseDown}
             handleSegmentPolylinePointMouseDown={handleSegmentPolylinePointMouseDown}
+            handleSegmentPolylinePointContextMenu={handleSegmentPolylinePointContextMenu}
             marqueeSelection={marqueeSelection}
             currentSheet={currentSheet}
             nodeContextMenu={nodeContextMenu}
@@ -1537,6 +1615,8 @@ export default function RailwayMapEditor() {
             segmentContextMenu={segmentContextMenu}
             contextMenuSegment={contextMenuSegment}
             segmentContextMenuPosition={segmentContextMenuPosition}
+            bendPointContextMenu={bendPointContextMenu}
+            bendPointContextMenuPosition={bendPointContextMenuPosition}
             assignedLineForContextSegment={assignedLineForContextSegment}
             assignableLinesForContextSegment={assignableLinesForContextSegment}
             unassignLineFromSegment={unassignLineFromSegment}
@@ -1546,6 +1626,7 @@ export default function RailwayMapEditor() {
             makeSegmentOrthogonal={makeSegmentOrthogonal}
             makeSegmentPolyline={makeSegmentPolyline}
             addSegmentPolylinePoint={addSegmentPolylinePoint}
+            removeSegmentPolylinePoint={removeSegmentPolylinePoint}
             duplicateSegment={duplicateSegment}
             deleteSegment={deleteSegment}
             canvasContextMenu={canvasContextMenu}
@@ -1621,6 +1702,8 @@ export default function RailwayMapEditor() {
               makeSegmentOrthogonal={makeSegmentOrthogonal}
               makeSegmentPolyline={makeSegmentPolyline}
               addSegmentPolylinePoint={addSegmentPolylinePoint}
+              selectedSegmentPolylinePoint={selectedSegmentPolylinePoint}
+              removeSegmentPolylinePoint={removeSegmentPolylinePoint}
             />
                   ) : sidePanel === "settings" ? (
                     <RailwayMapSettings

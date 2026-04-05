@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { RailwayMap } from "@/entities/railway-map/model/types";
 import {
+  addSegmentPolylinePoint,
   assignLineToSegment,
   assignStationToNode,
   deleteNodes,
   deleteSheet,
-  insertTrackPointOnSegment,
-  addSegmentPolylinePoint,
   makeSegmentOrthogonal,
   makeSegmentPolyline,
   makeSegmentStraight,
+  insertTrackPointOnSegment,
+  removeSegmentPolylinePoint,
   updateSegmentPolylinePoint,
 } from "@/features/railway-map-editor/lib/commands";
 
@@ -149,6 +150,21 @@ describe("railway-map commands", () => {
       expect(segment.geometry.points).toHaveLength(2);
       expect(segment.geometry.points[1]).toEqual({ x: 80, y: 12 });
     }
+  });
+
+  it("can remove a bend point and turns the segment straight when no bend points remain", () => {
+    const withTwoPoints = addSegmentPolylinePoint(makeSegmentPolyline(makeMap(), "sg1"), "sg1");
+    const withOnePoint = removeSegmentPolylinePoint(withTwoPoints, "sg1", 0);
+    const segmentWithOnePoint = withOnePoint.model.segments.find((candidate) => candidate.id === "sg1");
+
+    expect(segmentWithOnePoint?.geometry.kind).toBe("polyline");
+    if (segmentWithOnePoint?.geometry.kind === "polyline") {
+      expect(segmentWithOnePoint.geometry.points).toHaveLength(1);
+    }
+
+    const straight = removeSegmentPolylinePoint(withOnePoint, "sg1", 0);
+    const straightSegment = straight.model.segments.find((candidate) => candidate.id === "sg1");
+    expect(straightSegment?.geometry.kind).toBe("straight");
   });
 
   it("deleteNodes removes connected segments and line-run references", () => {

@@ -17,9 +17,17 @@ export type SegmentContextMenuState = {
   point?: MapPoint;
 };
 
+export type BendPointContextMenuState = {
+  segmentId: string;
+  pointIndex: number;
+  x: number;
+  y: number;
+};
+
 export function useRailwayMapContextMenus() {
   const [nodeContextMenu, setNodeContextMenu] = useState<NodeContextMenuState | null>(null);
   const [segmentContextMenu, setSegmentContextMenu] = useState<SegmentContextMenuState | null>(null);
+  const [bendPointContextMenu, setBendPointContextMenu] = useState<BendPointContextMenuState | null>(null);
   const [nodeAssignmentQuery, setNodeAssignmentQuery] = useState("");
   const [nodeAssignmentName, setNodeAssignmentName] = useState("");
 
@@ -31,9 +39,14 @@ export function useRailwayMapContextMenus() {
     setSegmentContextMenu(null);
   }
 
+  function closeBendPointContextMenu() {
+    setBendPointContextMenu(null);
+  }
+
   function closeAllContextMenus() {
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
+    setBendPointContextMenu(null);
   }
 
   function resetNodeAssignmentDrafts() {
@@ -48,6 +61,9 @@ export function useRailwayMapContextMenus() {
     segmentContextMenu,
     setSegmentContextMenu,
     closeSegmentContextMenu,
+    bendPointContextMenu,
+    setBendPointContextMenu,
+    closeBendPointContextMenu,
     closeAllContextMenus,
     nodeAssignmentQuery,
     setNodeAssignmentQuery,
