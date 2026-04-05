@@ -1,4 +1,4 @@
-import { useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { Plus } from "lucide-react";
 import type { Line, MapNode, MapPoint, Segment, Sheet, Station, StationKind } from "@/entities/railway-map/model/types";
 import { buildSegmentPoints, lineStrokeDasharray } from "@/entities/railway-map/model/utils";
@@ -294,10 +294,42 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     addSheet,
     setCurrentSheetId,
   } = props;
+  const [gridStepXDraft, setGridStepXDraft] = useState(String(gridStepX));
+  const [gridStepYDraft, setGridStepYDraft] = useState(String(gridStepY));
 
   const diagonalGuideLength = Math.max(viewBox.width, viewBox.height) * 1.6;
   const showSheetRail = sheetRailOpen || renamingSheetId !== null;
   const showToolsRail = toolsRailOpen;
+
+  useEffect(() => {
+    setGridStepXDraft(String(gridStepX));
+  }, [gridStepX]);
+
+  useEffect(() => {
+    setGridStepYDraft(String(gridStepY));
+  }, [gridStepY]);
+
+  function commitGridStepX(rawValue: string) {
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) {
+      setGridStepXDraft(String(gridStepX));
+      return;
+    }
+    const nextValue = Math.max(minGridStep, parsed);
+    setGridStepX(nextValue);
+    setGridStepXDraft(String(nextValue));
+  }
+
+  function commitGridStepY(rawValue: string) {
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) {
+      setGridStepYDraft(String(gridStepY));
+      return;
+    }
+    const nextValue = Math.max(minGridStep, parsed);
+    setGridStepY(nextValue);
+    setGridStepYDraft(String(nextValue));
+  }
 
   return (
     <Card className="h-full min-h-0 overflow-hidden">
@@ -322,28 +354,6 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                 <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-muted" onClick={resetViewportToSheet}>
                   Reset
                 </button>
-              </div>
-              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-1.5 text-xs shadow-sm backdrop-blur">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
-                  Grid
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapToGrid(event.target.checked)} />
-                  Snap
-                </label>
-                <Input
-                  type="number"
-                  value={gridStepX}
-                  onChange={(event) => setGridStepX(Math.max(minGridStep, Number(event.target.value) || minGridStep))}
-                  className="h-8 w-20 px-2 py-1 text-xs"
-                />
-                <Input
-                  type="number"
-                  value={gridStepY}
-                  onChange={(event) => setGridStepY(Math.max(minGridStep, Number(event.target.value) || minGridStep))}
-                  className="h-8 w-20 px-2 py-1 text-xs"
-                />
               </div>
               <Button variant="outline" className="h-9 bg-white/90 backdrop-blur" onClick={addNode}>
                 <Plus className="h-4 w-4" />
@@ -795,7 +805,54 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                 <div className="flex w-[248px] flex-row-reverse items-stretch">
                   <div className="w-[228px] rounded-l-2xl border border-r-0 border-slate-200 bg-white/96 p-3 shadow-lg backdrop-blur">
                     <div className="mb-3 text-sm font-semibold text-ink">Tools</div>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Canvas Aids</div>
+                        <div className="space-y-2 text-sm text-ink">
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
+                            Grid
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapToGrid(event.target.checked)} />
+                            Snap
+                          </label>
+                          <div className="flex items-end gap-2">
+                            <label className="flex items-center gap-1">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">X</span>
+                              <Input
+                                type="number"
+                                value={gridStepXDraft}
+                                onChange={(event) => setGridStepXDraft(event.target.value)}
+                                onBlur={(event) => commitGridStepX(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    commitGridStepX((event.currentTarget as HTMLInputElement).value);
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                                className="h-8 w-[56px] px-2 py-1 text-xs"
+                              />
+                            </label>
+                            <label className="flex items-center gap-1">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Y</span>
+                              <Input
+                                type="number"
+                                value={gridStepYDraft}
+                                onChange={(event) => setGridStepYDraft(event.target.value)}
+                                onBlur={(event) => commitGridStepY(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    commitGridStepY((event.currentTarget as HTMLInputElement).value);
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                                className="h-8 w-[56px] px-2 py-1 text-xs"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
                       <Button className="w-full" onClick={bootstrapDevelopmentModel}>
                         Bootstrap Model
                       </Button>
