@@ -93,8 +93,8 @@ const STORAGE_KEY = "raily:editor-map";
 const SHEET_VIEW_STORAGE_KEY = "raily:sheet-views";
 const CANVAS_WIDTH = 1400;
 const CANVAS_HEIGHT = 900;
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 4;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 16;
 const ZOOM_STEP = 1.04;
 const WORLD_SIZE = 200000;
 const MIN_GRID_STEP = 4;
@@ -114,6 +114,23 @@ function downloadFile(filename: string, content: string, mime: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function expandBounds(
+  bounds: { minX: number; maxX: number; minY: number; maxY: number } | null,
+  x: number,
+  y: number,
+) {
+  if (!bounds) {
+    return { minX: x, maxX: x, minY: y, maxY: y };
+  }
+
+  return {
+    minX: Math.min(bounds.minX, x),
+    maxX: Math.max(bounds.maxX, x),
+    minY: Math.min(bounds.minY, y),
+    maxY: Math.max(bounds.maxY, y),
+  };
 }
 
 function renderNodeSymbol(
@@ -1931,7 +1948,50 @@ export default function RailwayMapEditor() {
 
   function exportSvg() {
     if (!svgRef.current) return;
-    downloadFile("railway-map.svg", svgRef.current.outerHTML, "image/svg+xml;charset=utf-8");
+    let bounds: { minX: number; maxX: number; minY: number; maxY: number } | null = null;
+
+    for (const node of currentNodes) {
+      bounds = expandBounds(bounds, node.x, node.y);
+    }
+
+    for (const segment of currentSegments) {
+      for (const point of buildSegmentPoints(segment, nodesById)) {
+        bounds = expandBounds(bounds, point.x, point.y);
+      }
+    }
+
+    for (const station of currentStations) {
+      const node = nodesById.get(station.nodeId);
+      if (!node) continue;
+      const stationKind = stationKindsById.get(station.kindId);
+      const position = getStationLabelPosition(station, node);
+      const box = estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKind), position.rotation);
+      bounds = expandBounds(bounds, box.minX, box.minY);
+      bounds = expandBounds(bounds, box.maxX, box.maxY);
+    }
+
+    const exportPadding = 140;
+    const exportBounds = bounds
+      ? {
+          minX: bounds.minX - exportPadding,
+          minY: bounds.minY - exportPadding,
+          width: Math.max(1, bounds.maxX - bounds.minX + exportPadding * 2),
+          height: Math.max(1, bounds.maxY - bounds.minY + exportPadding * 2),
+        }
+      : {
+          minX: viewBox.x,
+          minY: viewBox.y,
+          width: viewBox.width,
+          height: viewBox.height,
+        };
+
+    const exportSvgElement = svgRef.current.cloneNode(true) as SVGSVGElement;
+    exportSvgElement.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    exportSvgElement.setAttribute("width", String(Math.ceil(exportBounds.width)));
+    exportSvgElement.setAttribute("height", String(Math.ceil(exportBounds.height)));
+    exportSvgElement.setAttribute("viewBox", `${exportBounds.minX} ${exportBounds.minY} ${exportBounds.width} ${exportBounds.height}`);
+
+    downloadFile("railway-map.svg", exportSvgElement.outerHTML, "image/svg+xml;charset=utf-8");
   }
 
   function exportJson() {
