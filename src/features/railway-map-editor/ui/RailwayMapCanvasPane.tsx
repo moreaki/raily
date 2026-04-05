@@ -55,6 +55,14 @@ type RotatingLabelState = {
   stationId: string;
 };
 
+type LabelAxisGuide = {
+  stationId: string;
+  nodeId: string;
+  nodeCenter: MapPoint;
+  snapX: boolean;
+  snapY: boolean;
+};
+
 type MarqueeSelection = {
   start: MapPoint;
   end: MapPoint;
@@ -115,6 +123,7 @@ type RailwayMapCanvasPaneProps = {
   draggingNodeId: string | null;
   nodeDragSnapshotRef: RefObject<{ positionsByNodeId: Map<string, { x: number; y: number }> } | null>;
   rotatingLabelState: RotatingLabelState | null;
+  labelAxisGuide: LabelAxisGuide | null;
   selectedStationId: string;
   highlightedStationId: string;
   labelDiagnostics: Map<string, LabelDiagnostic>;
@@ -228,6 +237,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     draggingNodeId,
     nodeDragSnapshotRef,
     rotatingLabelState,
+    labelAxisGuide,
     selectedStationId,
     highlightedStationId,
     labelDiagnostics,
@@ -457,6 +467,35 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                   </g>
                 );
               })}
+
+              {labelAxisGuide ? (
+                <g pointerEvents="none">
+                  {labelAxisGuide.snapX ? (
+                    <line
+                      x1={labelAxisGuide.nodeCenter.x}
+                      y1={viewBox.y}
+                      x2={labelAxisGuide.nodeCenter.x}
+                      y2={viewBox.y + viewBox.height}
+                      stroke="#eab308"
+                      strokeWidth="1.5"
+                      strokeDasharray="6 4"
+                      opacity="0.9"
+                    />
+                  ) : null}
+                  {labelAxisGuide.snapY ? (
+                    <line
+                      x1={viewBox.x}
+                      y1={labelAxisGuide.nodeCenter.y}
+                      x2={viewBox.x + viewBox.width}
+                      y2={labelAxisGuide.nodeCenter.y}
+                      stroke="#eab308"
+                      strokeWidth="1.5"
+                      strokeDasharray="6 4"
+                      opacity="0.9"
+                    />
+                  ) : null}
+                </g>
+              ) : null}
 
               {currentStations.map((station) => {
                 if (!station.nodeId) return null;

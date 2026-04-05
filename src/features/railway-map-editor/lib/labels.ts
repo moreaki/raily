@@ -11,6 +11,7 @@ export const DEFAULT_STATION_FONT_SIZE = 14;
 export const DEFAULT_STATION_SYMBOL_SIZE = 1;
 export const STATION_FONT_WEIGHT_OPTIONS: StationLabelFontWeight[] = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
 export const AUTO_LABEL_ROTATIONS = [0, 45, -45, 90, -90, 135, -135, 180] as const;
+export const LABEL_AXIS_SNAP_THRESHOLD = 10;
 
 export type LabelBox = {
   localMinX: number;
@@ -35,6 +36,20 @@ type ResolvedLabelPlacement = {
     align?: "left" | "right" | "top" | "bottom";
     rotation?: number;
   };
+};
+
+type CorridorOrientation = "horizontal" | "vertical" | "diag-pos" | "diag-neg" | "mixed";
+type CorridorSide = "positive" | "negative";
+
+type StationCorridorHint = {
+  orientation: CorridorOrientation;
+  preferredSide?: CorridorSide;
+};
+
+type StationSequenceHint = {
+  previousStationIds: string[];
+  nextStationIds: string[];
+  order: number;
 };
 
 export function rotatePoint(point: MapPoint, center: MapPoint, rotation: number) {
@@ -247,24 +262,6 @@ export function getStationLabelPosition(station: Station, node: MapNode) {
   };
 }
 
-function candidateLabelPositions(node: MapNode) {
-  const basePositions = [
-    { x: node.x + 14, y: node.y - 12, align: "right" as const },
-    { x: node.x + 14, y: node.y + 22, align: "right" as const },
-    { x: node.x - 78, y: node.y - 12, align: "left" as const },
-    { x: node.x - 78, y: node.y + 22, align: "left" as const },
-    { x: node.x - 18, y: node.y - 22, align: "top" as const },
-    { x: node.x - 18, y: node.y + 34, align: "bottom" as const },
-  ];
-
-  return basePositions.flatMap((position) =>
-    AUTO_LABEL_ROTATIONS.map((rotation) => ({
-      ...position,
-      rotation,
-    })),
-  );
-}
-
 function inferLabelAlign(node: MapNode, position: { x: number; y: number; align?: "left" | "right" | "top" | "bottom" }) {
   if (position.align) return position.align;
   const deltaX = position.x - node.x;
@@ -275,7 +272,241 @@ function inferLabelAlign(node: MapNode, position: { x: number; y: number; align?
   return deltaY >= 0 ? "bottom" : "top";
 }
 
-function candidateBootstrapLabelPositions(station: Station, node: MapNode) {
+function getOrientationFromDelta(deltaX: number, deltaY: number): CorridorOrientation {
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+  if (absX === 0 && absY === 0) return "mixed";
+  if (absX >= absY * 1.6) return "horizontal";
+  if (absY >= absX * 1.6) return "vertical";
+  return deltaX * deltaY >= 0 ? "diag-pos" : "diag-neg";
+}
+
+function buildStationCorridorHints(
+  current: RailwayMap,
+  stationLineIdsByStationId: Map<string, Set<string>>,
+  nodesById: Map<string, MapNode>,
+) {
+  const lineIdsBySegmentId = new Map<string, Set<string>>();
+  for (const lineRun of current.model.lineRuns) {
+    for (const segmentId of lineRun.segmentIds) {
+      const lineIds = lineIdsBySegmentId.get(segmentId) ?? new Set<string>();
+      lineIds.add(lineRun.lineId);
+      lineIdsBySegmentId.set(segmentId, lineIds);
+    }
+  }
+
+  const segmentOrientationByStationId = new Map<string, CorridorOrientation[]>();
+  for (const station of current.model.stations) {
+    if (!station.nodeId) continue;
+    const currentNode = nodesById.get(station.nodeId);
+    if (!currentNode) continue;
+    const stationLineIds = stationLineIdsByStationId.get(station.id) ?? new Set<string>();
+    const orientations: CorridorOrientation[] = [];
+
+    for (const segment of current.model.segments) {
+      if (segment.fromNodeId !== station.nodeId && segment.toNodeId !== station.nodeId) continue;
+      const segmentLineIds = lineIdsBySegmentId.get(segment.id) ?? new Set<string>();
+      const sharesLine = [...segmentLineIds].some((lineId) => stationLineIds.has(lineId));
+      if (!sharesLine) continue;
+      const otherNodeId = segment.fromNodeId === station.nodeId ? segment.toNodeId : segment.fromNodeId;
+      const otherNode = nodesById.get(otherNodeId);
+      if (!otherNode) continue;
+      orientations.push(getOrientationFromDelta(otherNode.x - currentNode.x, otherNode.y - currentNode.y));
+    }
+
+    segmentOrientationByStationId.set(station.id, orientations);
+  }
+
+  const corridorGroups = new Map<string, { orientation: CorridorOrientation; stationIds: Set<string> }>();
+  for (const lineRun of current.model.lineRuns) {
+    for (const segmentId of lineRun.segmentIds) {
+      const segment = current.model.segments.find((candidate) => candidate.id === segmentId);
+      if (!segment) continue;
+      const fromNode = nodesById.get(segment.fromNodeId);
+      const toNode = nodesById.get(segment.toNodeId);
+      if (!fromNode || !toNode) continue;
+      const orientation = getOrientationFromDelta(toNode.x - fromNode.x, toNode.y - fromNode.y);
+      if (orientation === "mixed") continue;
+      const key = `${segment.sheetId}:${lineRun.lineId}:${orientation}`;
+      const group = corridorGroups.get(key) ?? { orientation, stationIds: new Set<string>() };
+      for (const station of current.model.stations) {
+        if (station.nodeId === segment.fromNodeId || station.nodeId === segment.toNodeId) {
+          group.stationIds.add(station.id);
+        }
+      }
+      corridorGroups.set(key, group);
+    }
+  }
+
+  const preferredSideByStationId = new Map<string, CorridorSide>();
+  for (const group of corridorGroups.values()) {
+    const stations = [...group.stationIds]
+      .map((stationId) => current.model.stations.find((station) => station.id === stationId))
+      .filter((station): station is Station => Boolean(station?.nodeId))
+      .map((station) => {
+        const node = nodesById.get(station.nodeId!);
+        return node ? { station, node } : null;
+      })
+      .filter((value): value is { station: Station; node: MapNode } => Boolean(value));
+    if (stations.length < 2) continue;
+
+    const sideScore = new Map<CorridorSide, number>([
+      ["positive", 0],
+      ["negative", 0],
+    ]);
+
+    for (const side of ["positive", "negative"] as const) {
+      for (const { station, node } of stations) {
+        const baseCandidate = buildCandidatePositions(node, { orientation: group.orientation, preferredSide: side })
+          .find((candidate) => candidate.rotation === 0 && isLabelOnPositiveSide(candidate, node, group.orientation) === (side === "positive"));
+        if (!baseCandidate) continue;
+        const fontSize = getStationKindFontSize(current.config.stationKinds.find((kind) => kind.id === station.kindId));
+        const box = estimateLabelBox(station.name, baseCandidate.x, baseCandidate.y, fontSize, 0);
+        let score = Math.hypot(baseCandidate.x - node.x, baseCandidate.y - node.y) * 0.15;
+        for (const segment of current.model.segments) {
+          const points = buildSegmentPoints(segment, nodesById);
+          for (let index = 0; index < points.length - 1; index += 1) {
+            if (segmentIntersectsLabelBox(points[index], points[index + 1], box, 8)) {
+              score += 250;
+            }
+          }
+        }
+        sideScore.set(side, (sideScore.get(side) ?? 0) + score);
+      }
+    }
+
+    const preferredSide = (sideScore.get("positive") ?? 0) <= (sideScore.get("negative") ?? 0) ? "positive" : "negative";
+    for (const stationId of group.stationIds) {
+      preferredSideByStationId.set(stationId, preferredSide);
+    }
+  }
+
+  const hints = new Map<string, StationCorridorHint>();
+  for (const station of current.model.stations) {
+    const orientations = segmentOrientationByStationId.get(station.id) ?? [];
+    const counts = new Map<CorridorOrientation, number>();
+    for (const orientation of orientations) {
+      counts.set(orientation, (counts.get(orientation) ?? 0) + 1);
+    }
+    const dominant = [...counts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ?? "mixed";
+    hints.set(station.id, { orientation: dominant, preferredSide: preferredSideByStationId.get(station.id) });
+  }
+
+  return hints;
+}
+
+function buildStationSequenceHints(current: RailwayMap) {
+  const stationsByNodeId = new Map<string, Station[]>();
+  for (const station of current.model.stations) {
+    if (!station.nodeId) continue;
+    const list = stationsByNodeId.get(station.nodeId) ?? [];
+    list.push(station);
+    stationsByNodeId.set(station.nodeId, list);
+  }
+
+  const hints = new Map<string, StationSequenceHint>();
+  for (const lineRun of current.model.lineRuns) {
+    const orderedNodeIds: string[] = [];
+    for (const segmentId of lineRun.segmentIds) {
+      const segment = current.model.segments.find((candidate) => candidate.id === segmentId);
+      if (!segment) continue;
+      if (orderedNodeIds.length === 0) {
+        orderedNodeIds.push(segment.fromNodeId, segment.toNodeId);
+        continue;
+      }
+      const last = orderedNodeIds[orderedNodeIds.length - 1];
+      if (last === segment.fromNodeId) {
+        orderedNodeIds.push(segment.toNodeId);
+      } else if (last === segment.toNodeId) {
+        orderedNodeIds.push(segment.fromNodeId);
+      } else {
+        orderedNodeIds.push(segment.fromNodeId, segment.toNodeId);
+      }
+    }
+
+    const orderedStationIds = orderedNodeIds
+      .flatMap((nodeId) => (stationsByNodeId.get(nodeId) ?? []).map((station) => station.id))
+      .filter((stationId, index, values) => stationId !== values[index - 1]);
+
+    orderedStationIds.forEach((stationId, index) => {
+      const currentHint = hints.get(stationId) ?? { previousStationIds: [], nextStationIds: [], order: index };
+      if (index > 0) {
+        currentHint.previousStationIds = [...new Set([...currentHint.previousStationIds, orderedStationIds[index - 1]])];
+      }
+      if (index < orderedStationIds.length - 1) {
+        currentHint.nextStationIds = [...new Set([...currentHint.nextStationIds, orderedStationIds[index + 1]])];
+      }
+      currentHint.order = Math.min(currentHint.order, index);
+      hints.set(stationId, currentHint);
+    });
+  }
+
+  return hints;
+}
+
+function buildCandidatePositions(node: MapNode, hint: StationCorridorHint | null | undefined) {
+  const rightCandidates = [
+    { x: node.x + 14, y: node.y - 12, align: "right" as const, rotation: 0 },
+    { x: node.x + 18, y: node.y - 4, align: "right" as const, rotation: 0 },
+    { x: node.x + 20, y: node.y + 8, align: "right" as const, rotation: 0 },
+    { x: node.x + 24, y: node.y + 20, align: "right" as const, rotation: 0 },
+  ];
+  const leftCandidates = [
+    { x: node.x - 78, y: node.y - 12, align: "left" as const, rotation: 0 },
+    { x: node.x - 82, y: node.y - 4, align: "left" as const, rotation: 0 },
+    { x: node.x - 86, y: node.y + 8, align: "left" as const, rotation: 0 },
+    { x: node.x - 92, y: node.y + 20, align: "left" as const, rotation: 0 },
+  ];
+  const topCandidates = [
+    { x: node.x - 18, y: node.y - 22, align: "top" as const, rotation: 0 },
+    { x: node.x - 36, y: node.y - 22, align: "top" as const, rotation: 0 },
+    { x: node.x - 54, y: node.y - 22, align: "top" as const, rotation: 0 },
+    { x: node.x - 72, y: node.y - 22, align: "top" as const, rotation: 0 },
+  ];
+  const bottomCandidates = [
+    { x: node.x - 18, y: node.y + 34, align: "bottom" as const, rotation: 0 },
+    { x: node.x - 36, y: node.y + 34, align: "bottom" as const, rotation: 0 },
+    { x: node.x - 54, y: node.y + 34, align: "bottom" as const, rotation: 0 },
+    { x: node.x - 72, y: node.y + 34, align: "bottom" as const, rotation: 0 },
+  ];
+
+  const sideOrder =
+    hint?.orientation === "horizontal"
+      ? hint.preferredSide === "negative"
+        ? [topCandidates, bottomCandidates, rightCandidates, leftCandidates]
+        : [bottomCandidates, topCandidates, rightCandidates, leftCandidates]
+      : hint?.orientation === "vertical"
+        ? hint.preferredSide === "negative"
+          ? [leftCandidates, rightCandidates, topCandidates, bottomCandidates]
+          : [rightCandidates, leftCandidates, topCandidates, bottomCandidates]
+        : hint?.orientation === "diag-pos"
+          ? hint.preferredSide === "negative"
+            ? [rightCandidates, leftCandidates, topCandidates, bottomCandidates]
+            : [leftCandidates, rightCandidates, topCandidates, bottomCandidates]
+          : hint?.orientation === "diag-neg"
+            ? hint.preferredSide === "negative"
+              ? [leftCandidates, rightCandidates, topCandidates, bottomCandidates]
+              : [rightCandidates, leftCandidates, topCandidates, bottomCandidates]
+            : [rightCandidates, leftCandidates, topCandidates, bottomCandidates];
+
+  const base = sideOrder.flat();
+  const rotated = base
+    .slice(0, 6)
+    .flatMap((candidate) =>
+      AUTO_LABEL_ROTATIONS.filter((rotation) => rotation !== 0).map((rotation) => ({
+        ...candidate,
+        rotation,
+      })),
+    );
+
+  return [...base, ...rotated];
+}
+
+function candidateLabelPositions(node: MapNode, hint?: StationCorridorHint | null) {
+  return buildCandidatePositions(node, hint);
+}
+
+function candidateBootstrapLabelPositions(station: Station, node: MapNode, hint?: StationCorridorHint | null) {
   const current = getStationLabelPosition(station, node);
   const localOffsets = [
     { x: 0, y: 0 },
@@ -309,7 +540,7 @@ function candidateBootstrapLabelPositions(station: Station, node: MapNode) {
     };
   });
 
-  const fallbackCandidates = candidateLabelPositions(node).filter((candidate) => candidate.rotation === 0);
+  const fallbackCandidates = candidateLabelPositions(node, hint).filter((candidate) => candidate.rotation === 0);
   const uniqueCandidates = new Map<string, (typeof localCandidates)[number]>();
   for (const candidate of [...localCandidates, ...fallbackCandidates]) {
     const key = `${Math.round(candidate.x)}:${Math.round(candidate.y)}:${candidate.align}:${candidate.rotation ?? 0}`;
@@ -374,6 +605,18 @@ export function getStationKindFontSize(stationKind?: StationKind) {
   return stationKind?.fontSize ?? DEFAULT_STATION_FONT_SIZE;
 }
 
+function isLabelOnPositiveSide(
+  position: { x: number; y: number; align?: "left" | "right" | "top" | "bottom" },
+  node: MapNode,
+  orientation: CorridorOrientation,
+) {
+  if (orientation === "horizontal") return position.y >= node.y;
+  if (orientation === "vertical") return position.x >= node.x;
+  if (orientation === "diag-pos") return position.x - node.x >= position.y - node.y;
+  if (orientation === "diag-neg") return position.x - node.x >= -(position.y - node.y);
+  return true;
+}
+
 export function computeLabelPenalty(
   current: RailwayMap,
   station: Station,
@@ -382,6 +625,9 @@ export function computeLabelPenalty(
   nodesById: Map<string, MapNode>,
   stationKindsById: Map<string, StationKind>,
   stationLineIdsByStationId: Map<string, Set<string>>,
+  stationCorridorHintsByStationId?: Map<string, StationCorridorHint>,
+  stationSequenceHintsByStationId?: Map<string, StationSequenceHint>,
+  fixedPlacementsByStationId?: Map<string, ResolvedLabelPlacement>,
 ) {
   if (!station.nodeId) {
     return {
@@ -417,6 +663,7 @@ export function computeLabelPenalty(
   );
   const sheetSegments = current.model.segments.filter((segment) => segment.sheetId === node.sheetId);
   const currentLineIds = stationLineIdsByStationId.get(station.id) ?? new Set<string>();
+  const currentHint = stationCorridorHintsByStationId?.get(station.id);
 
   let overlapPenalty = 0;
   for (const placement of resolvedPlacements) {
@@ -445,6 +692,8 @@ export function computeLabelPenalty(
   const offsetPenalty = Math.hypot(position.x - node.x, position.y - node.y) * 0.2;
   const rotationPenalty = position.rotation && position.rotation !== 0 ? 8 : 0;
   let alignmentPenalty = 0;
+  let sideConsistencyPenalty = 0;
+  let sequencePenalty = 0;
 
   for (const placement of resolvedPlacements) {
     const otherNode = nodesById.get(placement.nodeId);
@@ -461,6 +710,9 @@ export function computeLabelPenalty(
       const currentOffsetY = position.y - node.y;
       const otherOffsetY = placement.position.y - otherNode.y;
       alignmentPenalty += Math.min(48, Math.abs(currentOffsetY - otherOffsetY) * 1.4);
+      if ((currentOffsetY >= 0) !== (otherOffsetY >= 0)) {
+        sideConsistencyPenalty += 90;
+      }
       if ((position.rotation ?? 0) !== (placement.position.rotation ?? 0)) {
         alignmentPenalty += 18;
       }
@@ -468,30 +720,205 @@ export function computeLabelPenalty(
       const currentOffsetX = position.x - node.x;
       const otherOffsetX = placement.position.x - otherNode.x;
       alignmentPenalty += Math.min(48, Math.abs(currentOffsetX - otherOffsetX) * 1.4);
+      if ((currentOffsetX >= 0) !== (otherOffsetX >= 0)) {
+        sideConsistencyPenalty += 90;
+      }
       if ((position.rotation ?? 0) !== (placement.position.rotation ?? 0)) {
         alignmentPenalty += 18;
       }
     }
   }
 
+  if (currentHint && currentHint.orientation !== "mixed") {
+    const nodeOffsetX = position.x - node.x;
+    const nodeOffsetY = position.y - node.y;
+    if (currentHint.orientation === "horizontal") {
+      alignmentPenalty += Math.abs(nodeOffsetX) * 0.04;
+    } else if (currentHint.orientation === "vertical") {
+      alignmentPenalty += Math.abs(nodeOffsetY) * 0.04;
+    }
+
+    const sameOrientationPlacements = resolvedPlacements.filter((placement) => {
+      const placementHint = stationCorridorHintsByStationId?.get(placement.stationId);
+      return placementHint?.orientation === currentHint.orientation;
+    });
+    if (sameOrientationPlacements.length > 0) {
+      const positives = sameOrientationPlacements.filter((placement) => {
+        const otherNode = nodesById.get(placement.nodeId);
+        return otherNode ? isLabelOnPositiveSide(placement.position, otherNode, currentHint.orientation) : false;
+      }).length;
+      const negatives = sameOrientationPlacements.length - positives;
+      const prefersPositive = positives >= negatives;
+      const currentPositive = isLabelOnPositiveSide(position, node, currentHint.orientation);
+      if (currentPositive !== prefersPositive) {
+        sideConsistencyPenalty += 55;
+      }
+    }
+  }
+
+  const sequenceHint = stationSequenceHintsByStationId?.get(station.id);
+  if (sequenceHint) {
+    const sequenceNeighborIds = [...sequenceHint.previousStationIds, ...sequenceHint.nextStationIds];
+    for (const neighborStationId of sequenceNeighborIds) {
+      const placement =
+        fixedPlacementsByStationId?.get(neighborStationId) ??
+        resolvedPlacements.find((candidate) => candidate.stationId === neighborStationId);
+      if (!placement) continue;
+      const neighborNode = nodesById.get(placement.nodeId);
+      if (!neighborNode) continue;
+
+      const deltaX = Math.abs(node.x - neighborNode.x);
+      const deltaY = Math.abs(node.y - neighborNode.y);
+      if (deltaX >= 40 && deltaY <= 24) {
+        const currentOffsetY = position.y - node.y;
+        const otherOffsetY = placement.position.y - neighborNode.y;
+        sequencePenalty += Math.min(90, Math.abs(currentOffsetY - otherOffsetY) * 2.2);
+        if ((currentOffsetY >= 0) !== (otherOffsetY >= 0)) {
+          sequencePenalty += 140;
+        }
+      } else if (deltaY >= 40 && deltaX <= 24) {
+        const currentOffsetX = position.x - node.x;
+        const otherOffsetX = placement.position.x - neighborNode.x;
+        sequencePenalty += Math.min(90, Math.abs(currentOffsetX - otherOffsetX) * 2.2);
+        if ((currentOffsetX >= 0) !== (otherOffsetX >= 0)) {
+          sequencePenalty += 140;
+        }
+      }
+
+      const currentDistance = Math.hypot(position.x - node.x, position.y - node.y);
+      const neighborDistance = Math.hypot(placement.position.x - neighborNode.x, placement.position.y - neighborNode.y);
+      sequencePenalty += Math.min(80, Math.abs(currentDistance - neighborDistance) * 0.8);
+    }
+  }
+
   return {
-    score: overlapPenalty + segmentPenalty + offsetPenalty + rotationPenalty + alignmentPenalty,
+    score: overlapPenalty + segmentPenalty + offsetPenalty + rotationPenalty + alignmentPenalty + sideConsistencyPenalty + sequencePenalty,
     box,
     overlapPenalty,
     segmentPenalty,
     offsetPenalty,
     rotationPenalty,
     alignmentPenalty,
+    sideConsistencyPenalty,
+    sequencePenalty,
   };
+}
+
+function buildResolvedPlacementsFromStations(
+  stations: Station[],
+  nodesById: Map<string, MapNode>,
+  stationKindsById: Map<string, StationKind>,
+) {
+  const placements = new Map<string, ResolvedLabelPlacement>();
+  for (const station of stations) {
+    if (!station.nodeId) continue;
+    const node = nodesById.get(station.nodeId);
+    if (!node || !station.label) continue;
+    placements.set(station.id, {
+      stationId: station.id,
+      nodeId: station.nodeId,
+      position: {
+        x: station.label.x,
+        y: station.label.y,
+        align: station.label.align,
+        rotation: station.label.rotation ?? 0,
+      },
+      box: estimateLabelBox(
+        station.name,
+        station.label.x,
+        station.label.y,
+        getStationKindFontSize(stationKindsById.get(station.kindId)),
+        station.label.rotation ?? 0,
+      ),
+    });
+  }
+  return placements;
+}
+
+function refineLabelsAlongLineRuns(
+  current: RailwayMap,
+  stations: Station[],
+  options: { bootstrapMode?: boolean } | undefined,
+  nodesById: Map<string, MapNode>,
+  stationKindsById: Map<string, StationKind>,
+  stationLineIdsByStationId: Map<string, Set<string>>,
+  stationCorridorHintsByStationId: Map<string, StationCorridorHint>,
+  stationSequenceHintsByStationId: Map<string, StationSequenceHint>,
+) {
+  const placementsByStationId = buildResolvedPlacementsFromStations(stations, nodesById, stationKindsById);
+  const stationsById = new Map(stations.map((station) => [station.id, station]));
+  const orderedStations = [...stations]
+    .filter((station) => station.nodeId)
+    .sort((left, right) => (stationSequenceHintsByStationId.get(left.id)?.order ?? Number.MAX_SAFE_INTEGER) - (stationSequenceHintsByStationId.get(right.id)?.order ?? Number.MAX_SAFE_INTEGER));
+
+  for (const station of orderedStations) {
+    if (!station.nodeId) continue;
+    const node = nodesById.get(station.nodeId);
+    if (!node) continue;
+    const currentPosition = getStationLabelPosition(station, node);
+    const otherPlacements = [...placementsByStationId.values()].filter((placement) => placement.stationId !== station.id);
+    const candidates = options?.bootstrapMode
+      ? candidateBootstrapLabelPositions(station, node, stationCorridorHintsByStationId.get(station.id))
+      : candidateLabelPositions(node, stationCorridorHintsByStationId.get(station.id));
+
+    const best = candidates
+      .map((position) => {
+        const analysis = computeLabelPenalty(
+          current,
+          station,
+          position,
+          otherPlacements,
+          nodesById,
+          stationKindsById,
+          stationLineIdsByStationId,
+          stationCorridorHintsByStationId,
+          stationSequenceHintsByStationId,
+          placementsByStationId,
+        );
+        const deltaPenalty =
+          options?.bootstrapMode
+            ? Math.hypot(position.x - currentPosition.x, position.y - currentPosition.y) * 0.25
+            : 0;
+        return { position, score: analysis.score + deltaPenalty, box: analysis.box };
+      })
+      .sort((left, right) => left.score - right.score)[0];
+
+    if (!best) continue;
+    const nextStation = {
+      ...station,
+      label: {
+        x: best.position.x,
+        y: best.position.y,
+        align: best.position.align,
+        rotation: best.position.rotation ?? 0,
+      },
+    };
+    stationsById.set(station.id, nextStation);
+    placementsByStationId.set(station.id, {
+      stationId: station.id,
+      nodeId: station.nodeId,
+      position: {
+        x: best.position.x,
+        y: best.position.y,
+        align: best.position.align,
+        rotation: best.position.rotation ?? 0,
+      },
+      box: best.box,
+    });
+  }
+
+  return stations.map((station) => stationsById.get(station.id) ?? station);
 }
 
 export function autoPlaceLabels(current: RailwayMap, options?: { preserveExisting?: boolean; bootstrapMode?: boolean }) {
   const nodesById = new Map(current.model.nodes.map((node) => [node.id, node]));
   const stationKindsById = new Map(current.config.stationKinds.map((kind) => [kind.id, kind]));
   const stationLineIdsByStationId = buildStationLineIdsByStationId(current);
+  const stationCorridorHintsByStationId = buildStationCorridorHints(current, stationLineIdsByStationId, nodesById);
+  const stationSequenceHintsByStationId = buildStationSequenceHints(current);
   const resolvedPlacements: ResolvedLabelPlacement[] = [];
 
-  return current.model.stations.map((station) => {
+  const placedStations = current.model.stations.map((station) => {
     if (!station.nodeId) return station;
     const node = nodesById.get(station.nodeId);
     if (!node) return station;
@@ -505,6 +932,8 @@ export function autoPlaceLabels(current: RailwayMap, options?: { preserveExistin
       nodesById,
       stationKindsById,
       stationLineIdsByStationId,
+      stationCorridorHintsByStationId,
+      stationSequenceHintsByStationId,
     );
 
     if (options?.preserveExisting && currentAnalysis.overlapPenalty === 0 && currentAnalysis.segmentPenalty === 0) {
@@ -525,7 +954,9 @@ export function autoPlaceLabels(current: RailwayMap, options?: { preserveExistin
       };
     }
 
-    const candidates = options?.bootstrapMode ? candidateBootstrapLabelPositions(station, node) : candidateLabelPositions(node);
+    const candidates = options?.bootstrapMode
+      ? candidateBootstrapLabelPositions(station, node, stationCorridorHintsByStationId.get(station.id))
+      : candidateLabelPositions(node, stationCorridorHintsByStationId.get(station.id));
 
     const candidate = candidates
       .map((position) => {
@@ -537,6 +968,8 @@ export function autoPlaceLabels(current: RailwayMap, options?: { preserveExistin
           nodesById,
           stationKindsById,
           stationLineIdsByStationId,
+          stationCorridorHintsByStationId,
+          stationSequenceHintsByStationId,
         );
         const currentDeltaPenalty =
           options?.bootstrapMode
@@ -565,6 +998,67 @@ export function autoPlaceLabels(current: RailwayMap, options?: { preserveExistin
       },
     };
   });
+
+  return refineLabelsAlongLineRuns(
+    current,
+    placedStations,
+    options,
+    nodesById,
+    stationKindsById,
+    stationLineIdsByStationId,
+    stationCorridorHintsByStationId,
+    stationSequenceHintsByStationId,
+  );
+}
+
+export function evaluateLabelLayout(map: RailwayMap) {
+  const nodesById = new Map(map.model.nodes.map((node) => [node.id, node]));
+  const stationKindsById = new Map(map.config.stationKinds.map((kind) => [kind.id, kind]));
+  const stationLineIdsByStationId = buildStationLineIdsByStationId(map);
+  const stationCorridorHintsByStationId = buildStationCorridorHints(map, stationLineIdsByStationId, nodesById);
+  const stationSequenceHintsByStationId = buildStationSequenceHints(map);
+  const resolvedPlacements: ResolvedLabelPlacement[] = [];
+
+  let overlapCount = 0;
+  let segmentIntersectionCount = 0;
+  let totalScore = 0;
+
+  for (const station of map.model.stations) {
+    if (!station.nodeId) continue;
+    const node = nodesById.get(station.nodeId);
+    if (!node) continue;
+    const position = getStationLabelPosition(station, node);
+    const analysis = computeLabelPenalty(
+      map,
+      station,
+      position,
+      resolvedPlacements,
+      nodesById,
+      stationKindsById,
+      stationLineIdsByStationId,
+      stationCorridorHintsByStationId,
+      stationSequenceHintsByStationId,
+    );
+    if (analysis.overlapPenalty > 0) {
+      overlapCount += Math.round(analysis.overlapPenalty / 300);
+    }
+    if (analysis.segmentPenalty > 0) {
+      segmentIntersectionCount += Math.ceil(analysis.segmentPenalty / 120);
+    }
+    totalScore += analysis.score;
+    resolvedPlacements.push({
+      stationId: station.id,
+      nodeId: station.nodeId,
+      box: analysis.box,
+      position,
+    });
+  }
+
+  return {
+    overlapCount,
+    segmentIntersectionCount,
+    totalScore,
+  };
 }
 
 export function findNearbyFreePoint(map: RailwayMap, sheetId: string, preferredCenter: MapPoint) {

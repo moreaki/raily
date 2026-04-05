@@ -1190,6 +1190,7 @@ export default function RailwayMapEditor() {
     draggingNodeId,
     draggingLabelStationId,
     rotatingLabelState,
+    labelAxisGuide,
     marqueeSelection,
     pendingSegmentStart,
     segmentDrawState,
@@ -1216,6 +1217,7 @@ export default function RailwayMapEditor() {
     currentSheetExists: !!currentSheet,
     currentSegments,
     currentStations,
+    stationKindsById,
     selectedNodeIds,
     selectedNodeIdsSet,
     selectedNodeMarkerKey,
@@ -1358,6 +1360,7 @@ export default function RailwayMapEditor() {
             draggingNodeId={draggingNodeId}
             nodeDragSnapshotRef={nodeDragSnapshotRef}
             rotatingLabelState={rotatingLabelState}
+            labelAxisGuide={labelAxisGuide}
             selectedStationId={selectedStationId}
             highlightedStationId={highlightedStationId}
             labelDiagnostics={labelDiagnostics}

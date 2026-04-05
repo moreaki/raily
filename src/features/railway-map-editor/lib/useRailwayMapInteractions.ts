@@ -1,9 +1,9 @@
 import type { MouseEvent, RefObject } from "react";
 import { useRef, useState } from "react";
-import type { MapPoint, RailwayMap, Segment, Station } from "@/entities/railway-map/model/types";
+import type { MapPoint, RailwayMap, Segment, Station, StationKind } from "@/entities/railway-map/model/types";
 import { createStraightSegmentForSheet } from "@/entities/railway-map/model/utils";
 import { getSvgPoint, normalizeRect } from "@/features/railway-map-editor/lib/geometry";
-import { normalizeRotation } from "@/features/railway-map-editor/lib/labels";
+import { estimateLabelBox, getStationKindFontSize, LABEL_AXIS_SNAP_THRESHOLD, normalizeRotation } from "@/features/railway-map-editor/lib/labels";
 
 const NODE_SEGMENT_LONG_PRESS_MS = 260;
 const NODE_SEGMENT_LONG_PRESS_MOVE_THRESHOLD = 6;
@@ -39,6 +39,25 @@ type MarqueeSelection = {
   end: MapPoint;
 };
 
+type LabelAxisGuide = {
+  stationId: string;
+  nodeId: string;
+  nodeCenter: MapPoint;
+  snapX: boolean;
+  snapY: boolean;
+};
+
+type LabelAxisBreakoutState = {
+  stationId: string;
+  releaseX: boolean;
+  releaseY: boolean;
+  breakXStartedAt: number | null;
+  breakYStartedAt: number | null;
+};
+
+const LABEL_AXIS_BREAKOUT_MS = 90;
+const LABEL_AXIS_BREAKOUT_DISTANCE = 12;
+
 type UseRailwayMapInteractionsArgs = {
   svgRef: RefObject<SVGSVGElement | null>;
   model: RailwayMap["model"];
@@ -46,6 +65,7 @@ type UseRailwayMapInteractionsArgs = {
   currentSheetExists: boolean;
   currentSegments: Segment[];
   currentStations: Array<Station & { nodeId: string }>;
+  stationKindsById: Map<string, StationKind>;
   selectedNodeIds: string[];
   selectedNodeIdsSet: Set<string>;
   selectedNodeMarkerKey: string | null;
@@ -89,6 +109,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     currentSheetExists,
     currentSegments,
     currentStations,
+    stationKindsById,
     selectedNodeIds,
     selectedNodeIdsSet,
     selectedNodeMarkerKey,
@@ -131,8 +152,10 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null);
   const [pendingSegmentStart, setPendingSegmentStart] = useState<PendingSegmentStart | null>(null);
   const [segmentDrawState, setSegmentDrawState] = useState<SegmentDrawState | null>(null);
+  const [labelAxisGuide, setLabelAxisGuide] = useState<LabelAxisGuide | null>(null);
 
   const nodeDragSnapshotRef = useRef<NodeDragSnapshot | null>(null);
+  const labelAxisBreakoutRef = useRef<LabelAxisBreakoutState | null>(null);
   const nodeLongPressTimeoutRef = useRef<number | null>(null);
   const nodeLongPressPressRef = useRef<{
     nodeId: string;
@@ -238,6 +261,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
 
   function clearCanvasSelections() {
     clearPrimarySelection();
+    setLabelAxisGuide(null);
+    labelAxisBreakoutRef.current = null;
     setPendingSegmentStart(null);
     setSegmentDrawState(null);
     closeNodeContextMenu();
@@ -384,6 +409,14 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     setSelectedStationId(stationId);
     setSelectedSegmentId("");
     setDraggingNodeId(null);
+    setLabelAxisGuide(null);
+    labelAxisBreakoutRef.current = {
+      stationId,
+      releaseX: false,
+      releaseY: false,
+      breakXStartedAt: null,
+      breakYStartedAt: null,
+    };
     setDraggingLabelStationId(stationId);
     beginTransientMapChange();
     if (!svgRef.current) return;
@@ -411,6 +444,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     setSelectedSegmentId("");
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
+    setLabelAxisGuide(null);
+    labelAxisBreakoutRef.current = null;
 
     if (!svgRef.current) return;
     const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
@@ -556,13 +591,112 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
           stations: current.model.stations.map((station) => {
             if (station.id !== draggingLabelStationId) return station;
             const stationNode = station.nodeId ? current.model.nodes.find((node) => node.id === station.nodeId) : null;
+            const stationKind = stationKindsById.get(station.kindId);
+            const nextLabel = {
+              ...station.label,
+              x: (station.label?.x ?? ((stationNode?.x ?? 0) + 12)) + deltaX,
+              y: (station.label?.y ?? ((stationNode?.y ?? 0) - 10)) + deltaY,
+              align: station.label?.align ?? "right",
+              rotation: station.label?.rotation ?? 0,
+            };
+
+            if (!stationNode) {
+              setLabelAxisGuide(null);
+              return {
+                ...station,
+                label: nextLabel,
+              };
+            }
+
+            const box = estimateLabelBox(
+              station.name,
+              nextLabel.x,
+              nextLabel.y,
+              getStationKindFontSize(stationKind),
+              nextLabel.rotation ?? 0,
+            );
+            let snappedX = nextLabel.x;
+            let snappedY = nextLabel.y;
+            let snapX = false;
+            let snapY = false;
+            const enforceAxisSnap = event.altKey;
+            const breakout = labelAxisBreakoutRef.current?.stationId === station.id
+              ? labelAxisBreakoutRef.current
+              : {
+                  stationId: station.id,
+                  releaseX: false,
+                  releaseY: false,
+                  breakXStartedAt: null,
+                  breakYStartedAt: null,
+                };
+
+            const centerDeltaX = box.center.x - stationNode.x;
+            const centerDeltaY = box.center.y - stationNode.y;
+            const nearAxisX = Math.abs(centerDeltaX) <= LABEL_AXIS_SNAP_THRESHOLD;
+            const nearAxisY = Math.abs(centerDeltaY) <= LABEL_AXIS_SNAP_THRESHOLD;
+            const beyondBreakoutX = Math.abs(centerDeltaX) >= LABEL_AXIS_BREAKOUT_DISTANCE;
+            const beyondBreakoutY = Math.abs(centerDeltaY) >= LABEL_AXIS_BREAKOUT_DISTANCE;
+
+            if (enforceAxisSnap) {
+              breakout.releaseX = false;
+              breakout.releaseY = false;
+              breakout.breakXStartedAt = null;
+              breakout.breakYStartedAt = null;
+            } else {
+              if (!breakout.releaseX && !nearAxisX && beyondBreakoutX) {
+                breakout.breakXStartedAt ??= event.timeStamp;
+                if (event.timeStamp - breakout.breakXStartedAt >= LABEL_AXIS_BREAKOUT_MS) {
+                  breakout.releaseX = true;
+                }
+              } else if (nearAxisX) {
+                breakout.breakXStartedAt = null;
+                breakout.releaseX = false;
+              } else {
+                breakout.breakXStartedAt = null;
+              }
+
+              if (!breakout.releaseY && !nearAxisY && beyondBreakoutY) {
+                breakout.breakYStartedAt ??= event.timeStamp;
+                if (event.timeStamp - breakout.breakYStartedAt >= LABEL_AXIS_BREAKOUT_MS) {
+                  breakout.releaseY = true;
+                }
+              } else if (nearAxisY) {
+                breakout.breakYStartedAt = null;
+                breakout.releaseY = false;
+              } else {
+                breakout.breakYStartedAt = null;
+              }
+            }
+
+            labelAxisBreakoutRef.current = breakout;
+
+            if ((enforceAxisSnap || (!breakout.releaseX && nearAxisX))) {
+              snappedX += stationNode.x - box.center.x;
+              snapX = true;
+            }
+            if ((enforceAxisSnap || (!breakout.releaseY && nearAxisY))) {
+              snappedY += stationNode.y - box.center.y;
+              snapY = true;
+            }
+
+            setLabelAxisGuide(
+              snapX || snapY
+                ? {
+                    stationId: station.id,
+                    nodeId: stationNode.id,
+                    nodeCenter: { x: stationNode.x, y: stationNode.y },
+                    snapX,
+                    snapY,
+                  }
+                : null,
+            );
+
             return {
               ...station,
               label: {
-                ...station.label,
-                x: (station.label?.x ?? ((stationNode?.x ?? 0) + 12)) + deltaX,
-                y: (station.label?.y ?? ((stationNode?.y ?? 0) - 10)) + deltaY,
-                align: station.label?.align ?? "right",
+                ...nextLabel,
+                x: snappedX,
+                y: snappedY,
               },
             };
           }),
@@ -633,6 +767,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     clearNodeLongPress();
     completeTransientMapChange();
     setRotatingLabelState(null);
+    setLabelAxisGuide(null);
     if (segmentDrawState) {
       setSegmentDrawState(null);
       setPendingSegmentStart(null);
@@ -660,6 +795,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
 
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
+    setLabelAxisGuide(null);
+    labelAxisBreakoutRef.current = null;
     setDragLastPoint(null);
     nodeDragSnapshotRef.current = null;
     setPanning(false);
@@ -707,6 +844,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     draggingNodeId,
     draggingLabelStationId,
     rotatingLabelState,
+    labelAxisGuide,
     marqueeSelection,
     pendingSegmentStart,
     segmentDrawState,
