@@ -86,7 +86,8 @@ export const railwayMapSchema = z.object({
   config: z.object({
     stationKinds: z.array(stationKindSchema),
     lines: z.array(lineSchema),
-    parallelTrackSpacing: z.number().min(8).max(48).default(26),
+    parallelTrackSpacing: z.number().min(8).max(48).default(22),
+    segmentIndicatorWidth: z.number().min(8).max(36).default(16),
   }),
   model: z.object({
     sheets: z.array(sheetSchema).min(1),

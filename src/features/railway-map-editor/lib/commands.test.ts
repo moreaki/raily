@@ -27,6 +27,7 @@ function makeMap(): RailwayMap {
         { id: "line-b", name: "B", color: "#dc2626", strokeWidth: 8, strokeStyle: "solid" },
       ],
       parallelTrackSpacing: 18,
+      segmentIndicatorWidth: 16,
     },
     model: {
       sheets: [

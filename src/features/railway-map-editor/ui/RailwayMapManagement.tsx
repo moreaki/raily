@@ -264,19 +264,20 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
                     key={line.id}
                     type="button"
                     onClick={() => setSelectedLineId(line.id)}
-                    className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                    className={`relative w-full rounded-xl px-3 py-2 text-left text-sm transition ${
                       selectedLineId === line.id
-                        ? "border border-sky-200 bg-sky-50 text-sky-950 ring-1 ring-sky-100"
+                        ? "border border-slate-200 bg-white text-ink shadow-sm"
                         : "border border-transparent bg-white text-ink hover:bg-slate-100"
                     }`}
                   >
-                    <div className="truncate font-medium" style={{ color: selectedLineId === line.id ? undefined : line.color }}>
+                    {selectedLineId === line.id ? <span className="absolute bottom-2 left-1 top-2 w-1 rounded-full" style={{ backgroundColor: line.color }} /> : null}
+                    <div className="truncate font-medium" style={{ color: line.color }}>
                       {line.name}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      <Badge className={selectedLineId === line.id ? "bg-white text-sky-700 ring-1 ring-sky-200" : ""}>{line.strokeStyle}</Badge>
-                      <Badge className={selectedLineId === line.id ? "bg-white text-sky-700 ring-1 ring-sky-200" : ""}>{line.strokeWidth}px</Badge>
-                      <Badge className={selectedLineId === line.id ? "bg-white text-sky-700 ring-1 ring-sky-200" : ""}>{segmentCount} segment{segmentCount === 1 ? "" : "s"}</Badge>
+                      <Badge>{line.strokeStyle}</Badge>
+                      <Badge>{line.strokeWidth}px</Badge>
+                      <Badge>{segmentCount} segment{segmentCount === 1 ? "" : "s"}</Badge>
                     </div>
                   </button>
                 );
@@ -406,44 +407,41 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
                     key={station.id}
                     type="button"
                     onClick={() => setSelectedStationId(station.id)}
-                    className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                    className={`relative w-full rounded-xl px-3 py-2 text-left text-sm transition ${
                       selectedStationId === station.id
-                        ? "border border-sky-200 bg-sky-50 text-sky-950 ring-1 ring-sky-100"
+                        ? "border border-slate-200 bg-white text-ink shadow-sm"
                         : "border border-transparent bg-white text-ink hover:bg-slate-100"
                     }`}
                   >
+                    {selectedStationId === station.id ? <span className="absolute bottom-2 left-1 top-2 w-1 rounded-full bg-sky-400" /> : null}
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{station.name}</div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          <Badge className={selectedStationId === station.id ? "bg-white text-sky-700 ring-1 ring-sky-200" : ""}>
+                          <Badge>
                             {stationKinds.find((kind) => kind.id === station.kindId)?.name ?? "Unknown"}
                           </Badge>
                           {(assignedLinesByStationId.get(station.id) ?? []).map((line) => (
                             <Badge
                               key={line.id}
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                selectedStationId === station.id ? "bg-white text-sky-700 ring-1 ring-sky-200" : "bg-slate-100 text-slate-700"
-                              }`}
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-slate-100 text-slate-700"
                             >
                               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: line.color }} />
                               <span>{line.name}</span>
                             </Badge>
                           ))}
                           {station.nodeId && (assignedLinesByStationId.get(station.id) ?? []).length === 0 ? (
-                            <Badge className={selectedStationId === station.id ? "bg-white text-sky-700 ring-1 ring-sky-200" : ""}>No line assigned</Badge>
+                            <Badge>No line assigned</Badge>
                           ) : null}
                         </div>
-                        <div className={`mt-2 truncate text-xs ${selectedStationId === station.id ? "text-sky-700/80" : "text-muted"}`}>
+                        <div className="mt-2 truncate text-xs text-muted">
                           {station.nodeId ? `Assigned on ${sheetName}` : "Unassigned"}
                         </div>
                       </div>
                       <button
                         type="button"
                         aria-label={`Delete ${station.name}`}
-                        className={`shrink-0 self-start rounded-lg p-1 ${
-                          selectedStationId === station.id ? "bg-white text-sky-700 hover:bg-sky-100" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
+                        className="shrink-0 self-start rounded-lg p-1 bg-slate-100 text-slate-600 hover:bg-slate-200"
                         onClick={(event) => {
                           event.stopPropagation();
                           deleteStation(station.id);
@@ -572,12 +570,13 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
                 key={kind.id}
                 type="button"
                 onClick={() => setSelectedStationKindId(kind.id)}
-                className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                className={`relative w-full rounded-xl px-3 py-2 text-left text-sm transition ${
                   selectedStationKindId === kind.id
-                    ? "border border-sky-200 bg-sky-50 text-sky-950 ring-1 ring-sky-100"
+                    ? "border border-slate-200 bg-white text-ink shadow-sm"
                     : "border border-transparent bg-white text-ink hover:bg-slate-100"
                 }`}
               >
+                {selectedStationKindId === kind.id ? <span className="absolute bottom-2 left-1 top-2 w-1 rounded-full bg-sky-400" /> : null}
                 <div className="flex items-center gap-3">
                   <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-1">{renderStationKindPreview(kind.shape, kind.symbolSize)}</div>
                   <div className="min-w-0">

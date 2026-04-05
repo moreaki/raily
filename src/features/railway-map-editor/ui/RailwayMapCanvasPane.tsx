@@ -88,6 +88,7 @@ type RailwayMapCanvasPaneProps = {
   minGridStep: number;
   setGridStepX: (value: number) => void;
   setGridStepY: (value: number) => void;
+  segmentIndicatorWidth: number;
   canvasViewportRef: RefObject<HTMLDivElement | null>;
   svgRef: RefObject<SVGSVGElement | null>;
   canvasWidth: number;
@@ -206,8 +207,9 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     gridStepY,
     minGridStep,
     setGridStepX,
-    setGridStepY,
-    canvasViewportRef,
+  setGridStepY,
+  segmentIndicatorWidth,
+  canvasViewportRef,
     svgRef,
     canvasWidth,
     canvasHeight,
@@ -400,7 +402,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                     d={pathFromPoints(offsetPointsForSegment)}
                     fill="none"
                     stroke={selectedSegmentId === segment.id ? "#94a3b8" : assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee"}
-                    strokeWidth={selectedSegmentId === segment.id ? "22" : "18"}
+                    strokeWidth={selectedSegmentId === segment.id ? segmentIndicatorWidth + 4 : segmentIndicatorWidth}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     onMouseDown={() => handleSegmentMouseDown(segment.id)}

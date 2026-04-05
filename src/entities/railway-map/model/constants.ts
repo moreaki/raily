@@ -4,7 +4,8 @@ const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, san
 const DEFAULT_STATION_FONT_WEIGHT = "600" as const;
 const DEFAULT_STATION_FONT_SIZE = 14;
 const DEFAULT_STATION_SYMBOL_SIZE = 1;
-const DEFAULT_PARALLEL_TRACK_SPACING = 26;
+const DEFAULT_PARALLEL_TRACK_SPACING = 22;
+const DEFAULT_SEGMENT_INDICATOR_WIDTH = 16;
 
 export const LINE_PRESETS = [
   { id: "preset-c1", name: "C1", color: "#74b6f2", strokeWidth: 9, strokeStyle: "solid" as const },
@@ -28,6 +29,7 @@ export const INITIAL_MAP: RailwayMap = {
       { id: "l3", name: "C3", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" },
     ],
     parallelTrackSpacing: DEFAULT_PARALLEL_TRACK_SPACING,
+    segmentIndicatorWidth: DEFAULT_SEGMENT_INDICATOR_WIDTH,
   },
   model: {
     sheets: [
@@ -163,7 +165,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         strokeStyle: "solid"
       }
     ],
-    parallelTrackSpacing: 26
+    parallelTrackSpacing: 22,
+    segmentIndicatorWidth: 16
   },
   model: {
     sheets: [

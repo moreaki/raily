@@ -1172,6 +1172,16 @@ export default function RailwayMapEditor() {
     }));
   }
 
+  function updateSegmentIndicatorWidth(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: {
+        ...current.config,
+        segmentIndicatorWidth: Math.min(36, Math.max(8, value || 16)),
+      },
+    }));
+  }
+
   function updateStation(stationId: string, patch: Partial<Station>) {
     updateMap((current) => updateStationCommand(current, stationId, patch));
   }
@@ -1369,6 +1379,7 @@ export default function RailwayMapEditor() {
             minGridStep={MIN_GRID_STEP}
             setGridStepX={setGridStepX}
             setGridStepY={setGridStepY}
+            segmentIndicatorWidth={config.segmentIndicatorWidth}
             canvasViewportRef={canvasViewportRef}
             svgRef={svgRef}
             canvasWidth={CANVAS_WIDTH}
@@ -1520,7 +1531,9 @@ export default function RailwayMapEditor() {
                   ) : sidePanel === "settings" ? (
                     <RailwayMapSettings
                       parallelTrackSpacing={config.parallelTrackSpacing}
+                      segmentIndicatorWidth={config.segmentIndicatorWidth}
                       updateParallelTrackSpacing={updateParallelTrackSpacing}
+                      updateSegmentIndicatorWidth={updateSegmentIndicatorWidth}
                     />
                   ) : (
                     <RailwayMapManagement

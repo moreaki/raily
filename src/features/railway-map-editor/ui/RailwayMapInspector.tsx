@@ -139,12 +139,13 @@ export function RailwayMapInspector({
               {visibleStations.map((station) => (
                 <div
                   key={station.id}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
+                  className={`relative flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
                     selectedStationId === station.id
-                      ? "border border-sky-200 bg-sky-50 text-sky-950 ring-1 ring-sky-100"
+                      ? "border border-slate-200 bg-white text-ink shadow-sm"
                       : "border border-transparent bg-white text-ink hover:bg-slate-100"
                   }`}
                 >
+                  {selectedStationId === station.id ? <span className="absolute bottom-2 left-1 top-2 w-1 rounded-full bg-sky-400" /> : null}
                   <button
                     type="button"
                     onClick={() => {
@@ -164,7 +165,7 @@ export function RailwayMapInspector({
                     type="button"
                     aria-label={`Delete ${station.name}`}
                     className={`rounded-lg px-2 py-1 ${
-                      selectedStationId === station.id ? "bg-white text-sky-700 hover:bg-sky-100" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      selectedStationId === station.id ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
                     onClick={() => (station.nodeId ? deleteNode(station.nodeId) : deleteStation(station.id))}
                   >

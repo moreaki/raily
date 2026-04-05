@@ -269,7 +269,6 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
     }
   }
 
-  const lineOrderById = new Map(map.config.lines.map((line, index) => [line.id, index]));
   const segmentsByNodeId = new Map<string, Segment[]>();
   for (const segment of segments) {
     const fromSegments = segmentsByNodeId.get(segment.fromNodeId) ?? [];
@@ -281,36 +280,7 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
     segmentsByNodeId.set(segment.toNodeId, toSegments);
   }
 
-  function assignSegmentToLine(segmentId: string, lineId: string) {
-    const targetIndex = lineRunIndexByLineId.get(lineId);
-    if (targetIndex === undefined) return;
-
-    for (const lineRun of sanitizedLineRuns) {
-      lineRun.segmentIds = lineRun.segmentIds.filter((candidateId) => candidateId !== segmentId);
-    }
-
-    const targetRun = sanitizedLineRuns[targetIndex];
-    if (!targetRun.segmentIds.includes(segmentId)) {
-      targetRun.segmentIds.push(segmentId);
-    }
-    owningLineIdBySegmentId.set(segmentId, lineId);
-  }
-
-  for (const connectedSegments of segmentsByNodeId.values()) {
-    if (connectedSegments.length !== 2) continue;
-
-    const [firstSegment, secondSegment] = connectedSegments;
-    const firstLineId = owningLineIdBySegmentId.get(firstSegment.id) ?? null;
-    const secondLineId = owningLineIdBySegmentId.get(secondSegment.id) ?? null;
-    const preferredLineId = firstLineId ?? secondLineId;
-
-    if (!preferredLineId) continue;
-    if (firstLineId === preferredLineId && secondLineId === preferredLineId) continue;
-
-    assignSegmentToLine(firstSegment.id, preferredLineId);
-    assignSegmentToLine(secondSegment.id, preferredLineId);
-  }
-
+  const lineOrderById = new Map(map.config.lines.map((line, index) => [line.id, index]));
   const existingNodeLanes = (map.model.nodeLanes ?? []).filter((lane) => nodeIds.has(lane.nodeId));
   const existingNodeLanesByNodeId = new Map<string, NodeLane[]>();
   for (const lane of existingNodeLanes) {

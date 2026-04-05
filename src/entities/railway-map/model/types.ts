@@ -94,6 +94,7 @@ export interface RailwayMapConfig {
   stationKinds: StationKind[];
   lines: Line[];
   parallelTrackSpacing: number;
+  segmentIndicatorWidth: number;
 }
 
 export interface RailwayMapModel {
