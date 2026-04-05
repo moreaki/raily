@@ -71,6 +71,8 @@ type MarqueeSelection = {
 };
 
 type RailwayMapCanvasPaneProps = {
+  bootstrapDevelopmentModel: () => void;
+  autoPlaceCurrentSheetLabels: () => void;
   pendingSegmentStart: PendingSegmentStart | null;
   laneDisplayNameById: Map<string, string>;
   zoom: number;
@@ -184,7 +186,10 @@ type RailwayMapCanvasPaneProps = {
 
 export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
   const [sheetRailOpen, setSheetRailOpen] = useState(false);
+  const [toolsRailOpen, setToolsRailOpen] = useState(false);
   const {
+    bootstrapDevelopmentModel,
+    autoPlaceCurrentSheetLabels,
     pendingSegmentStart,
     laneDisplayNameById,
     zoom,
@@ -292,6 +297,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
 
   const diagonalGuideLength = Math.max(viewBox.width, viewBox.height) * 1.6;
   const showSheetRail = sheetRailOpen || renamingSheetId !== null;
+  const showToolsRail = toolsRailOpen;
 
   return (
     <Card className="overflow-hidden">
@@ -768,6 +774,43 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       onClick={() => setSheetRailOpen((current) => !current)}
                     >
                       Sheets
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center"
+            onMouseEnter={() => setToolsRailOpen(true)}
+            onMouseLeave={() => setToolsRailOpen(false)}
+          >
+            <div className="pointer-events-auto relative h-[52%]">
+              <div
+                className={`absolute right-0 top-1/2 flex -translate-y-1/2 transition-transform duration-200 ${
+                  showToolsRail ? "translate-x-0" : "translate-x-[228px]"
+                }`}
+              >
+                <div className="flex w-[248px] flex-row-reverse items-stretch">
+                  <div className="w-[228px] rounded-l-2xl border border-r-0 border-slate-200 bg-white/96 p-3 shadow-lg backdrop-blur">
+                    <div className="mb-3 text-sm font-semibold text-ink">Tools</div>
+                    <div className="space-y-2">
+                      <Button className="w-full" onClick={bootstrapDevelopmentModel}>
+                        Bootstrap Model
+                      </Button>
+                      <Button variant="outline" className="w-full" onClick={autoPlaceCurrentSheetLabels}>
+                        Auto-place labels on this sheet
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mr-1 flex items-center">
+                    <button
+                      type="button"
+                      className="rounded-l-xl border border-r-0 border-slate-200 bg-white/96 px-2 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600 shadow-sm backdrop-blur [writing-mode:vertical-rl]"
+                      onClick={() => setToolsRailOpen((current) => !current)}
+                    >
+                      Tools
                     </button>
                   </div>
                 </div>

@@ -67,6 +67,7 @@ import { useRailwayMapSelection } from "@/features/railway-map-editor/lib/useRai
 import { useRailwayMapViewport } from "@/features/railway-map-editor/lib/useRailwayMapViewport";
 import { RailwayMapInspector } from "@/features/railway-map-editor/ui/RailwayMapInspector";
 import { RailwayMapManagement } from "@/features/railway-map-editor/ui/RailwayMapManagement";
+import { RailwayMapSettings } from "@/features/railway-map-editor/ui/RailwayMapSettings";
 import { RailwayMapCanvasPane } from "@/features/railway-map-editor/ui/RailwayMapCanvasPane";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -207,8 +208,8 @@ export default function RailwayMapEditor() {
   const [newStationKindFontWeight, setNewStationKindFontWeight] = useState<StationLabelFontWeight>(DEFAULT_STATION_FONT_WEIGHT);
   const [newStationKindFontSize, setNewStationKindFontSize] = useState(DEFAULT_STATION_FONT_SIZE);
   const [newStationKindSymbolSize, setNewStationKindSymbolSize] = useState(DEFAULT_STATION_SYMBOL_SIZE);
-  const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage">("edit");
-  const [manageSection, setManageSection] = useState<"development" | "lines" | "stations" | "stationKinds">("lines");
+  const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage" | "settings">("edit");
+  const [manageSection, setManageSection] = useState<"lines" | "stations" | "stationKinds">("lines");
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
   const [sheetNameDraft, setSheetNameDraft] = useState("");
   const [highlightedStationId, setHighlightedStationId] = useState("");
@@ -922,9 +923,9 @@ export default function RailwayMapEditor() {
     setNewStationKindFontSize(DEFAULT_STATION_FONT_SIZE);
   }
 
-  function addLine() {
-    const { line: nextLine } = addLineCommand(map);
-    updateMap((current) => addLineCommand(current).map);
+  function addLine(patch?: Partial<Line>) {
+    const { line: nextLine } = addLineCommand(map, patch);
+    updateMap((current) => addLineCommand(current, patch).map);
     setSelectedLineId(nextLine.id);
   }
 
@@ -1304,6 +1305,9 @@ export default function RailwayMapEditor() {
             <Button variant={sidePanel === "manage" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "manage" ? "closed" : "manage")}>
               Manage
             </Button>
+            <Button variant={sidePanel === "settings" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "settings" ? "closed" : "settings")}>
+              Settings
+            </Button>
             <Button variant="outline" onClick={exportSvg}>
               <Download className="h-4 w-4" />
               SVG
@@ -1317,6 +1321,8 @@ export default function RailwayMapEditor() {
 
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
           <RailwayMapCanvasPane
+            bootstrapDevelopmentModel={bootstrapDevelopmentModel}
+            autoPlaceCurrentSheetLabels={autoPlaceCurrentSheetLabels}
             pendingSegmentStart={pendingSegmentStart}
             laneDisplayNameById={laneDisplayNameById}
             zoom={zoom}
@@ -1427,7 +1433,7 @@ export default function RailwayMapEditor() {
               <Card className="flex h-full min-h-[82vh] flex-col overflow-hidden border-slate-200 bg-white/95 backdrop-blur">
                 <CardHeader className="flex flex-row items-center justify-between gap-3 px-5 py-4">
                   <div>
-                    <CardTitle>{sidePanel === "edit" ? "Edit Panel" : "Management"}</CardTitle>
+                    <CardTitle>{sidePanel === "edit" ? "Edit Panel" : sidePanel === "settings" ? "Settings" : "Management"}</CardTitle>
                     {sidePanel === "edit" ? <p className="mt-1 text-xs text-muted">Contextual tools for the selected map elements.</p> : null}
                   </div>
                   <Button variant="outline" className="px-3" onClick={() => setSidePanel("closed")}>
@@ -1477,12 +1483,15 @@ export default function RailwayMapEditor() {
               handleSelectedLineInspectorChange={handleSelectedLineInspectorChange}
               insertTrackPointOnSegment={insertTrackPointOnSegment}
             />
+                  ) : sidePanel === "settings" ? (
+                    <RailwayMapSettings
+                      parallelTrackSpacing={config.parallelTrackSpacing}
+                      updateParallelTrackSpacing={updateParallelTrackSpacing}
+                    />
                   ) : (
                     <RailwayMapManagement
                       manageSection={manageSection}
                       setManageSection={setManageSection}
-                      bootstrapDevelopmentModel={bootstrapDevelopmentModel}
-                      autoPlaceCurrentSheetLabels={autoPlaceCurrentSheetLabels}
                       selectedLineId={selectedLineId}
                       setSelectedLineId={setSelectedLineId}
                       addLine={addLine}
@@ -1494,8 +1503,6 @@ export default function RailwayMapEditor() {
                       updateLine={updateLine}
                       toggleSegmentOnSelectedLine={toggleSegmentOnSelectedLine}
                       deleteSelectedLine={deleteSelectedLine}
-                      parallelTrackSpacing={config.parallelTrackSpacing}
-                      updateParallelTrackSpacing={updateParallelTrackSpacing}
                       newStationName={newStationName}
                       setNewStationName={setNewStationName}
                       newStationKindId={newStationKindId}

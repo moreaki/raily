@@ -160,9 +160,10 @@ export function addStationKind(
   };
 }
 
-export function addLine(map: RailwayMap) {
+export function addLine(map: RailwayMap, patch?: Partial<Line>) {
   const preset = LINE_PRESETS[map.config.lines.length % LINE_PRESETS.length];
-  const line = createDefaultLine(map.config.lines.length, preset);
+  const baseLine = createDefaultLine(map.config.lines.length, preset);
+  const line = { ...baseLine, ...patch };
   return {
     map: {
       ...map,

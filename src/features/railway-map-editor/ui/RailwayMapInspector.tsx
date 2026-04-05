@@ -101,6 +101,12 @@ export function RailwayMapInspector({
   handleSelectedLineInspectorChange,
   insertTrackPointOnSegment,
 }: RailwayMapInspectorProps) {
+  const sortedLines = [...lines].sort((left, right) => {
+    const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+    if (byName !== 0) return byName;
+    return left.id.localeCompare(right.id);
+  });
+
   return (
     <>
       {!hasNodeOrStationSelection && !hasSegmentOrLineSelection ? (
@@ -357,10 +363,11 @@ export function RailwayMapInspector({
                 <select
                   value={selectedLineId}
                   onChange={(event) => handleSelectedLineInspectorChange(event.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                  style={{ color: selectedLine.color }}
                 >
-                  {lines.map((line) => (
-                    <option key={line.id} value={line.id}>
+                  {sortedLines.map((line) => (
+                    <option key={line.id} value={line.id} style={{ color: line.color }}>
                       {line.name}
                     </option>
                   ))}

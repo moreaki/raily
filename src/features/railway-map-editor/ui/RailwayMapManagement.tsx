@@ -9,13 +9,11 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 
 type RailwayMapManagementProps = {
-  manageSection: "development" | "lines" | "stations" | "stationKinds";
-  setManageSection: (value: "development" | "lines" | "stations" | "stationKinds") => void;
-  bootstrapDevelopmentModel: () => void;
-  autoPlaceCurrentSheetLabels: () => void;
+  manageSection: "lines" | "stations" | "stationKinds";
+  setManageSection: (value: "lines" | "stations" | "stationKinds") => void;
   selectedLineId: string;
   setSelectedLineId: (value: string) => void;
-  addLine: () => void;
+  addLine: (patch?: Partial<Line>) => void;
   selectedLine: Line | null;
   lines: Line[];
   currentSegments: Segment[];
@@ -24,8 +22,6 @@ type RailwayMapManagementProps = {
   updateLine: (patch: Partial<Line>) => void;
   toggleSegmentOnSelectedLine: (segmentId: string) => void;
   deleteSelectedLine: () => void;
-  parallelTrackSpacing: number;
-  updateParallelTrackSpacing: (value: number) => void;
   newStationName: string;
   setNewStationName: (value: string) => void;
   newStationKindId: string;
@@ -69,8 +65,6 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
   const {
     manageSection,
     setManageSection,
-    bootstrapDevelopmentModel,
-    autoPlaceCurrentSheetLabels,
     selectedLineId,
     setSelectedLineId,
     addLine,
@@ -82,8 +76,6 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
     updateLine,
     toggleSegmentOnSelectedLine,
     deleteSelectedLine,
-    parallelTrackSpacing,
-    updateParallelTrackSpacing,
     newStationName,
     setNewStationName,
     newStationKindId,
@@ -123,7 +115,26 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
     stationKindsCount,
   } = props;
   const [stationSearch, setStationSearch] = useState("");
+  const [lineSearch, setLineSearch] = useState("");
+  const [newLineName, setNewLineName] = useState("");
+  const [newLineColor, setNewLineColor] = useState("#2563eb");
+  const [newLineStrokeWidth, setNewLineStrokeWidth] = useState(6);
+  const [newLineStrokeStyle, setNewLineStrokeStyle] = useState<Line["strokeStyle"]>("solid");
   const sheetsById = useMemo(() => new Map(sheets.map((sheet) => [sheet.id, sheet])), [sheets]);
+  const sortedLines = useMemo(
+    () =>
+      [...lines].sort((left, right) => {
+        const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+        if (byName !== 0) return byName;
+        return left.id.localeCompare(right.id);
+      }),
+    [lines],
+  );
+  const filteredLines = useMemo(() => {
+    const query = normalizeSearchValue(lineSearch);
+    if (!query) return sortedLines;
+    return sortedLines.filter((line) => normalizeSearchValue(line.name).includes(query));
+  }, [lineSearch, sortedLines]);
   const filteredStations = useMemo(() => {
     const query = normalizeSearchValue(stationSearch);
     const filtered = !query
@@ -165,6 +176,16 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
     return next;
   }, [lineIdBySegmentId, linesById, segments, visibleStations]);
 
+  function createLineFromDraft() {
+    addLine({
+      name: newLineName.trim() || undefined,
+      color: newLineColor,
+      strokeWidth: Math.min(32, Math.max(1, newLineStrokeWidth || 1)),
+      strokeStyle: newLineStrokeStyle,
+    });
+    setNewLineName("");
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
@@ -172,12 +193,11 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
           { id: "lines", label: "Lines" },
           { id: "stations", label: "Stations" },
           { id: "stationKinds", label: "Station Kinds" },
-          { id: "development", label: "Development" },
         ].map((section) => (
           <button
             key={section.id}
             type="button"
-            onClick={() => setManageSection(section.id as "development" | "lines" | "stations" | "stationKinds")}
+            onClick={() => setManageSection(section.id as "lines" | "stations" | "stationKinds")}
             className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition ${
               manageSection === section.id ? "bg-white text-ink shadow-sm" : "text-slate-600 hover:bg-white/70"
             }`}
@@ -187,80 +207,125 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
         ))}
       </div>
 
-      {manageSection === "development" ? (
-        <section className="space-y-3">
-          <div className="text-sm font-semibold text-ink">Development Tools</div>
-          <div className="grid gap-2">
-            <Button className="w-full" onClick={bootstrapDevelopmentModel}>
-              Bootstrap Model
-            </Button>
-            <Button variant="outline" className="w-full" onClick={autoPlaceCurrentSheetLabels}>
-              Auto-place labels on this sheet
-            </Button>
-          </div>
-          <p className="text-xs text-muted">Bootstrap seeds the editor with multiple overview/detail sheets, station kinds, line styles, and ready-made runs.</p>
-        </section>
-      ) : null}
-
       {manageSection === "lines" ? (
         <section className="space-y-3">
           <div className="text-sm font-semibold text-ink">Line Definitions</div>
-          <div className="flex gap-2">
-            <select
-              value={selectedLineId}
-              onChange={(event) => setSelectedLineId(event.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-            >
-              {lines.map((line) => (
-                <option key={line.id} value={line.id}>
-                  {line.name}
-                </option>
-              ))}
-            </select>
-            <Button onClick={addLine}>
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-          {selectedLine ? (
-            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <div className="grid gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Parallel Track Spacing</div>
-                <div className="flex items-center gap-3">
-                  <Input
-                    type="number"
-                    min={8}
-                    max={48}
-                    step={1}
-                    value={parallelTrackSpacing}
-                    onChange={(event) => updateParallelTrackSpacing(Number(event.target.value) || 18)}
-                    className="w-28"
-                  />
-                  <p className="text-xs text-muted">Controls the distance between parallel segments and grouped station lanes.</p>
-                </div>
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Add Line</div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-0 flex-1 basis-[220px] grid gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Name</div>
+                <Input value={newLineName} onChange={(event) => setNewLineName(event.target.value)} placeholder="Line name" />
               </div>
-              <Input value={selectedLine.name} onChange={(event) => updateLine({ name: event.target.value })} />
-              <div className="grid grid-cols-3 gap-2">
-                <Input type="color" value={selectedLine.color} onChange={(event) => updateLine({ color: event.target.value })} />
+              <label className="grid w-[70px] shrink-0 gap-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">Color</span>
+                <input
+                  type="color"
+                  value={newLineColor}
+                  onChange={(event) => setNewLineColor(event.target.value)}
+                  className="h-10 w-full cursor-pointer appearance-none rounded-lg border border-slate-300 bg-white p-1 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-md [&::-webkit-color-swatch]:border-0"
+                />
+              </label>
+              <div className="grid w-[76px] shrink-0 gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Width</div>
                 <Input
                   type="number"
                   min={1}
                   max={32}
-                  value={selectedLine.strokeWidth}
-                  onChange={(event) =>
-                    updateLine({
-                      strokeWidth: Math.min(32, Math.max(1, Number(event.target.value) || 1)),
-                    })
-                  }
+                  value={newLineStrokeWidth}
+                  onChange={(event) => setNewLineStrokeWidth(Math.min(32, Math.max(1, Number(event.target.value) || 1)))}
+                  className="px-2"
                 />
+              </div>
+              <div className="grid w-[112px] shrink-0 gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Style</div>
                 <select
-                  value={selectedLine.strokeStyle}
-                  onChange={(event) => updateLine({ strokeStyle: event.target.value as Line["strokeStyle"] })}
+                  value={newLineStrokeStyle}
+                  onChange={(event) => setNewLineStrokeStyle(event.target.value as Line["strokeStyle"])}
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
                 >
                   <option value="solid">Solid</option>
                   <option value="dashed">Dashed</option>
                   <option value="dotted">Dotted</option>
                 </select>
+              </div>
+              <Button onClick={createLineFromDraft} className="shrink-0 self-end">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Input value={lineSearch} onChange={(event) => setLineSearch(event.target.value)} placeholder="Search lines" />
+            <div className="max-h-[240px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
+              {filteredLines.map((line) => {
+                const segmentCount = currentSegments.filter((segment) => lineIdBySegmentId.get(segment.id) === line.id).length;
+                return (
+                  <button
+                    key={line.id}
+                    type="button"
+                    onClick={() => setSelectedLineId(line.id)}
+                    className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                      selectedLineId === line.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="truncate font-medium" style={{ color: selectedLineId === line.id ? undefined : line.color }}>
+                      {line.name}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge className={selectedLineId === line.id ? "bg-white/15 text-white" : ""}>{line.strokeStyle}</Badge>
+                      <Badge className={selectedLineId === line.id ? "bg-white/15 text-white" : ""}>{line.strokeWidth}px</Badge>
+                      <Badge className={selectedLineId === line.id ? "bg-white/15 text-white" : ""}>{segmentCount} segment{segmentCount === 1 ? "" : "s"}</Badge>
+                    </div>
+                  </button>
+                );
+              })}
+              {filteredLines.length === 0 ? <p className="px-3 py-2 text-xs text-muted">No matching lines.</p> : null}
+            </div>
+          </div>
+          {selectedLine ? (
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-sm font-semibold text-ink">Selected Line</div>
+              <div className="grid gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Name</div>
+                <Input value={selectedLine.name} onChange={(event) => updateLine({ name: event.target.value })} />
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="grid w-[70px] shrink-0 gap-1">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Color</div>
+                  <input
+                    type="color"
+                    value={selectedLine.color}
+                    onChange={(event) => updateLine({ color: event.target.value })}
+                    className="h-10 w-full cursor-pointer appearance-none rounded-lg border border-slate-300 bg-white p-1 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-md [&::-webkit-color-swatch]:border-0"
+                  />
+                </label>
+                <div className="grid w-[76px] shrink-0 gap-1">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Width</div>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={32}
+                    value={selectedLine.strokeWidth}
+                    onChange={(event) =>
+                      updateLine({
+                        strokeWidth: Math.min(32, Math.max(1, Number(event.target.value) || 1)),
+                      })
+                    }
+                    className="px-2"
+                  />
+                </div>
+                <div className="grid w-[112px] shrink-0 gap-1">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Style</div>
+                  <select
+                    value={selectedLine.strokeStyle}
+                    onChange={(event) => updateLine({ strokeStyle: event.target.value as Line["strokeStyle"] })}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                  >
+                    <option value="solid">Solid</option>
+                    <option value="dashed">Dashed</option>
+                    <option value="dotted">Dotted</option>
+                  </select>
+                </div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
                 <svg viewBox="0 0 180 24" className="h-6 w-full">
