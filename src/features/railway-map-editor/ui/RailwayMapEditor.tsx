@@ -53,6 +53,7 @@ import {
 } from "@/features/railway-map-editor/lib/labels";
 import { useRailwayMapContextMenus } from "@/features/railway-map-editor/lib/useRailwayMapContextMenus";
 import { useRailwayMapHistory } from "@/features/railway-map-editor/lib/useRailwayMapHistory";
+import { useRailwayMapKeyboardShortcuts } from "@/features/railway-map-editor/lib/useRailwayMapKeyboardShortcuts";
 import { useRailwayMapSelection } from "@/features/railway-map-editor/lib/useRailwayMapSelection";
 import { useRailwayMapViewport } from "@/features/railway-map-editor/lib/useRailwayMapViewport";
 import { RailwayMapInspector } from "@/features/railway-map-editor/ui/RailwayMapInspector";
@@ -168,11 +169,6 @@ function loadStoredMap() {
   } catch {
     return sanitizeRailwayMap(INITIAL_MAP);
   }
-}
-
-function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
 export default function RailwayMapEditor() {
@@ -772,6 +768,11 @@ export default function RailwayMapEditor() {
   }, [assignedLineForContextSegment, config.lines, contextMenuSegment]);
 
   const deleteCurrentSelection = useCallback(() => {
+    if (selectedNodeIds.length > 0) {
+      deleteNodes(selectedNodeIds);
+      return;
+    }
+
     if (selectedStation) {
       if (selectedStation.nodeId) {
         deleteNode(selectedStation.nodeId);
@@ -785,44 +786,14 @@ export default function RailwayMapEditor() {
       deleteSegment(selectedSegment.id);
       return;
     }
-
-    if (selectedNodeIds.length > 0) {
-      deleteNodes(selectedNodeIds);
-    }
   }, [selectedNodeIds, selectedSegment, selectedStation]);
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (isEditableTarget(event.target)) return;
-
-      const key = event.key.toLowerCase();
-      const hasPrimaryModifier = event.metaKey || event.ctrlKey;
-
-      if (hasPrimaryModifier && !event.shiftKey && key === "z") {
-        event.preventDefault();
-        undoEditorChange();
-        return;
-      }
-
-      if (hasPrimaryModifier && key === "a") {
-        event.preventDefault();
-        selectAllNodesOnCurrentSheet();
-        return;
-      }
-
-      if (key === "backspace" || key === "delete") {
-        const hasDeletionTarget = !!selectedStation || !!selectedSegment || selectedNodeIds.length > 0;
-        if (!hasDeletionTarget) return;
-        event.preventDefault();
-        deleteCurrentSelection();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [deleteCurrentSelection, selectAllNodesOnCurrentSheet, selectedNodeIds.length, selectedSegment, selectedStation]);
+  useRailwayMapKeyboardShortcuts({
+    onUndo: undoEditorChange,
+    onSelectAllNodes: selectAllNodesOnCurrentSheet,
+    onDeleteSelection: deleteCurrentSelection,
+    hasDeletionTarget: !!selectedStation || !!selectedSegment || selectedNodeIds.length > 0,
+  });
 
   useEffect(() => {
     if (!config.stationKinds.some((kind) => kind.id === newStationKindId)) {
