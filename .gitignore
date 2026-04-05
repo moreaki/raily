@@ -2,3 +2,7 @@ node_modules
 dist
 .DS_Store
 .idea
+package-lock.json
+.pnp.*
+.yarn/install-state.gz
+.yarn/unplugged
