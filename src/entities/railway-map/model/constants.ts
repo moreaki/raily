@@ -4,7 +4,7 @@ const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, san
 const DEFAULT_STATION_FONT_WEIGHT = "600" as const;
 const DEFAULT_STATION_FONT_SIZE = 14;
 const DEFAULT_STATION_SYMBOL_SIZE = 1;
-const DEFAULT_PARALLEL_TRACK_SPACING = 30;
+const DEFAULT_PARALLEL_TRACK_SPACING = 26;
 
 function scaleMapLayout(map: RailwayMap, scaleX: number, scaleY: number, originX: number, originY: number): RailwayMap {
   return {
