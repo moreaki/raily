@@ -46,6 +46,8 @@ type RailwayMapInspectorProps = {
   moveLaneOrder: (nodeId: string, laneId: string, direction: -1 | 1) => void;
   selectedNodeStations: Station[];
   attachStationToSelectedNode: () => void;
+  canRemoveSelectedTrackPoint: boolean;
+  removeSelectedTrackPoint: () => void;
   unassignStation: (stationId: string) => void;
   selectedStation: Station | null;
   updateStation: (stationId: string, patch: Partial<Station>) => void;
@@ -94,6 +96,8 @@ export function RailwayMapInspector({
   moveLaneOrder,
   selectedNodeStations,
   attachStationToSelectedNode,
+  canRemoveSelectedTrackPoint,
+  removeSelectedTrackPoint,
   unassignStation,
   selectedStation,
   updateStation,
@@ -273,6 +277,11 @@ export function RailwayMapInspector({
                       </div>
                     </div>
                   </div>
+                ) : null}
+                {selectedNodeStations.length === 0 && canRemoveSelectedTrackPoint ? (
+                  <Button type="button" variant="outline" onClick={removeSelectedTrackPoint}>
+                    Remove track point
+                  </Button>
                 ) : null}
                 <div className="space-y-2">
                   {selectedNodeStations.map((station) => (

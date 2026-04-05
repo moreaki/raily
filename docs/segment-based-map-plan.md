@@ -109,6 +109,20 @@ export interface RailwayMapV2 {
 
 This is more flexible than `Line.stationIds[]`, but still simple enough to edit in React state.
 
+## Geometry Status
+
+The editor now already uses this geometry direction in practice:
+
+- `straight` is supported
+- `orthogonal` is supported with a draggable elbow handle
+- `polyline` is supported with add, drag, and remove bend-point workflows
+
+So this plan is no longer purely aspirational. The current remaining geometry outlook is:
+
+- add `spline` as a future geometry kind for smoother curved regional alignments
+- keep `orthogonal` as the quick one-bend mode
+- keep `polyline` as the explicit multi-bend mode
+
 ## Rendering Rules
 
 Rendering should remain SVG-first.

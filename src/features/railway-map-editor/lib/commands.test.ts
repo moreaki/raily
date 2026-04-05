@@ -10,6 +10,7 @@ import {
   makeSegmentPolyline,
   makeSegmentStraight,
   insertTrackPointOnSegment,
+  removeTrackPoint,
   removeSegmentPolylinePoint,
   updateSegmentPolylinePoint,
 } from "@/features/railway-map-editor/lib/commands";
@@ -175,6 +176,19 @@ describe("railway-map commands", () => {
     expect(next.model.segments.map((segment) => segment.id)).not.toContain("sg1");
     expect(next.model.segments.map((segment) => segment.id)).not.toContain("sg2");
     expect(next.model.lineRuns.find((candidate) => candidate.lineId === "line-b")?.segmentIds).toEqual([]);
+  });
+
+  it("can remove an unassigned pass-through track point by merging its two segments", () => {
+    const map = insertTrackPointOnSegment(makeMap(), "sg1").map;
+    const insertedNode = map.model.nodes.find((node) => !["n1", "n2", "n3", "n4"].includes(node.id));
+    expect(insertedNode).toBeTruthy();
+    if (!insertedNode) return;
+
+    const next = removeTrackPoint(map, insertedNode.id);
+    expect(next.model.nodes.some((node) => node.id === insertedNode.id)).toBe(false);
+
+    const mergedSegment = next.model.segments.find((segment) => segment.fromNodeId === "n1" && segment.toNodeId === "n2");
+    expect(mergedSegment).toBeTruthy();
   });
 
   it("deleteSheet removes sheet-owned nodes, stations, segments, and run references", () => {

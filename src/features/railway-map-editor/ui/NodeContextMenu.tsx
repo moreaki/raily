@@ -35,6 +35,8 @@ type NodeContextMenuProps = {
   setNodeAssignmentKindId: (value: string) => void;
   createStationAtNode: (nodeId: string, name: string, kindId: string) => void;
   deleteNodes: (nodeIds: string[]) => void;
+  canRemoveTrackPoint: boolean;
+  removeTrackPoint: (nodeId: string) => void;
 };
 
 export function NodeContextMenu(props: NodeContextMenuProps) {
@@ -62,6 +64,8 @@ export function NodeContextMenu(props: NodeContextMenuProps) {
     setNodeAssignmentKindId,
     createStationAtNode,
     deleteNodes,
+    canRemoveTrackPoint,
+    removeTrackPoint,
   } = props;
 
   return (
@@ -167,6 +171,16 @@ export function NodeContextMenu(props: NodeContextMenuProps) {
                 Add new station
               </Button>
             </div>
+          ) : null}
+
+          {canRemoveTrackPoint ? (
+            <button
+              type="button"
+              className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+              onClick={() => removeTrackPoint(nodeContextMenu.nodeIds[0])}
+            >
+              Remove track point
+            </button>
           ) : null}
         </>
       ) : null}

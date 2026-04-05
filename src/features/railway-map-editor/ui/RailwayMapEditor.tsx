@@ -45,6 +45,7 @@ import {
   makeSegmentStraight as makeSegmentStraightCommand,
   moveLaneOrder as moveLaneOrderCommand,
   removeSegmentPolylinePoint as removeSegmentPolylinePointCommand,
+  removeTrackPoint as removeTrackPointCommand,
   renameSheet,
   unassignLineFromSegment as unassignLineFromSegmentCommand,
   updateSegmentOrthogonalElbow as updateSegmentOrthogonalElbowCommand,
@@ -680,6 +681,22 @@ export default function RailwayMapEditor() {
     if (!selectedNodeId || !selectedNodeMarkerKey) return null;
     return nodeMarkerCentersById.get(selectedNodeId)?.find((marker) => marker.key === selectedNodeMarkerKey)?.laneId ?? null;
   }, [nodeMarkerCentersById, selectedNodeId, selectedNodeMarkerKey]);
+  const removableTrackPointNodeIds = useMemo(() => {
+    const removable = new Set<string>();
+
+    for (const node of currentNodes) {
+      if ((stationsByNodeId.get(node.id) ?? []).length > 0) continue;
+      const connectedSegments = currentSegments.filter((segment) => segment.fromNodeId === node.id || segment.toNodeId === node.id);
+      if (connectedSegments.length !== 2) continue;
+      const firstLineId = lineIdBySegmentId.get(connectedSegments[0].id) ?? null;
+      const secondLineId = lineIdBySegmentId.get(connectedSegments[1].id) ?? null;
+      if (firstLineId !== secondLineId) continue;
+      if (connectedSegments[0].sheetId !== connectedSegments[1].sheetId) continue;
+      removable.add(node.id);
+    }
+
+    return removable;
+  }, [currentNodes, currentSegments, lineIdBySegmentId, stationsByNodeId]);
   const selectedNodeLaneAxis = useMemo(() => {
     if (!selectedNodeId) return "vertical" as const;
     const markers = nodeMarkerCentersById.get(selectedNodeId) ?? [];
@@ -1208,6 +1225,17 @@ export default function RailwayMapEditor() {
     deleteNodes([nodeId]);
   }
 
+  function removeTrackPoint(nodeId: string) {
+    updateMap((current) => removeTrackPointCommand(current, nodeId));
+    if (selectedNodeId === nodeId) {
+      setSelectedNodeId("");
+      setSelectedNodeIds([]);
+      setSelectedNodeMarkerKey(null);
+      setSelectedStationId("");
+    }
+    setNodeContextMenu(null);
+  }
+
   function deleteStation(stationId: string) {
     updateMap((current) => deleteStationCommand(current, stationId));
     if (selectedStationId === stationId) {
@@ -1609,6 +1637,8 @@ export default function RailwayMapEditor() {
             setNodeAssignmentKindId={setNodeAssignmentKindId}
             createStationAtNode={createStationAtNode}
             deleteNodes={deleteNodes}
+            canRemoveTrackPoint={!!contextMenuNode && removableTrackPointNodeIds.has(contextMenuNode.id)}
+            removeTrackPoint={removeTrackPoint}
             completeSegmentAtNode={completeSegmentAtNode}
             cancelPendingSegment={cancelPendingSegment}
             startSegmentFromNode={startSegmentFromNode}
@@ -1686,6 +1716,8 @@ export default function RailwayMapEditor() {
                       moveLaneOrder={moveLaneOrder}
                       selectedNodeStations={selectedNodeStations}
                       attachStationToSelectedNode={attachStationToSelectedNode}
+                      canRemoveSelectedTrackPoint={!!selectedNode && removableTrackPointNodeIds.has(selectedNode.id)}
+                      removeSelectedTrackPoint={() => selectedNode && removeTrackPoint(selectedNode.id)}
                       unassignStation={unassignStation}
                       selectedStation={selectedStation}
                       updateStation={updateStation}

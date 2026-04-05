@@ -618,6 +618,99 @@ export function unassignLineFromSegment(map: RailwayMap, lineId: string, segment
   };
 }
 
+function orientedSegmentThroughNode(segment: Segment, nodeId: string, nodesById: Map<string, MapNode>) {
+  const points = buildSegmentPoints(segment, nodesById);
+  if (points.length < 2) return null;
+
+  if (segment.toNodeId === nodeId) {
+    return {
+      startNodeId: segment.fromNodeId,
+      endNodeId: segment.toNodeId,
+      startLaneId: segment.fromLaneId,
+      endLaneId: segment.toLaneId,
+      points,
+    };
+  }
+
+  if (segment.fromNodeId === nodeId) {
+    return {
+      startNodeId: segment.toNodeId,
+      endNodeId: segment.fromNodeId,
+      startLaneId: segment.toLaneId,
+      endLaneId: segment.fromLaneId,
+      points: [...points].reverse(),
+    };
+  }
+
+  return null;
+}
+
+export function removeTrackPoint(map: RailwayMap, nodeId: string) {
+  const node = map.model.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) return map;
+  if (map.model.stations.some((station) => station.nodeId === nodeId)) return map;
+
+  const connectedSegments = map.model.segments.filter((segment) => segment.fromNodeId === nodeId || segment.toNodeId === nodeId);
+  if (connectedSegments.length !== 2) return map;
+
+  const [firstSegment, secondSegment] = connectedSegments;
+  const firstLineId = map.model.lineRuns.find((lineRun) => lineRun.segmentIds.includes(firstSegment.id))?.lineId ?? null;
+  const secondLineId = map.model.lineRuns.find((lineRun) => lineRun.segmentIds.includes(secondSegment.id))?.lineId ?? null;
+  if (firstLineId !== secondLineId) return map;
+  if (firstSegment.sheetId !== secondSegment.sheetId) return map;
+
+  const nodesById = new Map(map.model.nodes.map((candidate) => [candidate.id, candidate]));
+  const firstOriented = orientedSegmentThroughNode(firstSegment, nodeId, nodesById);
+  const secondOriented = orientedSegmentThroughNode(secondSegment, nodeId, nodesById);
+  if (!firstOriented || !secondOriented) return map;
+
+  const mergedPoints = [...firstOriented.points, ...secondOriented.points.slice(1)];
+  const controlPoints = mergedPoints.slice(1, -1);
+  const geometry =
+    controlPoints.length === 0
+      ? ({ kind: "straight" } as const)
+      : controlPoints.length === 1
+        ? ({ kind: "orthogonal", elbow: controlPoints[0] } as const)
+        : ({ kind: "polyline", points: controlPoints } as const);
+  const mergedSegmentId = createSegmentId();
+  const mergedSegment: Segment = {
+    id: mergedSegmentId,
+    sheetId: firstSegment.sheetId,
+    fromNodeId: firstOriented.startNodeId,
+    toNodeId: secondOriented.startNodeId,
+    fromLaneId: firstOriented.startLaneId,
+    toLaneId: secondOriented.startLaneId,
+    geometry,
+  };
+  const removedSegmentIds = new Set([firstSegment.id, secondSegment.id]);
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodes: map.model.nodes.filter((candidate) => candidate.id !== nodeId),
+      nodeLanes: map.model.nodeLanes.filter((lane) => lane.nodeId !== nodeId),
+      segments: [...map.model.segments.filter((candidate) => !removedSegmentIds.has(candidate.id)), mergedSegment],
+      lineRuns: map.model.lineRuns.map((lineRun) => {
+        if (!lineRun.segmentIds.some((segmentId) => removedSegmentIds.has(segmentId))) return lineRun;
+        const replaced: string[] = [];
+        let inserted = false;
+        for (const segmentId of lineRun.segmentIds) {
+          if (removedSegmentIds.has(segmentId)) {
+            if (!inserted && lineRun.lineId === firstLineId) {
+              replaced.push(mergedSegmentId);
+              inserted = true;
+            }
+            continue;
+          }
+          replaced.push(segmentId);
+        }
+        return { ...lineRun, segmentIds: replaced };
+      }),
+    },
+  };
+}
+
 export function deleteNodes(map: RailwayMap, nodeIds: string[]) {
   const nodeIdSet = new Set(nodeIds);
   const connectedSegmentIds = new Set(

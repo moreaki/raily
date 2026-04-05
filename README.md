@@ -87,6 +87,31 @@ src/
 - `shared` prevents UI primitives and utilities from leaking domain assumptions.
 - This layout adapts cleanly to web, desktop-shell, and backend-connected versions of the app.
 
+## Segment geometry
+
+Segments currently support three geometry modes in the document model:
+
+- `straight`
+  - direct node-to-node segment with no internal control points
+- `orthogonal`
+  - one editable elbow point
+  - useful for quick schematic bends without the extra handle clutter of a full polyline
+- `polyline`
+  - one or more editable bend points
+  - useful for manual detours, trunk shaping, and more complex routing
+
+The editor treats these as domain-aware routing modes, not generic SVG paths:
+
+- `Orthogonal` is the lightweight one-bend tool
+- `Polyline` is the flexible multi-bend tool
+- parallel track offsets are still rendered as a projection step over the stored geometry
+
+### Future outlook
+
+The next planned geometry mode is `spline`.
+
+That is intended for smoother regional or suburban curves where elbows and polylines feel too mechanical. It is not part of the current persisted schema yet, but the editor is being structured so `spline` can be added later without replacing the existing segment model.
+
 ## Long-term direction
 
 - Keep the editor web-based for rendering and interaction.

@@ -185,6 +185,8 @@ type RailwayMapCanvasPaneProps = {
   setNodeAssignmentKindId: (value: string) => void;
   createStationAtNode: (nodeId: string, name: string, kindId: string) => void;
   deleteNodes: (nodeIds: string[]) => void;
+  canRemoveTrackPoint: boolean;
+  removeTrackPoint: (nodeId: string) => void;
   completeSegmentAtNode: (nodeId: string, laneId: string | null, markerKey: string | null) => void;
   cancelPendingSegment: () => void;
   startSegmentFromNode: (nodeId: string, laneId: string | null, markerKey: string | null) => void;
@@ -314,6 +316,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     setNodeAssignmentKindId,
     createStationAtNode,
     deleteNodes,
+    canRemoveTrackPoint,
+    removeTrackPoint,
     completeSegmentAtNode,
     cancelPendingSegment,
     startSegmentFromNode,
@@ -443,18 +447,32 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                   offsetPoints(segmentPoints, segmentOffsetById.get(segment.id) ?? 0),
                   anchoredEndpointBySegmentNodeKey,
                 );
+                const indicatorStroke =
+                  selectedSegmentId === segment.id ? "#94a3b8" : assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee";
+                const indicatorWidth = selectedSegmentId === segment.id ? segmentIndicatorWidth + selectedSegmentIndicatorBoost : segmentIndicatorWidth;
+                const hitAreaWidth = Math.max(indicatorWidth + 8, 24);
                 return (
-                  <path
-                    key={segment.id}
-                    d={pathFromPoints(offsetPointsForSegment)}
-                    fill="none"
-                    stroke={selectedSegmentId === segment.id ? "#94a3b8" : assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee"}
-                    strokeWidth={selectedSegmentId === segment.id ? segmentIndicatorWidth + selectedSegmentIndicatorBoost : segmentIndicatorWidth}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    onMouseDown={() => handleSegmentMouseDown(segment.id)}
-                    onContextMenu={(event) => handleSegmentContextMenu(event, segment.id)}
-                  />
+                  <g key={segment.id}>
+                    <path
+                      d={pathFromPoints(offsetPointsForSegment)}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth={hitAreaWidth}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      onMouseDown={() => handleSegmentMouseDown(segment.id)}
+                      onContextMenu={(event) => handleSegmentContextMenu(event, segment.id)}
+                    />
+                    <path
+                      d={pathFromPoints(offsetPointsForSegment)}
+                      fill="none"
+                      stroke={indicatorStroke}
+                      strokeWidth={indicatorWidth}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      pointerEvents="none"
+                    />
+                  </g>
                 );
               })}
 
@@ -824,6 +842,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               setNodeAssignmentKindId={setNodeAssignmentKindId}
               createStationAtNode={createStationAtNode}
               deleteNodes={deleteNodes}
+              canRemoveTrackPoint={canRemoveTrackPoint}
+              removeTrackPoint={removeTrackPoint}
             />
           ) : null}
 
