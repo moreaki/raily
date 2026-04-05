@@ -45,6 +45,8 @@ type LabelAxisGuide = {
   nodeCenter: MapPoint;
   snapX: boolean;
   snapY: boolean;
+  snapDiagPos: boolean;
+  snapDiagNeg: boolean;
 };
 
 type LabelAxisBreakoutState = {
@@ -57,6 +59,8 @@ type LabelAxisBreakoutState = {
 
 const LABEL_AXIS_BREAKOUT_MS = 90;
 const LABEL_AXIS_BREAKOUT_DISTANCE = 12;
+const ROTATION_SNAP_INCREMENT = 45;
+const ROTATION_SOFT_SNAP_THRESHOLD = 6;
 
 type UseRailwayMapInteractionsArgs = {
   svgRef: RefObject<SVGSVGElement | null>;
@@ -172,6 +176,14 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
       nodeLongPressTimeoutRef.current = null;
     }
     nodeLongPressPressRef.current = null;
+  }
+
+  function snapRotationToIncrement(rotation: number, force: boolean) {
+    const nearest = Math.round(rotation / ROTATION_SNAP_INCREMENT) * ROTATION_SNAP_INCREMENT;
+    if (force || Math.abs(rotation - nearest) <= ROTATION_SOFT_SNAP_THRESHOLD) {
+      return normalizeRotation(nearest);
+    }
+    return normalizeRotation(rotation);
   }
 
   function beginSegmentDrawFromNode(nodeId: string, laneId: string | null, markerKey: string, startPoint: MapPoint) {
@@ -389,6 +401,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
   }
 
   function handleLabelMouseDown(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
+    event.preventDefault();
     event.stopPropagation();
     clearNodeLongPress();
     closeAllContextMenus();
@@ -433,6 +446,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     center: MapPoint,
     currentRotation: number,
   ) {
+    event.preventDefault();
     event.stopPropagation();
     clearNodeLongPress();
     closeAllContextMenus();
@@ -555,7 +569,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
 
     if (rotatingLabelState) {
       const nextAngle = Math.atan2(svgPoint.y - rotatingLabelState.center.y, svgPoint.x - rotatingLabelState.center.x);
-      const nextRotation = normalizeRotation(rotatingLabelState.startRotation + ((nextAngle - rotatingLabelState.startAngle) * 180) / Math.PI);
+      const rawRotation = normalizeRotation(rotatingLabelState.startRotation + ((nextAngle - rotatingLabelState.startAngle) * 180) / Math.PI);
+      const nextRotation = snapRotationToIncrement(rawRotation, event.altKey);
 
       updateMap((current) => ({
         ...current,
@@ -634,8 +649,14 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
             const centerDeltaY = box.center.y - stationNode.y;
             const nearAxisX = Math.abs(centerDeltaX) <= LABEL_AXIS_SNAP_THRESHOLD;
             const nearAxisY = Math.abs(centerDeltaY) <= LABEL_AXIS_SNAP_THRESHOLD;
+            const diagPosDelta = centerDeltaY - centerDeltaX;
+            const diagNegDelta = centerDeltaY + centerDeltaX;
+            const nearDiagPos = Math.abs(diagPosDelta) <= LABEL_AXIS_SNAP_THRESHOLD;
+            const nearDiagNeg = Math.abs(diagNegDelta) <= LABEL_AXIS_SNAP_THRESHOLD;
             const beyondBreakoutX = Math.abs(centerDeltaX) >= LABEL_AXIS_BREAKOUT_DISTANCE;
             const beyondBreakoutY = Math.abs(centerDeltaY) >= LABEL_AXIS_BREAKOUT_DISTANCE;
+            const normalizedRotation = normalizeRotation(nextLabel.rotation ?? 0);
+            const usesDiagonalAxis = Math.abs(normalizedRotation) % 90 === 45;
 
             if (enforceAxisSnap) {
               breakout.releaseX = false;
@@ -670,23 +691,42 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
 
             labelAxisBreakoutRef.current = breakout;
 
-            if ((enforceAxisSnap || (!breakout.releaseX && nearAxisX))) {
-              snappedX += stationNode.x - box.center.x;
-              snapX = true;
-            }
-            if ((enforceAxisSnap || (!breakout.releaseY && nearAxisY))) {
-              snappedY += stationNode.y - box.center.y;
-              snapY = true;
+            let snapDiagPos = false;
+            let snapDiagNeg = false;
+
+            if (usesDiagonalAxis) {
+              if (enforceAxisSnap || (!breakout.releaseX && nearDiagPos)) {
+                const shift = (stationNode.x - box.center.x + (stationNode.y - box.center.y)) / 2;
+                snappedX += shift;
+                snappedY += shift;
+                snapDiagPos = true;
+              } else if (enforceAxisSnap || (!breakout.releaseY && nearDiagNeg)) {
+                const shift = (stationNode.y - box.center.y - (stationNode.x - box.center.x)) / 2;
+                snappedX -= shift;
+                snappedY += shift;
+                snapDiagNeg = true;
+              }
+            } else {
+              if ((enforceAxisSnap || (!breakout.releaseX && nearAxisX))) {
+                snappedX += stationNode.x - box.center.x;
+                snapX = true;
+              }
+              if ((enforceAxisSnap || (!breakout.releaseY && nearAxisY))) {
+                snappedY += stationNode.y - box.center.y;
+                snapY = true;
+              }
             }
 
             setLabelAxisGuide(
-              snapX || snapY
+              snapX || snapY || snapDiagPos || snapDiagNeg
                 ? {
                     stationId: station.id,
                     nodeId: stationNode.id,
                     nodeCenter: { x: stationNode.x, y: stationNode.y },
                     snapX,
                     snapY,
+                    snapDiagPos,
+                    snapDiagNeg,
                   }
                 : null,
             );

@@ -61,6 +61,8 @@ type LabelAxisGuide = {
   nodeCenter: MapPoint;
   snapX: boolean;
   snapY: boolean;
+  snapDiagPos: boolean;
+  snapDiagNeg: boolean;
 };
 
 type MarqueeSelection = {
@@ -287,6 +289,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     addSheet,
     setCurrentSheetId,
   } = props;
+
+  const diagonalGuideLength = Math.max(viewBox.width, viewBox.height) * 1.6;
   const showSheetRail = sheetRailOpen || renamingSheetId !== null;
 
   return (
@@ -494,6 +498,30 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       opacity="0.9"
                     />
                   ) : null}
+                  {labelAxisGuide.snapDiagPos ? (
+                    <line
+                      x1={labelAxisGuide.nodeCenter.x - diagonalGuideLength}
+                      y1={labelAxisGuide.nodeCenter.y - diagonalGuideLength}
+                      x2={labelAxisGuide.nodeCenter.x + diagonalGuideLength}
+                      y2={labelAxisGuide.nodeCenter.y + diagonalGuideLength}
+                      stroke="#eab308"
+                      strokeWidth="1.5"
+                      strokeDasharray="6 4"
+                      opacity="0.9"
+                    />
+                  ) : null}
+                  {labelAxisGuide.snapDiagNeg ? (
+                    <line
+                      x1={labelAxisGuide.nodeCenter.x - diagonalGuideLength}
+                      y1={labelAxisGuide.nodeCenter.y + diagonalGuideLength}
+                      x2={labelAxisGuide.nodeCenter.x + diagonalGuideLength}
+                      y2={labelAxisGuide.nodeCenter.y - diagonalGuideLength}
+                      stroke="#eab308"
+                      strokeWidth="1.5"
+                      strokeDasharray="6 4"
+                      opacity="0.9"
+                    />
+                  ) : null}
                 </g>
               ) : null}
 
@@ -521,7 +549,12 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                 const rotationBadgeWidth = Math.max(42, rotationLabel.length * 7.2 + 14);
 
                 return (
-                  <g key={station.id} onMouseDown={(event) => handleLabelMouseDown(event, station.id, node.id)} onContextMenu={(event) => handleStationContextMenu(event, station.id, node.id)} style={{ cursor: "grab" }}>
+                  <g
+                    key={station.id}
+                    onMouseDown={(event) => handleLabelMouseDown(event, station.id, node.id)}
+                    onContextMenu={(event) => handleStationContextMenu(event, station.id, node.id)}
+                    style={{ cursor: "grab", userSelect: "none", WebkitUserSelect: "none" }}
+                  >
                     {shouldShowLeader ? <line x1={node.x} y1={node.y} x2={labelCenterX} y2={labelCenterY} stroke={diagnostics?.colliding ? "#dc2626" : "#94a3b8"} strokeWidth="1.5" strokeDasharray="3 3" /> : null}
                     <g transform={labelTransform}>
                       {isHighlighted ? (
@@ -565,7 +598,15 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                           style={{ cursor: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12l-3 3-3-3'/><path d='M2 12l3-3 3 3'/><path d='M19.016 14v-1.95A7.05 7.05 0 0 0 8 6.22'/><path d='M16.016 17.845A7.05 7.05 0 0 1 5 12.015V10'/><path d='M5 10V9'/><path d='M19 15v-1'/></svg>") 12 12, crosshair` }}
                         />
                       ) : null}
-                      <text x={labelX} y={labelY} fontSize={getStationKindFontSize(stationKind)} fontFamily={stationKind?.fontFamily ?? DEFAULT_STATION_FONT_FAMILY} fontWeight={stationKind?.fontWeight ?? DEFAULT_STATION_FONT_WEIGHT} fill={diagnostics?.colliding ? "#991b1b" : "#111827"}>
+                      <text
+                        x={labelX}
+                        y={labelY}
+                        fontSize={getStationKindFontSize(stationKind)}
+                        fontFamily={stationKind?.fontFamily ?? DEFAULT_STATION_FONT_FAMILY}
+                        fontWeight={stationKind?.fontWeight ?? DEFAULT_STATION_FONT_WEIGHT}
+                        fill={diagnostics?.colliding ? "#991b1b" : "#111827"}
+                        style={{ userSelect: "none", WebkitUserSelect: "none" }}
+                      >
                         {station.name}
                       </text>
                     </g>
