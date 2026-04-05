@@ -234,8 +234,22 @@ describe("railway-map commands", () => {
 
   it("can assign a line to a node-group port", () => {
     const withLane = addNodeLane(makeMap(), "n2").map;
-    const next = updateNodeLaneLine(withLane, "n2", "nl-n2-manual-1", "line-b");
+    const connected = {
+      ...withLane,
+      model: {
+        ...withLane.model,
+        segments: withLane.model.segments.map((segment) =>
+          segment.id === "sg1"
+            ? { ...segment, toLaneId: "nl-n2-manual-1" }
+            : segment.id === "sg2"
+              ? { ...segment, fromLaneId: "nl-n2-manual-1" }
+              : segment,
+        ),
+      },
+    };
+    const next = updateNodeLaneLine(connected, "n2", "nl-n2-manual-1", "line-b");
     expect(next.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.lineId).toBe("line-b");
+    expect(next.model.lineRuns.find((lineRun) => lineRun.lineId === "line-b")?.segmentIds.sort()).toEqual(["sg1", "sg2"]);
   });
 
   it("deleteSheet removes sheet-owned nodes, stations, segments, and run references", () => {

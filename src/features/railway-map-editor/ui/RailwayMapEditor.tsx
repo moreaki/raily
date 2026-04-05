@@ -706,9 +706,8 @@ export default function RailwayMapEditor() {
       const segmentIds = currentSegments
         .filter((segment) => segment.fromLaneId === lane.id || segment.toLaneId === lane.id)
         .map((segment) => segment.id);
-      const lineNames = [...new Set([lane.lineId, ...segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId))].filter(Boolean))]
-        .map((lineId) => config.lines.find((line) => line.id === lineId)?.name ?? lineId)
-        .filter(Boolean);
+      const effectiveLineIds = lane.lineId ? [lane.lineId] : [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))];
+      const lineNames = effectiveLineIds.map((lineId) => config.lines.find((line) => line.id === lineId)?.name ?? lineId).filter(Boolean);
 
       next.set(lane.id, lineNames.length > 0 ? lineNames.join(", ") : "Unassigned lane");
     }
@@ -737,7 +736,7 @@ export default function RailwayMapEditor() {
         const segmentIds = currentSegments
           .filter((segment) => segment.fromLaneId === lane.id || segment.toLaneId === lane.id)
           .map((segment) => segment.id);
-        const lineIds = [...new Set([lane.lineId, ...segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId))].filter(Boolean))];
+        const lineIds = lane.lineId ? [lane.lineId] : [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))];
         const lineNames = lineIds
           .map((lineId) => config.lines.find((line) => line.id === lineId)?.name ?? lineId)
           .filter(Boolean);

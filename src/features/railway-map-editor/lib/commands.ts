@@ -247,12 +247,16 @@ export function updateNodeLaneGridPosition(
 export function updateNodeLaneLine(map: RailwayMap, nodeId: string, laneId: string, lineId?: string) {
   const lane = map.model.nodeLanes.find((candidate) => candidate.id === laneId && candidate.nodeId === nodeId);
   if (!lane) return map;
+  const connectedSegmentIds = map.model.segments
+    .filter((segment) => segment.fromLaneId === laneId || segment.toLaneId === laneId)
+    .map((segment) => segment.id);
+  const ensured = lineId ? ensureLineRun(map, lineId).map : map;
 
   return {
-    ...map,
+    ...ensured,
     model: {
-      ...map.model,
-      nodeLanes: map.model.nodeLanes.map((candidate) =>
+      ...ensured.model,
+      nodeLanes: ensured.model.nodeLanes.map((candidate) =>
         candidate.id !== laneId
           ? candidate
           : {
@@ -260,6 +264,16 @@ export function updateNodeLaneLine(map: RailwayMap, nodeId: string, laneId: stri
               lineId: lineId || undefined,
             },
       ),
+      lineRuns: ensured.model.lineRuns.map((lineRun) => {
+        const withoutConnected = lineRun.segmentIds.filter((segmentId) => !connectedSegmentIds.includes(segmentId));
+        if (!lineId || lineRun.lineId !== lineId) {
+          return { ...lineRun, segmentIds: withoutConnected };
+        }
+        return {
+          ...lineRun,
+          segmentIds: [...withoutConnected, ...connectedSegmentIds.filter((segmentId) => !withoutConnected.includes(segmentId))],
+        };
+      }),
     },
   };
 }
