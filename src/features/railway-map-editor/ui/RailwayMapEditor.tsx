@@ -1317,13 +1317,25 @@ export default function RailwayMapEditor() {
             <p className="text-xs text-muted">Copyright © R. &amp; K. Nibali</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant={sidePanel === "edit" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "edit" ? "closed" : "edit")}>
+            <Button
+              variant="outline"
+              className={sidePanel === "edit" ? "border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" : ""}
+              onClick={() => setSidePanel(sidePanel === "edit" ? "closed" : "edit")}
+            >
               Inspect
             </Button>
-            <Button variant={sidePanel === "manage" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "manage" ? "closed" : "manage")}>
+            <Button
+              variant="outline"
+              className={sidePanel === "manage" ? "border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" : ""}
+              onClick={() => setSidePanel(sidePanel === "manage" ? "closed" : "manage")}
+            >
               Manage
             </Button>
-            <Button variant={sidePanel === "settings" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "settings" ? "closed" : "settings")}>
+            <Button
+              variant="outline"
+              className={sidePanel === "settings" ? "border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" : ""}
+              onClick={() => setSidePanel(sidePanel === "settings" ? "closed" : "settings")}
+            >
               Settings
             </Button>
             <Button variant="outline" onClick={exportSvg}>
