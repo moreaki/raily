@@ -2489,26 +2489,45 @@ export default function RailwayMapEditor() {
 
   function moveLaneOrder(nodeId: string, laneId: string, direction: -1 | 1) {
     updateMap((current) => {
-      const nodeLanes = current.model.nodeLanes
+      const referenceNodeLanes = current.model.nodeLanes
         .filter((lane) => lane.nodeId === nodeId)
         .sort((left, right) => left.order - right.order);
-      const currentIndex = nodeLanes.findIndex((lane) => lane.id === laneId);
+      const currentIndex = referenceNodeLanes.findIndex((lane) => lane.id === laneId);
       const nextIndex = currentIndex + direction;
-      if (currentIndex < 0 || nextIndex < 0 || nextIndex >= nodeLanes.length) {
+      if (currentIndex < 0) {
         return current;
       }
 
-      const reordered = [...nodeLanes];
-      const [moved] = reordered.splice(currentIndex, 1);
-      reordered.splice(nextIndex, 0, moved);
-      const orderByLaneId = new Map(reordered.map((lane, index) => [lane.id, index]));
+      const targetNodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
+      const orderByLaneId = new Map<string, number>();
+
+      for (const targetNodeId of targetNodeIds) {
+        const nodeLanes = current.model.nodeLanes
+          .filter((lane) => lane.nodeId === targetNodeId)
+          .sort((left, right) => left.order - right.order);
+        if (nextIndex < 0 || nextIndex >= nodeLanes.length) {
+          continue;
+        }
+
+        const reordered = [...nodeLanes];
+        const [moved] = reordered.splice(currentIndex, 1);
+        if (!moved) continue;
+        reordered.splice(nextIndex, 0, moved);
+        for (let index = 0; index < reordered.length; index += 1) {
+          orderByLaneId.set(reordered[index].id, index);
+        }
+      }
+
+      if (orderByLaneId.size === 0) {
+        return current;
+      }
 
       return {
         ...current,
         model: {
           ...current.model,
           nodeLanes: current.model.nodeLanes.map((lane) =>
-            lane.nodeId !== nodeId ? lane : { ...lane, order: orderByLaneId.get(lane.id) ?? lane.order },
+            orderByLaneId.has(lane.id) ? { ...lane, order: orderByLaneId.get(lane.id) ?? lane.order } : lane,
           ),
         },
       };
