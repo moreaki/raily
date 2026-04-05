@@ -5,4 +5,5 @@ dist
 package-lock.json
 .pnp.*
 .yarn/install-state.gz
+.yarn/sdks
 .yarn/unplugged

@@ -59,6 +59,16 @@ node -v
 
 On Intel Macs, replace `/opt/homebrew` with `/usr/local` if needed.
 
+## Editor SDKs
+
+If your editor needs Yarn Plug'n'Play SDK files, generate them locally:
+
+```bash
+yarn dlx @yarnpkg/sdks base
+```
+
+These generated files live under `.yarn/sdks/` and are local editor helpers. They are not required in Git for this repository and should stay untracked.
+
 ## Source layout
 
 ```text
