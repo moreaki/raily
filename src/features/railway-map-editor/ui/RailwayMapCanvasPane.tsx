@@ -4,6 +4,8 @@ import type { Line, MapNode, MapPoint, Segment, Sheet, Station, StationKind } fr
 import { buildSegmentPoints, lineStrokeDasharray } from "@/entities/railway-map/model/utils";
 import { DEFAULT_STATION_FONT_FAMILY, DEFAULT_STATION_FONT_WEIGHT, DEFAULT_STATION_SYMBOL_SIZE, estimateLabelBox, getStationKindFontSize, getStationLabelPosition, normalizeRotation } from "@/features/railway-map-editor/lib/labels";
 import { normalizeRect, offsetPoints, pathFromPoints, withAnchoredSegmentEndpoints } from "@/features/railway-map-editor/lib/geometry";
+import { NodeContextMenu } from "@/features/railway-map-editor/ui/NodeContextMenu";
+import { SegmentContextMenu } from "@/features/railway-map-editor/ui/SegmentContextMenu";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -544,132 +546,46 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
           </div>
 
           {nodeContextMenu ? (
-            <div
-              className="fixed z-30 min-w-[240px] max-w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
-              style={{ left: nodeContextMenuPosition?.left ?? nodeContextMenu.x, top: nodeContextMenuPosition?.top ?? nodeContextMenu.y, maxHeight: "calc(100vh - 24px)" }}
-            >
-              {nodeContextMenu.nodeIds.length === 1 ? (
-                <>
-                  {contextMenuStation ? (
-                    <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Station</div>
-                      <Input
-                        value={contextMenuStation.name}
-                        onChange={(event) => updateStation(contextMenuStation.id, { name: event.target.value })}
-                        placeholder="Station name"
-                        className="h-9"
-                      />
-                      <select
-                        value={contextMenuStation.kindId}
-                        onChange={(event) => updateStation(contextMenuStation.id, { kindId: event.target.value })}
-                        className="h-9 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                      >
-                        {configStationKinds.map((kind) => (
-                          <option key={kind.id} value={kind.id}>
-                            {kind.name} {stationKindShapeGlyph(kind.shape)}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100" onClick={() => unassignStation(contextMenuStation.id)}>
-                        Unassign station
-                      </button>
-                    </div>
-                  ) : null}
-                  <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Track</div>
-                    {nodeContextMenu.laneId ? <div className="mt-1 text-xs text-muted">Lane: {laneDisplayNameById.get(nodeContextMenu.laneId) ?? "Unassigned lane"}</div> : null}
-                    {pendingSegmentStart && (pendingSegmentStart.nodeId !== nodeContextMenu.nodeIds[0] || pendingSegmentStart.laneId !== nodeContextMenu.laneId) ? (
-                      <button type="button" className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100" onClick={() => completeSegmentAtNode(nodeContextMenu.nodeIds[0], nodeContextMenu.laneId, nodeContextMenu.markerKey)}>
-                        Create segment to here
-                      </button>
-                    ) : pendingSegmentStart && pendingSegmentStart.nodeId === nodeContextMenu.nodeIds[0] && pendingSegmentStart.laneId === nodeContextMenu.laneId ? (
-                      <button type="button" className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100" onClick={cancelPendingSegment}>
-                        Cancel pending segment
-                      </button>
-                    ) : (
-                      <button type="button" className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100" onClick={() => startSegmentFromNode(nodeContextMenu.nodeIds[0], nodeContextMenu.laneId, nodeContextMenu.markerKey)}>
-                        Start segment here
-                      </button>
-                    )}
-                  </div>
-                  {!contextMenuStation ? (
-                    <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Station</div>
-                      <Input value={nodeAssignmentQuery} onChange={(event) => setNodeAssignmentQuery(event.target.value)} placeholder="Search unassigned stations" className="h-9" />
-                      <div className="max-h-40 space-y-1 overflow-auto">
-                        {stationAssignmentResults.slice(0, 8).map((station) => (
-                          <button key={station.id} type="button" className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100" onClick={() => assignStationToNode(station.id, nodeContextMenu.nodeIds[0])}>
-                            <span className="truncate">{station.name}</span>
-                            <span className="ml-3 shrink-0 text-xs text-slate-500">{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</span>
-                          </button>
-                        ))}
-                        {stationAssignmentResults.length === 0 ? <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div> : null}
-                      </div>
-                      <div className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Add New Station</div>
-                      <Input value={nodeAssignmentName} onChange={(event) => setNodeAssignmentName(event.target.value)} placeholder="Optional station name" className="h-9" />
-                      <select value={nodeAssignmentKindId} onChange={(event) => setNodeAssignmentKindId(event.target.value)} className="h-9 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200">
-                        {configStationKinds.map((kind) => (
-                          <option key={kind.id} value={kind.id}>
-                            {kind.name} {stationKindShapeGlyph(kind.shape)}
-                          </option>
-                        ))}
-                      </select>
-                      <Button variant="outline" className="w-full" onClick={() => createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentName, nodeAssignmentKindId)}>
-                        <Plus className="h-4 w-4" />
-                        Add new station
-                      </Button>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-              <button type="button" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50" onClick={() => deleteNodes(nodeContextMenu.nodeIds)}>
-                <Trash2 className="h-4 w-4" />
-                {nodeContextMenu.nodeIds.length > 1 ? "Delete nodes" : "Delete node"}
-              </button>
-            </div>
+            <NodeContextMenu
+              nodeContextMenu={nodeContextMenu}
+              nodeContextMenuPosition={nodeContextMenuPosition}
+              contextMenuStation={contextMenuStation}
+              updateStation={updateStation}
+              unassignStation={unassignStation}
+              configStationKinds={configStationKinds}
+              stationKindShapeGlyph={stationKindShapeGlyph}
+              laneDisplayNameById={laneDisplayNameById}
+              pendingSegmentStart={pendingSegmentStart}
+              completeSegmentAtNode={completeSegmentAtNode}
+              cancelPendingSegment={cancelPendingSegment}
+              startSegmentFromNode={startSegmentFromNode}
+              nodeAssignmentQuery={nodeAssignmentQuery}
+              setNodeAssignmentQuery={setNodeAssignmentQuery}
+              stationAssignmentResults={stationAssignmentResults}
+              assignStationToNode={assignStationToNode}
+              stationKindsById={stationKindsById}
+              nodeAssignmentName={nodeAssignmentName}
+              setNodeAssignmentName={setNodeAssignmentName}
+              nodeAssignmentKindId={nodeAssignmentKindId}
+              setNodeAssignmentKindId={setNodeAssignmentKindId}
+              createStationAtNode={createStationAtNode}
+              deleteNodes={deleteNodes}
+            />
           ) : null}
 
           {segmentContextMenu && contextMenuSegment ? (
-            <div
-              className="fixed z-30 min-w-[240px] max-w-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
-              style={{ left: segmentContextMenuPosition?.left ?? segmentContextMenu.x, top: segmentContextMenuPosition?.top ?? segmentContextMenu.y, maxHeight: "calc(100vh - 24px)" }}
-            >
-              {assignedLineForContextSegment ? (
-                <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Unassign Line</div>
-                  <div className="mt-2 space-y-1">
-                    <button type="button" className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100" onClick={() => unassignLineFromSegment(assignedLineForContextSegment.id, contextMenuSegment.id)}>
-                      <span className="truncate">{assignedLineForContextSegment.name}</span>
-                      <span className="ml-3 h-3 w-3 shrink-0 rounded-full border border-slate-200" style={{ backgroundColor: assignedLineForContextSegment.color }} />
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Line</div>
-                <div className="mt-2 max-h-40 space-y-1 overflow-auto">
-                  {assignableLinesForContextSegment.map((line) => (
-                    <button key={line.id} type="button" className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100" onClick={() => assignLineToSegment(line.id, contextMenuSegment.id)}>
-                      <span className="truncate">{line.name}</span>
-                      <span className="ml-3 h-3 w-3 shrink-0 rounded-full border border-slate-200" style={{ backgroundColor: line.color }} />
-                    </button>
-                  ))}
-                  {assignableLinesForContextSegment.length === 0 ? <div className="px-2 py-2 text-xs text-slate-500">All available lines are already assigned to this segment.</div> : null}
-                </div>
-              </div>
-              <button type="button" className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100" onClick={() => insertTrackPointOnSegment(contextMenuSegment.id)}>
-                <Plus className="h-4 w-4" />
-                Insert track point
-              </button>
-              <button type="button" className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100" onClick={() => duplicateSegment(contextMenuSegment.id)}>
-                <Plus className="h-4 w-4" />
-                Duplicate segment
-              </button>
-              <button type="button" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50" onClick={() => deleteSegment(contextMenuSegment.id)}>
-                <Trash2 className="h-4 w-4" />
-                Remove segment
-              </button>
-            </div>
+            <SegmentContextMenu
+              segmentContextMenu={segmentContextMenu}
+              contextMenuSegment={contextMenuSegment}
+              segmentContextMenuPosition={segmentContextMenuPosition}
+              assignedLineForContextSegment={assignedLineForContextSegment}
+              assignableLinesForContextSegment={assignableLinesForContextSegment}
+              unassignLineFromSegment={unassignLineFromSegment}
+              assignLineToSegment={assignLineToSegment}
+              insertTrackPointOnSegment={insertTrackPointOnSegment}
+              duplicateSegment={duplicateSegment}
+              deleteSegment={deleteSegment}
+            />
           ) : null}
 
           <div className="absolute inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/92 px-3 py-2 backdrop-blur">
