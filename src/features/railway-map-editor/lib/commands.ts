@@ -244,6 +244,26 @@ export function updateNodeLaneGridPosition(
   };
 }
 
+export function updateNodeLaneLine(map: RailwayMap, nodeId: string, laneId: string, lineId?: string) {
+  const lane = map.model.nodeLanes.find((candidate) => candidate.id === laneId && candidate.nodeId === nodeId);
+  if (!lane) return map;
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodeLanes: map.model.nodeLanes.map((candidate) =>
+        candidate.id !== laneId
+          ? candidate
+          : {
+              ...candidate,
+              lineId: lineId || undefined,
+            },
+      ),
+    },
+  };
+}
+
 export function updateSegmentEndpointLane(map: RailwayMap, segmentId: string, end: "from" | "to", laneId?: string) {
   return {
     ...map,

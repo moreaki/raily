@@ -8,6 +8,7 @@ import { Input } from "@/shared/ui/input";
 
 type SelectedNodeLane = {
   id: string;
+  lineId: string | null;
   gridColumn?: number;
   gridRow?: number;
   cellLabel: string;
@@ -52,6 +53,7 @@ type RailwayMapInspectorProps = {
   nodeGroupCellHeight: number;
   selectedNodeMarkerLaneId: string | null;
   updateSelectedNodeLaneCell: (laneId: string, value: string) => void;
+  updateSelectedNodeLaneLine: (laneId: string, lineId: string) => void;
   selectNodeLane: (laneId: string) => void;
   insertNodeGroupColumn: (column: number) => void;
   insertNodeGroupRow: (row: number) => void;
@@ -124,6 +126,7 @@ export function RailwayMapInspector({
   nodeGroupCellHeight,
   selectedNodeMarkerLaneId,
   updateSelectedNodeLaneCell,
+  updateSelectedNodeLaneLine,
   selectNodeLane,
   insertNodeGroupColumn,
   insertNodeGroupRow,
@@ -381,6 +384,19 @@ export function RailwayMapInspector({
                                   placeholder="A1"
                                   className="h-8 w-20 bg-white"
                                 />
+                                <select
+                                  value={lane.lineId ?? ""}
+                                  onChange={(event) => updateSelectedNodeLaneLine(lane.id, event.target.value)}
+                                  className="h-8 max-w-[180px] rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <option value="">No line</option>
+                                  {sortedLines.map((line) => (
+                                    <option key={line.id} value={line.id}>
+                                      {line.name}
+                                    </option>
+                                  ))}
+                                </select>
                                 <div className="flex items-center gap-1">
                                   {lane.connections.map((connection, connectionIndex) => (
                                     <span

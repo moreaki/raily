@@ -371,6 +371,7 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
         id: laneId,
         nodeId: node.id,
         order: index,
+        lineId: existingForNode.find((lane) => lane.id === laneId)?.lineId ?? group.lineId ?? undefined,
         gridColumn: existingForNode.find((lane) => lane.id === laneId)?.gridColumn,
         gridRow: existingForNode.find((lane) => lane.id === laneId)?.gridRow,
       });

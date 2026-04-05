@@ -53,6 +53,7 @@ import {
   removeTrackPoint as removeTrackPointCommand,
   renameSheet,
   updateNodeLaneGridPosition as updateNodeLaneGridPositionCommand,
+  updateNodeLaneLine as updateNodeLaneLineCommand,
   updateSegmentEndpointLane as updateSegmentEndpointLaneCommand,
   unassignLineFromSegment as unassignLineFromSegmentCommand,
   updateSegmentOrthogonalElbow as updateSegmentOrthogonalElbowCommand,
@@ -705,7 +706,7 @@ export default function RailwayMapEditor() {
       const segmentIds = currentSegments
         .filter((segment) => segment.fromLaneId === lane.id || segment.toLaneId === lane.id)
         .map((segment) => segment.id);
-      const lineNames = [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))]
+      const lineNames = [...new Set([lane.lineId, ...segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId))].filter(Boolean))]
         .map((lineId) => config.lines.find((line) => line.id === lineId)?.name ?? lineId)
         .filter(Boolean);
 
@@ -736,10 +737,11 @@ export default function RailwayMapEditor() {
         const segmentIds = currentSegments
           .filter((segment) => segment.fromLaneId === lane.id || segment.toLaneId === lane.id)
           .map((segment) => segment.id);
-        const lineNames = [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))]
+        const lineIds = [...new Set([lane.lineId, ...segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId))].filter(Boolean))];
+        const lineNames = lineIds
           .map((lineId) => config.lines.find((line) => line.id === lineId)?.name ?? lineId)
           .filter(Boolean);
-        const lineColors = [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))]
+        const lineColors = lineIds
           .map((lineId) => config.lines.find((line) => line.id === lineId)?.color ?? null)
           .filter((color): color is string => Boolean(color));
         const connections = currentSegments
@@ -769,6 +771,7 @@ export default function RailwayMapEditor() {
           effectiveGridColumn: lane.gridColumn ?? (selectedNodeLaneAxis === "horizontal" ? lane.order + 1 : 1),
           effectiveGridRow: lane.gridRow ?? (selectedNodeLaneAxis === "vertical" ? lane.order + 1 : 1),
           isAutoPlaced: !(lane.gridColumn && lane.gridRow),
+          lineId: lane.lineId ?? null,
           segmentIds,
           lineNames,
           lineColors,
@@ -1478,6 +1481,11 @@ export default function RailwayMapEditor() {
     updateMap((current) => updateNodeLaneGridPositionCommand(current, selectedNode.id, laneId, column, Number(match[2])));
   }
 
+  function updateSelectedNodeLaneLine(laneId: string, lineId: string) {
+    if (!selectedNode) return;
+    updateMap((current) => updateNodeLaneLineCommand(current, selectedNode.id, laneId, lineId || undefined));
+  }
+
   function selectNodeLane(laneId: string) {
     if (!selectedNodeId) return;
     const marker = nodeMarkerCentersById.get(selectedNodeId)?.find((candidate) => candidate.laneId === laneId) ?? null;
@@ -1943,6 +1951,7 @@ export default function RailwayMapEditor() {
                       nodeGroupCellHeight={nodeGroupCellHeight}
                       selectedNodeMarkerLaneId={selectedNodeMarkerLaneId}
                       updateSelectedNodeLaneCell={updateSelectedNodeLaneCell}
+                      updateSelectedNodeLaneLine={updateSelectedNodeLaneLine}
                       selectNodeLane={selectNodeLane}
                       insertNodeGroupColumn={insertSelectedNodeGroupColumn}
                       insertNodeGroupRow={insertSelectedNodeGroupRow}

@@ -32,6 +32,7 @@ export interface NodeLane {
   id: string;
   nodeId: string;
   order: number;
+  lineId?: string;
   gridColumn?: number;
   gridRow?: number;
 }

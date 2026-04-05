@@ -19,6 +19,7 @@ const nodeLaneSchema = z.object({
   id: z.string().min(1),
   nodeId: z.string().min(1),
   order: z.number().int().min(0),
+  lineId: z.string().min(1).optional(),
   gridColumn: z.number().int().min(1).optional(),
   gridRow: z.number().int().min(1).optional(),
 });

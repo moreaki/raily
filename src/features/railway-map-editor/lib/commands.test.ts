@@ -18,6 +18,7 @@ import {
   removeNodeLane,
   removeNodeGroupColumn,
   removeNodeGroupRow,
+  updateNodeLaneLine,
   updateSegmentPolylinePoint,
 } from "@/features/railway-map-editor/lib/commands";
 
@@ -229,6 +230,12 @@ describe("railway-map commands", () => {
     expect(shiftedRows.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.gridRow).toBe(3);
     const restoredRows = removeNodeGroupRow(shiftedRows, "n2", 1);
     expect(restoredRows.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.gridRow).toBe(2);
+  });
+
+  it("can assign a line to a node-group port", () => {
+    const withLane = addNodeLane(makeMap(), "n2").map;
+    const next = updateNodeLaneLine(withLane, "n2", "nl-n2-manual-1", "line-b");
+    expect(next.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.lineId).toBe("line-b");
   });
 
   it("deleteSheet removes sheet-owned nodes, stations, segments, and run references", () => {
