@@ -9,7 +9,7 @@ Raily is a web-rendered application foundation for railway schematic editing.
 - Vite
 - Tailwind CSS
 - Zod
-- Yarn
+- Yarn 4 (Plug'n'Play)
 
 ## Run
 
@@ -17,6 +17,47 @@ Raily is a web-rendered application foundation for railway schematic editing.
 yarn
 yarn dev
 ```
+
+## Runtime
+
+- Use Node 24.x.
+- This repo uses Yarn 4 Plug'n'Play, so it does not use `node_modules`.
+- On unsupported Node versions, the scripts fail fast with a version check.
+
+Install Node 24 with whichever tool you use, for example:
+
+```bash
+# Homebrew
+brew install node@24
+
+# nvm
+nvm install 24
+nvm use 24
+
+# fnm
+fnm install 24
+fnm use 24
+
+# Volta
+volta install node@24
+```
+
+If you use Homebrew and already have another `node` version linked, switch locally like this:
+
+```bash
+brew unlink node
+brew link --force --overwrite node@24
+node -v
+```
+
+If Homebrew keeps `node@24` keg-only on your machine, add it to `PATH` instead:
+
+```bash
+export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
+node -v
+```
+
+On Intel Macs, replace `/opt/homebrew` with `/usr/local` if needed.
 
 ## Source layout
 
