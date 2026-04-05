@@ -97,6 +97,8 @@ Important current meaning:
 - nodes are not typed as station vs junction anymore
 - a node becomes a station only if a `Station` is attached to it
 - otherwise it is just a track point / geometry anchor
+- every node should now be understood as a node-group anchor
+- the visually single-node case is just the one-slot version of that group
 
 ### `Station`
 
@@ -204,6 +206,12 @@ Important current meaning:
 - node lanes are derived / normalized topology aids
 - segment endpoints reference them through `fromLaneId` and `toLaneId`
 - they define how grouped station markers are rendered and ordered
+- they can now also be added explicitly by the user to widen a station / node group before all connecting segments exist
+
+Practical interpretation:
+
+- a node is the logical station / track-point anchor
+- `nodeLanes` are the individual slots inside that node group
 
 ## Current topology approach
 
@@ -242,6 +250,12 @@ This is how the editor currently handles:
 - trunk corridors that narrow or widen
 - shared node groups like large terminals
 
+The intended mental model is now:
+
+- every node is a node group
+- sometimes that group only has one lane, so it renders like a single node
+- larger stops and hubs simply expose more lanes inside the same logical node
+
 ## 4. Geometry and topology are separated, but only partially
 
 The topology says which nodes connect to which nodes.
@@ -259,13 +273,15 @@ That separation is good, but today it is only at the segment level. There is not
 
 This is one of the key current characteristics.
 
-`nodeLanes` are stored in the model, but the sanitizer also rebuilds and normalizes them from connected segments and line ownership.
+`nodeLanes` are stored in the model, and the sanitizer also rebuilds and normalizes them from connected segments and line ownership while preserving explicitly added empty lanes.
 
 That means:
 
 - they are not fully freeform authored objects yet
 - they are more explicit than a pure render heuristic
 - but they are not yet fully first-class topology objects either
+
+This has improved because empty lanes can now be authored explicitly, but continuity through those lanes is still not a fully explicit authored topology layer.
 
 ## Current strengths of this approach
 

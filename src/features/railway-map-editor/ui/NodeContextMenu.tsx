@@ -35,6 +35,9 @@ type NodeContextMenuProps = {
   setNodeAssignmentKindId: (value: string) => void;
   createStationAtNode: (nodeId: string, name: string, kindId: string) => void;
   deleteNodes: (nodeIds: string[]) => void;
+  addNodeToGroup: (nodeId: string) => void;
+  canRemoveNodeFromGroup: boolean;
+  removeNodeFromGroup: (nodeId: string, laneId: string) => void;
   canRemoveTrackPoint: boolean;
   removeTrackPoint: (nodeId: string) => void;
 };
@@ -64,6 +67,9 @@ export function NodeContextMenu(props: NodeContextMenuProps) {
     setNodeAssignmentKindId,
     createStationAtNode,
     deleteNodes,
+    addNodeToGroup,
+    canRemoveNodeFromGroup,
+    removeNodeFromGroup,
     canRemoveTrackPoint,
     removeTrackPoint,
   } = props;
@@ -180,6 +186,23 @@ export function NodeContextMenu(props: NodeContextMenuProps) {
               onClick={() => removeTrackPoint(nodeContextMenu.nodeIds[0])}
             >
               Remove track point
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+            onClick={() => addNodeToGroup(nodeContextMenu.nodeIds[0])}
+          >
+            <Plus className="h-4 w-4" />
+            Add node to group
+          </button>
+          {canRemoveNodeFromGroup && nodeContextMenu.laneId ? (
+            <button
+              type="button"
+              className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+              onClick={() => removeNodeFromGroup(nodeContextMenu.nodeIds[0], nodeContextMenu.laneId!)}
+            >
+              Remove node from group
             </button>
           ) : null}
         </>

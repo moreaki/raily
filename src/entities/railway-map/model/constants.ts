@@ -5,6 +5,8 @@ const DEFAULT_STATION_FONT_WEIGHT = "600" as const;
 const DEFAULT_STATION_FONT_SIZE = 14;
 const DEFAULT_STATION_SYMBOL_SIZE = 1;
 const DEFAULT_PARALLEL_TRACK_SPACING = 22;
+const DEFAULT_NODE_GROUP_CELL_WIDTH = 22;
+const DEFAULT_NODE_GROUP_CELL_HEIGHT = 22;
 const DEFAULT_SEGMENT_INDICATOR_WIDTH = 16;
 const DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST = 4;
 const DEFAULT_GRID_LINE_OPACITY = 0.45;
@@ -32,6 +34,8 @@ export const INITIAL_MAP: RailwayMap = {
       { id: "l3", name: "C3", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" },
     ],
     parallelTrackSpacing: DEFAULT_PARALLEL_TRACK_SPACING,
+    nodeGroupCellWidth: DEFAULT_NODE_GROUP_CELL_WIDTH,
+    nodeGroupCellHeight: DEFAULT_NODE_GROUP_CELL_HEIGHT,
     segmentIndicatorWidth: DEFAULT_SEGMENT_INDICATOR_WIDTH,
     selectedSegmentIndicatorBoost: DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST,
     gridLineOpacity: DEFAULT_GRID_LINE_OPACITY,
@@ -172,6 +176,8 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
       }
     ],
     "parallelTrackSpacing": 22,
+    "nodeGroupCellWidth": 22,
+    "nodeGroupCellHeight": 22,
     "segmentIndicatorWidth": 16,
     "gridLineOpacity": 0.45,
     "selectedSegmentIndicatorBoost": 4,

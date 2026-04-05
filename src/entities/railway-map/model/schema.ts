@@ -19,6 +19,8 @@ const nodeLaneSchema = z.object({
   id: z.string().min(1),
   nodeId: z.string().min(1),
   order: z.number().int().min(0),
+  gridColumn: z.number().int().min(1).optional(),
+  gridRow: z.number().int().min(1).optional(),
 });
 
 const stationLabelSchema = pointSchema.extend({
@@ -87,6 +89,8 @@ export const railwayMapSchema = z.object({
     stationKinds: z.array(stationKindSchema),
     lines: z.array(lineSchema),
     parallelTrackSpacing: z.number().min(8).max(48).default(22),
+    nodeGroupCellWidth: z.number().min(8).max(64).default(22),
+    nodeGroupCellHeight: z.number().min(8).max(64).default(22),
     segmentIndicatorWidth: z.number().min(8).max(36).default(16),
     selectedSegmentIndicatorBoost: z.number().min(0).max(12).default(4),
     gridLineOpacity: z.number().min(0.1).max(0.8).default(0.45),

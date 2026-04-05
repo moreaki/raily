@@ -129,6 +129,138 @@ export function addSheet(map: RailwayMap) {
   };
 }
 
+export function addNodeLane(map: RailwayMap, nodeId: string, axis: "horizontal" | "vertical" = "vertical") {
+  const node = map.model.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) return { map, laneId: null as string | null };
+  const currentNodeLanes = map.model.nodeLanes.filter((lane) => lane.nodeId === nodeId);
+  const nextOrder = currentNodeLanes.length;
+  const laneId = `nl-${nodeId}-manual-${nextOrder + 1}`;
+  if (map.model.nodeLanes.some((lane) => lane.id === laneId)) {
+    return { map, laneId };
+  }
+
+  const seededGrid = currentNodeLanes.map((lane, index) => ({
+    ...lane,
+    gridColumn: lane.gridColumn ?? (axis === "horizontal" ? index + 1 : 1),
+    gridRow: lane.gridRow ?? (axis === "vertical" ? index + 1 : 1),
+  }));
+  const maxColumn = seededGrid.reduce((value, lane) => Math.max(value, lane.gridColumn ?? 1), 1);
+  const maxRow = seededGrid.reduce((value, lane) => Math.max(value, lane.gridRow ?? 1), 1);
+
+  return {
+    map: {
+      ...map,
+      model: {
+        ...map.model,
+        nodeLanes: [
+          ...map.model.nodeLanes.map((lane) => seededGrid.find((candidate) => candidate.id === lane.id) ?? lane),
+          {
+            id: laneId,
+            nodeId,
+            order: nextOrder,
+            gridColumn: axis === "horizontal" ? maxColumn + 1 : 1,
+            gridRow: axis === "vertical" ? maxRow + 1 : 1,
+          },
+        ],
+      },
+    },
+    laneId,
+  };
+}
+
+export function removeNodeLane(map: RailwayMap, nodeId: string, laneId: string) {
+  const lane = map.model.nodeLanes.find((candidate) => candidate.id === laneId && candidate.nodeId === nodeId);
+  if (!lane) return map;
+  const hasConnectedSegments = map.model.segments.some((segment) => segment.fromLaneId === laneId || segment.toLaneId === laneId);
+  if (hasConnectedSegments) return map;
+
+  const remainingLanes = map.model.nodeLanes
+    .filter((candidate) => candidate.id !== laneId)
+    .map((candidate) => ({ ...candidate }));
+  const reorderedNodeLanes = remainingLanes
+    .filter((candidate) => candidate.nodeId === nodeId)
+    .sort((left, right) => left.order - right.order)
+    .map((candidate, index) => ({ ...candidate, order: index }));
+  const orderByLaneId = new Map(reorderedNodeLanes.map((candidate) => [candidate.id, candidate.order]));
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodeLanes: remainingLanes.map((candidate) => (
+        candidate.nodeId === nodeId && orderByLaneId.has(candidate.id)
+          ? { ...candidate, order: orderByLaneId.get(candidate.id) ?? candidate.order }
+          : candidate
+      )),
+    },
+  };
+}
+
+export function updateNodeLaneGridPosition(
+  map: RailwayMap,
+  nodeId: string,
+  laneId: string,
+  gridColumn?: number,
+  gridRow?: number,
+) {
+  const lane = map.model.nodeLanes.find((candidate) => candidate.id === laneId && candidate.nodeId === nodeId);
+  if (!lane) return map;
+
+  const targetColumn = gridColumn && gridColumn > 0 ? gridColumn : undefined;
+  const targetRow = gridRow && gridRow > 0 ? gridRow : undefined;
+  const swapLane =
+    targetColumn && targetRow
+      ? map.model.nodeLanes.find(
+          (candidate) =>
+            candidate.nodeId === nodeId &&
+            candidate.id !== laneId &&
+            candidate.gridColumn === targetColumn &&
+            candidate.gridRow === targetRow,
+        ) ?? null
+      : null;
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodeLanes: map.model.nodeLanes.map((candidate) => {
+        if (candidate.id === laneId) {
+          return {
+            ...candidate,
+            gridColumn: targetColumn,
+            gridRow: targetRow,
+          };
+        }
+        if (swapLane && candidate.id === swapLane.id) {
+          return {
+            ...candidate,
+            gridColumn: lane.gridColumn,
+            gridRow: lane.gridRow,
+          };
+        }
+        return candidate;
+      }),
+    },
+  };
+}
+
+export function updateSegmentEndpointLane(map: RailwayMap, segmentId: string, end: "from" | "to", laneId?: string) {
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      segments: map.model.segments.map((segment) =>
+        segment.id !== segmentId
+          ? segment
+          : {
+              ...segment,
+              ...(end === "from" ? { fromLaneId: laneId || undefined } : { toLaneId: laneId || undefined }),
+            },
+      ),
+    },
+  };
+}
+
 export function addStationKind(
   map: RailwayMap,
   args: {
@@ -481,27 +613,6 @@ export function removeSegmentPolylinePoint(map: RailwayMap, segmentId: string, p
   };
 }
 
-export function duplicateSegment(map: RailwayMap, segmentId: string) {
-  const source = map.model.segments.find((segment) => segment.id === segmentId);
-  if (!source) return { map, duplicated: null as Segment | null };
-  const duplicated = {
-    ...cloneRailwayMap({ config: map.config, model: { ...map.model, sheets: [], nodes: [], stations: [], segments: [source], lineRuns: [], nodeLanes: [] } } as unknown as RailwayMap).model.segments[0],
-    id: createSegmentId(),
-    fromLaneId: undefined,
-    toLaneId: undefined,
-  } as Segment;
-  return {
-    map: {
-      ...map,
-      model: {
-        ...map.model,
-        segments: [...map.model.segments, duplicated],
-      },
-    },
-    duplicated,
-  };
-}
-
 export function insertTrackPointOnSegment(
   map: RailwayMap,
   segmentId: string,
@@ -522,6 +633,8 @@ export function insertTrackPointOnSegment(
 
   const firstSegment = createStraightSegmentForSheet(currentSource.sheetId, currentSource.fromNodeId, insertedNode.id);
   const secondSegment = createStraightSegmentForSheet(currentSource.sheetId, insertedNode.id, currentSource.toNodeId);
+  firstSegment.fromLaneId = currentSource.fromLaneId;
+  secondSegment.toLaneId = currentSource.toLaneId;
 
   return {
     map: {

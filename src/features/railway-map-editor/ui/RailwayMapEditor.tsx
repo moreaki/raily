@@ -20,6 +20,7 @@ import {
   sortPointsForSide,
 } from "@/features/railway-map-editor/lib/geometry";
 import {
+  addNodeLane as addNodeLaneCommand,
   addLine as addLineCommand,
   addNodeToSheet,
   addSheet as addSheetCommand,
@@ -37,7 +38,6 @@ import {
   deleteSheet as deleteSheetCommand,
   deleteStation as deleteStationCommand,
   deleteStationKind as deleteStationKindCommand,
-  duplicateSegment as duplicateSegmentCommand,
   addSegmentPolylinePoint as addSegmentPolylinePointCommand,
   insertTrackPointOnSegment as insertTrackPointOnSegmentCommand,
   makeSegmentOrthogonal as makeSegmentOrthogonalCommand,
@@ -45,8 +45,11 @@ import {
   makeSegmentStraight as makeSegmentStraightCommand,
   moveLaneOrder as moveLaneOrderCommand,
   removeSegmentPolylinePoint as removeSegmentPolylinePointCommand,
+  removeNodeLane as removeNodeLaneCommand,
   removeTrackPoint as removeTrackPointCommand,
   renameSheet,
+  updateNodeLaneGridPosition as updateNodeLaneGridPositionCommand,
+  updateSegmentEndpointLane as updateSegmentEndpointLaneCommand,
   unassignLineFromSegment as unassignLineFromSegmentCommand,
   updateSegmentOrthogonalElbow as updateSegmentOrthogonalElbowCommand,
   updateSegmentPolylinePoint as updateSegmentPolylinePointCommand,
@@ -217,6 +220,8 @@ export default function RailwayMapEditor() {
   const [newStationKindFontSize, setNewStationKindFontSize] = useState(DEFAULT_STATION_FONT_SIZE);
   const [newStationKindSymbolSize, setNewStationKindSymbolSize] = useState(DEFAULT_STATION_SYMBOL_SIZE);
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage" | "settings">("edit");
+  const [sidePanelWidth, setSidePanelWidth] = useState(460);
+  const [isResizingSidePanel, setIsResizingSidePanel] = useState(false);
   const [manageSection, setManageSection] = useState<"lines" | "stations" | "stationKinds">("lines");
   const [selectedSegmentPolylinePoint, setSelectedSegmentPolylinePoint] = useState<{ segmentId: string; pointIndex: number } | null>(null);
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
@@ -242,6 +247,7 @@ export default function RailwayMapEditor() {
   } = useRailwayMapContextMenus();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
+  const sidePanelResizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const currentSheet = model.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
   const contextMenuNodeId = nodeContextMenu?.nodeIds.length === 1 ? nodeContextMenu.nodeIds[0] : null;
@@ -304,6 +310,9 @@ export default function RailwayMapEditor() {
 
   const nodesById = useMemo(() => new Map(currentNodes.map((node) => [node.id, node])), [currentNodes]);
   const segmentsById = useMemo(() => new Map(currentSegments.map((segment) => [segment.id, segment])), [currentSegments]);
+  const nodeGroupCellWidth = config.nodeGroupCellWidth ?? config.parallelTrackSpacing ?? 22;
+  const nodeGroupCellHeight = config.nodeGroupCellHeight ?? config.parallelTrackSpacing ?? 22;
+  const effectiveParallelTrackSpacing = Math.min(nodeGroupCellWidth, nodeGroupCellHeight);
   const segmentOffsetById = useMemo(() => {
     const groups = new Map<string, Segment[]>();
 
@@ -319,18 +328,18 @@ export default function RailwayMapEditor() {
       const orderedGroup = [...group].sort((left, right) => left.id.localeCompare(right.id));
       const center = (orderedGroup.length - 1) / 2;
       for (let index = 0; index < orderedGroup.length; index += 1) {
-        const offset = (index - center) * config.parallelTrackSpacing;
+        const offset = (index - center) * effectiveParallelTrackSpacing;
         offsets.set(orderedGroup[index].id, offset);
       }
     }
 
     return offsets;
-  }, [config.parallelTrackSpacing, currentSegments]);
+  }, [currentSegments, effectiveParallelTrackSpacing]);
   const { nodeMarkerCentersById, anchoredEndpointBySegmentNodeKey } = useMemo(() => {
-    const nodeLanesByNodeId = new Map<string, { id: string; order: number }[]>();
+    const nodeLanesByNodeId = new Map<string, { id: string; order: number; gridColumn?: number; gridRow?: number }[]>();
     for (const lane of model.nodeLanes) {
       const current = nodeLanesByNodeId.get(lane.nodeId) ?? [];
-      current.push({ id: lane.id, order: lane.order });
+      current.push({ id: lane.id, order: lane.order, gridColumn: lane.gridColumn, gridRow: lane.gridRow });
       nodeLanesByNodeId.set(lane.nodeId, current);
     }
     for (const lanes of nodeLanesByNodeId.values()) {
@@ -389,8 +398,6 @@ export default function RailwayMapEditor() {
 
     const byNodeId = new Map<string, NodeMarker[]>();
     const endpointAnchors = new Map<string, MapPoint>();
-    const markerSpacing = config.parallelTrackSpacing;
-
     for (const node of currentNodes) {
       const groups = endpointsByNodeId.get(node.id);
       const allMarkers = [...(groups?.values() ?? [])].flatMap((group) => group.markers);
@@ -432,17 +439,68 @@ export default function RailwayMapEditor() {
 
       const effectiveLaneIds = orderedLaneIds.length > 0 ? orderedLaneIds : [allMarkers[0]?.laneId ?? `${node.id}:base`];
       const dominantSide = dominantGroup?.side ?? "right";
-      const centerOffset = (effectiveLaneIds.length - 1) / 2;
       const slotCenterByLaneId = new Map<string, MapPoint>();
+      const explicitCells = effectiveLaneIds
+        .map((laneId) => {
+          const lane = (nodeLanesByNodeId.get(node.id) ?? []).find((candidate) => candidate.id === laneId);
+          return lane?.gridColumn && lane?.gridRow
+            ? { laneId, gridColumn: lane.gridColumn, gridRow: lane.gridRow }
+            : null;
+        })
+        .filter((value): value is { laneId: string; gridColumn: number; gridRow: number } => Boolean(value));
+      const occupiedLaneIds = effectiveLaneIds.filter((laneId) => allMarkers.some((marker) => marker.laneId === laneId));
+      const emptyLaneIds = effectiveLaneIds.filter((laneId) => !occupiedLaneIds.includes(laneId));
 
-      for (let index = 0; index < effectiveLaneIds.length; index += 1) {
-        const laneId = effectiveLaneIds[index];
-        const delta = (index - centerOffset) * markerSpacing;
+      const placeLaneAtOffset = (laneId: string, delta: number) => {
         const center =
           dominantSide === "left" || dominantSide === "right"
             ? { x: node.x, y: node.y + delta }
             : { x: node.x + delta, y: node.y };
         slotCenterByLaneId.set(laneId, center);
+      };
+
+      if (explicitCells.length > 0) {
+        const explicitByLaneId = new Map(explicitCells.map((cell) => [cell.laneId, cell]));
+        const maxExplicitColumn = explicitCells.reduce((value, cell) => Math.max(value, cell.gridColumn), 1);
+        const maxExplicitRow = explicitCells.reduce((value, cell) => Math.max(value, cell.gridRow), 1);
+        for (const [index, laneId] of effectiveLaneIds.entries()) {
+          if (!explicitByLaneId.has(laneId)) {
+            explicitByLaneId.set(laneId, {
+              laneId,
+              gridColumn: dominantSide === "left" || dominantSide === "right" ? 1 : maxExplicitColumn + index + 1,
+              gridRow: dominantSide === "up" || dominantSide === "down" ? 1 : maxExplicitRow + index + 1,
+            });
+          }
+        }
+        const columns = [...explicitByLaneId.values()].map((cell) => cell.gridColumn);
+        const rows = [...explicitByLaneId.values()].map((cell) => cell.gridRow);
+        const centerColumn = (Math.min(...columns) + Math.max(...columns)) / 2;
+        const centerRow = (Math.min(...rows) + Math.max(...rows)) / 2;
+        for (const { laneId, gridColumn, gridRow } of explicitByLaneId.values()) {
+          slotCenterByLaneId.set(laneId, {
+            x: node.x + (gridColumn - centerColumn) * nodeGroupCellWidth,
+            y: node.y + (gridRow - centerRow) * nodeGroupCellHeight,
+          });
+        }
+      } else if (occupiedLaneIds.length === 0) {
+        effectiveLaneIds.forEach((laneId, index) => {
+          placeLaneAtOffset(laneId, index * effectiveParallelTrackSpacing);
+        });
+      } else if (emptyLaneIds.length === 0) {
+        const centerOffset = (effectiveLaneIds.length - 1) / 2;
+        effectiveLaneIds.forEach((laneId, index) => {
+          placeLaneAtOffset(laneId, (index - centerOffset) * effectiveParallelTrackSpacing);
+        });
+      } else {
+        const occupiedCenterOffset = (occupiedLaneIds.length - 1) / 2;
+        occupiedLaneIds.forEach((laneId, index) => {
+          placeLaneAtOffset(laneId, (index - occupiedCenterOffset) * effectiveParallelTrackSpacing);
+        });
+
+        const positiveEdge = ((occupiedLaneIds.length - 1) / 2) * effectiveParallelTrackSpacing;
+        emptyLaneIds.forEach((laneId, index) => {
+          placeLaneAtOffset(laneId, positiveEdge + (index + 1) * effectiveParallelTrackSpacing);
+        });
       }
 
       for (const marker of allMarkers) {
@@ -469,7 +527,7 @@ export default function RailwayMapEditor() {
       nodeMarkerCentersById: byNodeId,
       anchoredEndpointBySegmentNodeKey: endpointAnchors,
     };
-  }, [config.parallelTrackSpacing, currentNodes, currentSegments, model.nodeLanes, nodesById, segmentOffsetById]);
+  }, [currentNodes, currentSegments, effectiveParallelTrackSpacing, model.nodeLanes, nodeGroupCellHeight, nodeGroupCellWidth, nodesById, segmentOffsetById]);
   const linesById = useMemo(() => new Map(config.lines.map((line) => [line.id, line])), [config.lines]);
   const stationKindsById = useMemo(() => new Map(config.stationKinds.map((kind) => [kind.id, kind])), [config.stationKinds]);
   const nodeMarkerCenterByKey = useMemo(() => {
@@ -668,19 +726,71 @@ export default function RailwayMapEditor() {
         const lineColors = [...new Set(segmentIds.map((segmentId) => lineIdBySegmentId.get(segmentId)).filter(Boolean))]
           .map((lineId) => config.lines.find((line) => line.id === lineId)?.color ?? null)
           .filter((color): color is string => Boolean(color));
+        const connections = currentSegments
+          .filter((segment) => segment.fromLaneId === lane.id || segment.toLaneId === lane.id)
+          .map((segment) => {
+            if (segment.fromLaneId === lane.id) {
+              return {
+                side: getNodeSide(
+                  nodesById.get(segment.fromNodeId) ?? { x: 0, y: 0 },
+                  nodesById.get(segment.toNodeId) ?? { x: 0, y: 0 },
+                ),
+                color: config.lines.find((line) => line.id === lineIdBySegmentId.get(segment.id))?.color ?? null,
+              };
+            }
+            return {
+              side: getNodeSide(
+                nodesById.get(segment.toNodeId) ?? { x: 0, y: 0 },
+                nodesById.get(segment.fromNodeId) ?? { x: 0, y: 0 },
+              ),
+              color: config.lines.find((line) => line.id === lineIdBySegmentId.get(segment.id))?.color ?? null,
+            };
+          });
 
         return {
           ...lane,
+          cellLabel: lane.gridColumn && lane.gridRow ? `${String.fromCharCode(64 + lane.gridColumn)}${lane.gridRow}` : "",
           segmentIds,
           lineNames,
           lineColors,
+          connections,
         };
       });
-  }, [config.lines, currentSegments, lineIdBySegmentId, model.nodeLanes, selectedNodeId]);
+  }, [config.lines, currentSegments, lineIdBySegmentId, model.nodeLanes, nodesById, selectedNodeId]);
   const selectedNodeMarkerLaneId = useMemo(() => {
     if (!selectedNodeId || !selectedNodeMarkerKey) return null;
     return nodeMarkerCentersById.get(selectedNodeId)?.find((marker) => marker.key === selectedNodeMarkerKey)?.laneId ?? null;
   }, [nodeMarkerCentersById, selectedNodeId, selectedNodeMarkerKey]);
+  const selectedNodeMarkerLane = useMemo(
+    () => selectedNodeLanes.find((lane) => lane.id === selectedNodeMarkerLaneId) ?? null,
+    [selectedNodeLanes, selectedNodeMarkerLaneId],
+  );
+  const segmentFromPortOptions = useMemo(() => {
+    if (!selectedSegment) return [{ value: "", label: "Auto" }];
+    return [
+      { value: "", label: "Auto" },
+      ...model.nodeLanes
+        .filter((lane) => lane.nodeId === selectedSegment.fromNodeId)
+        .sort((left, right) => left.order - right.order)
+        .map((lane) => ({
+          value: lane.id,
+          label: `${laneDisplayNameById.get(lane.id) ?? "Unassigned lane"}${lane.gridColumn && lane.gridRow ? ` · ${String.fromCharCode(64 + lane.gridColumn)}${lane.gridRow}` : ""}`,
+        })),
+    ];
+  }, [laneDisplayNameById, model.nodeLanes, selectedSegment]);
+  const segmentToPortOptions = useMemo(() => {
+    if (!selectedSegment) return [{ value: "", label: "Auto" }];
+    return [
+      { value: "", label: "Auto" },
+      ...model.nodeLanes
+        .filter((lane) => lane.nodeId === selectedSegment.toNodeId)
+        .sort((left, right) => left.order - right.order)
+        .map((lane) => ({
+          value: lane.id,
+          label: `${laneDisplayNameById.get(lane.id) ?? "Unassigned lane"}${lane.gridColumn && lane.gridRow ? ` · ${String.fromCharCode(64 + lane.gridColumn)}${lane.gridRow}` : ""}`,
+        })),
+    ];
+  }, [laneDisplayNameById, model.nodeLanes, selectedSegment]);
   const removableTrackPointNodeIds = useMemo(() => {
     const removable = new Set<string>();
 
@@ -709,17 +819,6 @@ export default function RailwayMapEditor() {
 
     return width > height ? ("horizontal" as const) : ("vertical" as const);
   }, [nodeMarkerCentersById, selectedNodeId]);
-  const selectedNodeLaneMoveLabels = selectedNodeLaneAxis === "horizontal"
-    ? {
-        backward: "Left",
-        forward: "Right",
-        hint: "Lane order for this node runs left to right around the node center.",
-      }
-    : {
-        backward: "Up",
-        forward: "Down",
-        hint: "Lane order for this node runs top to bottom around the node center.",
-      };
   const nodeContextMenuPosition = useMemo(() => {
     if (!nodeContextMenu) return null;
     return getClampedMenuPosition(
@@ -855,6 +954,24 @@ export default function RailwayMapEditor() {
     const nextKindId = newStationKindId || (config.stationKinds[0]?.id ?? "");
     updateMap((current) => addUnassignedStation(current, newStationName, nextKindId));
     setNewStationName("");
+  }
+
+  function addNodeToGroup(nodeId: string) {
+    const { laneId } = addNodeLaneCommand(map, nodeId, selectedNodeLaneAxis);
+    if (!laneId) return;
+    updateMap((current) => addNodeLaneCommand(current, nodeId, selectedNodeLaneAxis).map);
+    setSelectedNodeId(nodeId);
+    setSelectedNodeIds([nodeId]);
+    setSelectedNodeMarkerKey(null);
+    setNodeContextMenu(null);
+  }
+
+  function removeNodeFromGroup(nodeId: string, laneId: string) {
+    updateMap((current) => removeNodeLaneCommand(current, nodeId, laneId));
+    if (selectedNodeMarkerLaneId === laneId) {
+      setSelectedNodeMarkerKey(null);
+    }
+    setNodeContextMenu(null);
   }
 
   function focusStation(stationId: string) {
@@ -1105,19 +1222,6 @@ export default function RailwayMapEditor() {
     setBendPointContextMenu(null);
   }
 
-  function duplicateSegment(segmentId: string) {
-    const source = model.segments.find((segment) => segment.id === segmentId);
-    if (!source) return;
-
-    const { duplicated } = duplicateSegmentCommand(map, segmentId);
-    if (!duplicated) return;
-    updateMap((current) => duplicateSegmentCommand(current, segmentId).map);
-    setSelectedSegmentId(duplicated.id);
-    setSelectedSegmentPolylinePoint(null);
-    setSegmentContextMenu(null);
-    setBendPointContextMenu(null);
-  }
-
   function insertTrackPointOnSegment(segmentId: string) {
     const source = model.segments.find((segment) => segment.id === segmentId);
     if (!source) return;
@@ -1331,6 +1435,54 @@ export default function RailwayMapEditor() {
     }));
   }
 
+  function updateNodeGroupCellWidth(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: {
+        ...current.config,
+        nodeGroupCellWidth: Math.min(64, Math.max(8, value || 22)),
+      },
+    }));
+  }
+
+  function updateNodeGroupCellHeight(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: {
+        ...current.config,
+        nodeGroupCellHeight: Math.min(64, Math.max(8, value || 22)),
+      },
+    }));
+  }
+
+  function updateSelectedNodeLaneCell(laneId: string, value: string) {
+    if (!selectedNode) return;
+    const match = value.trim().toUpperCase().match(/^([A-Z]+)(\d+)$/);
+    if (!match) {
+      updateMap((current) => updateNodeLaneGridPositionCommand(current, selectedNode.id, laneId));
+      return;
+    }
+
+    let column = 0;
+    for (const letter of match[1]) {
+      column = column * 26 + (letter.charCodeAt(0) - 64);
+    }
+
+    updateMap((current) => updateNodeLaneGridPositionCommand(current, selectedNode.id, laneId, column, Number(match[2])));
+  }
+
+  function selectNodeLane(laneId: string) {
+    if (!selectedNodeId) return;
+    const marker = nodeMarkerCentersById.get(selectedNodeId)?.find((candidate) => candidate.laneId === laneId) ?? null;
+    if (!marker) return;
+    setSelectedNodeMarkerKey(marker.key);
+  }
+
+  function updateSelectedSegmentPort(end: "from" | "to", laneId: string) {
+    if (!selectedSegment) return;
+    updateMap((current) => updateSegmentEndpointLaneCommand(current, selectedSegment.id, end, laneId || undefined));
+  }
+
   function updateStation(stationId: string, patch: Partial<Station>) {
     updateMap((current) => updateStationCommand(current, stationId, patch));
   }
@@ -1502,8 +1654,40 @@ export default function RailwayMapEditor() {
   const selectedNodeStations = selectedNode ? stationsByNodeId.get(selectedNode.id) ?? [] : [];
   const visibleStations = useMemo(() => [...currentStations, ...unassignedStations], [currentStations, unassignedStations]);
 
+  useEffect(() => {
+    if (!isResizingSidePanel) return;
+
+    function handlePointerMove(event: globalThis.MouseEvent) {
+      const start = sidePanelResizeStartRef.current;
+      if (!start) return;
+      const delta = start.startX - event.clientX;
+      setSidePanelWidth(Math.min(760, Math.max(380, start.startWidth + delta)));
+    }
+
+    function handlePointerUp() {
+      setIsResizingSidePanel(false);
+      sidePanelResizeStartRef.current = null;
+    }
+
+    window.addEventListener("mousemove", handlePointerMove);
+    window.addEventListener("mouseup", handlePointerUp);
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove);
+      window.removeEventListener("mouseup", handlePointerUp);
+    };
+  }, [isResizingSidePanel]);
+
+  const startSidePanelResize = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    sidePanelResizeStartRef.current = {
+      startX: event.clientX,
+      startWidth: sidePanelWidth,
+    };
+    setIsResizingSidePanel(true);
+  }, [sidePanelWidth]);
+
   return (
-    <div className="h-screen overflow-hidden px-3 py-3 sm:px-4">
+    <div className={`h-screen overflow-hidden px-3 py-3 sm:px-4 ${isResizingSidePanel ? "cursor-col-resize select-none" : ""}`}>
       <div className="mx-auto flex h-full max-w-[1600px] flex-col gap-3">
         <header className="flex flex-col gap-2 rounded-3xl border border-slate-200/80 bg-white/75 px-4 py-3 shadow-panel backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
@@ -1543,7 +1727,12 @@ export default function RailwayMapEditor() {
           </div>
         </header>
 
-        <div className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div
+          className={sidePanel === "closed"
+            ? "grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3"
+            : "grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 xl:grid-cols-[minmax(0,1fr)_12px_var(--panel-width)]"}
+          style={sidePanel === "closed" ? undefined : ({ ["--panel-width" as string]: `${sidePanelWidth}px` })}
+        >
           <div className="min-h-0 h-full">
           <RailwayMapCanvasPane
             bootstrapDevelopmentModel={bootstrapDevelopmentModel}
@@ -1637,6 +1826,9 @@ export default function RailwayMapEditor() {
             setNodeAssignmentKindId={setNodeAssignmentKindId}
             createStationAtNode={createStationAtNode}
             deleteNodes={deleteNodes}
+            addNodeToGroup={addNodeToGroup}
+            canRemoveNodeFromGroup={!!contextMenuNode && !!nodeContextMenu?.laneId && !currentSegments.some((segment) => segment.fromLaneId === nodeContextMenu.laneId || segment.toLaneId === nodeContextMenu.laneId)}
+            removeNodeFromGroup={removeNodeFromGroup}
             canRemoveTrackPoint={!!contextMenuNode && removableTrackPointNodeIds.has(contextMenuNode.id)}
             removeTrackPoint={removeTrackPoint}
             completeSegmentAtNode={completeSegmentAtNode}
@@ -1657,7 +1849,6 @@ export default function RailwayMapEditor() {
             makeSegmentPolyline={makeSegmentPolyline}
             addSegmentPolylinePoint={addSegmentPolylinePoint}
             removeSegmentPolylinePoint={removeSegmentPolylinePoint}
-            duplicateSegment={duplicateSegment}
             deleteSegment={deleteSegment}
             canvasContextMenu={canvasContextMenu}
             createTrackPointAtCanvasPoint={createTrackPointAtCanvasPoint}
@@ -1675,6 +1866,17 @@ export default function RailwayMapEditor() {
           </div>
 
           {sidePanel !== "closed" ? (
+            <>
+            <div
+              className="relative hidden xl:block"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize side panel"
+              onMouseDown={startSidePanelResize}
+            >
+              <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-slate-200" />
+              <div className="absolute inset-y-0 left-1/2 w-3 -translate-x-1/2 cursor-col-resize rounded-full hover:bg-slate-100" />
+            </div>
             <div className="min-w-0 min-h-0 h-full">
               <Card className="flex h-full min-h-0 flex-col overflow-hidden border-slate-200 bg-white/95 backdrop-blur">
                 <CardHeader className="flex flex-row items-center justify-between gap-3 px-5 py-4">
@@ -1710,12 +1912,16 @@ export default function RailwayMapEditor() {
                       updateNode={updateNode}
                       selectedNodeLanes={selectedNodeLanes}
                       selectedNodeLaneAxis={selectedNodeLaneAxis}
-                      parallelTrackSpacing={config.parallelTrackSpacing}
+                      nodeGroupCellWidth={nodeGroupCellWidth}
+                      nodeGroupCellHeight={nodeGroupCellHeight}
                       selectedNodeMarkerLaneId={selectedNodeMarkerLaneId}
-                      selectedNodeLaneMoveLabels={selectedNodeLaneMoveLabels}
-                      moveLaneOrder={moveLaneOrder}
+                      updateSelectedNodeLaneCell={updateSelectedNodeLaneCell}
+                      selectNodeLane={selectNodeLane}
                       selectedNodeStations={selectedNodeStations}
                       attachStationToSelectedNode={attachStationToSelectedNode}
+                      addNodeToGroup={addNodeToGroup}
+                      canRemoveSelectedNodeFromGroup={!!selectedNodeMarkerLane && selectedNodeMarkerLane.segmentIds.length === 0}
+                      removeSelectedNodeFromGroup={() => selectedNode && selectedNodeMarkerLane && removeNodeFromGroup(selectedNode.id, selectedNodeMarkerLane.id)}
                       canRemoveSelectedTrackPoint={!!selectedNode && removableTrackPointNodeIds.has(selectedNode.id)}
                       removeSelectedTrackPoint={() => selectedNode && removeTrackPoint(selectedNode.id)}
                       unassignStation={unassignStation}
@@ -1736,15 +1942,20 @@ export default function RailwayMapEditor() {
               addSegmentPolylinePoint={addSegmentPolylinePoint}
               selectedSegmentPolylinePoint={selectedSegmentPolylinePoint}
               removeSegmentPolylinePoint={removeSegmentPolylinePoint}
+              segmentFromPortOptions={segmentFromPortOptions}
+              segmentToPortOptions={segmentToPortOptions}
+              updateSelectedSegmentPort={updateSelectedSegmentPort}
             />
                   ) : sidePanel === "settings" ? (
                     <RailwayMapSettings
-                      parallelTrackSpacing={config.parallelTrackSpacing}
+                      nodeGroupCellWidth={nodeGroupCellWidth}
+                      nodeGroupCellHeight={nodeGroupCellHeight}
                       segmentIndicatorWidth={config.segmentIndicatorWidth}
                       selectedSegmentIndicatorBoost={config.selectedSegmentIndicatorBoost}
                       gridLineOpacity={config.gridLineOpacity}
                       labelAxisSnapSensitivity={config.labelAxisSnapSensitivity}
-                      updateParallelTrackSpacing={updateParallelTrackSpacing}
+                      updateNodeGroupCellWidth={updateNodeGroupCellWidth}
+                      updateNodeGroupCellHeight={updateNodeGroupCellHeight}
                       updateSegmentIndicatorWidth={updateSegmentIndicatorWidth}
                       updateSelectedSegmentIndicatorBoost={updateSelectedSegmentIndicatorBoost}
                       updateGridLineOpacity={updateGridLineOpacity}
@@ -1807,6 +2018,7 @@ export default function RailwayMapEditor() {
                 </CardContent>
               </Card>
             </div>
+            </>
           ) : (
             <div className="hidden xl:block" />
           )}

@@ -22,7 +22,6 @@ type SegmentContextMenuProps = {
   makeSegmentOrthogonal: (segmentId: string) => void;
   makeSegmentPolyline: (segmentId: string) => void;
   addSegmentPolylinePoint: (segmentId: string, point?: MapPoint) => void;
-  duplicateSegment: (segmentId: string) => void;
   deleteSegment: (segmentId: string) => void;
 };
 
@@ -40,7 +39,6 @@ export function SegmentContextMenu(props: SegmentContextMenuProps) {
     makeSegmentOrthogonal,
     makeSegmentPolyline,
     addSegmentPolylinePoint,
-    duplicateSegment,
     deleteSegment,
   } = props;
 
@@ -132,14 +130,6 @@ export function SegmentContextMenu(props: SegmentContextMenuProps) {
       >
         <Plus className="h-4 w-4" />
         Insert track point
-      </button>
-      <button
-        type="button"
-        className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-        onClick={() => duplicateSegment(contextMenuSegment.id)}
-      >
-        <Plus className="h-4 w-4" />
-        Duplicate segment
       </button>
       <button
         type="button"

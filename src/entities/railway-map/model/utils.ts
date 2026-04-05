@@ -2,6 +2,8 @@ import type { LineRun, Line, MapNode, MapPoint, NodeLane, RailwayMap, Segment, S
 
 let idCounter = 0;
 const DEFAULT_PARALLEL_TRACK_SPACING = 22;
+const DEFAULT_NODE_GROUP_CELL_WIDTH = 22;
+const DEFAULT_NODE_GROUP_CELL_HEIGHT = 22;
 const DEFAULT_SEGMENT_INDICATOR_WIDTH = 16;
 const DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST = 4;
 const DEFAULT_GRID_LINE_OPACITY = 0.45;
@@ -332,6 +334,15 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
       }
     }
 
+    for (const existingLane of existingForNode) {
+      if (!laneGroups.has(existingLane.id)) {
+        laneGroups.set(existingLane.id, {
+          existingLaneId: existingLane.id,
+          lineId: null,
+        });
+      }
+    }
+
     const orderedLaneGroups = [...laneGroups.entries()].sort((left, right) => {
       const leftExistingIndex = left[1].existingLaneId ? existingForNode.findIndex((lane) => lane.id === left[1].existingLaneId) : -1;
       const rightExistingIndex = right[1].existingLaneId ? existingForNode.findIndex((lane) => lane.id === right[1].existingLaneId) : -1;
@@ -360,6 +371,8 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
         id: laneId,
         nodeId: node.id,
         order: index,
+        gridColumn: existingForNode.find((lane) => lane.id === laneId)?.gridColumn,
+        gridRow: existingForNode.find((lane) => lane.id === laneId)?.gridRow,
       });
       laneIdsByNodeIdAndKey.set(`${node.id}:${groupKey}`, laneId);
     }
@@ -393,6 +406,8 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
     config: {
       ...map.config,
       parallelTrackSpacing: map.config.parallelTrackSpacing ?? DEFAULT_PARALLEL_TRACK_SPACING,
+      nodeGroupCellWidth: map.config.nodeGroupCellWidth ?? DEFAULT_NODE_GROUP_CELL_WIDTH,
+      nodeGroupCellHeight: map.config.nodeGroupCellHeight ?? DEFAULT_NODE_GROUP_CELL_HEIGHT,
       segmentIndicatorWidth: map.config.segmentIndicatorWidth ?? DEFAULT_SEGMENT_INDICATOR_WIDTH,
       selectedSegmentIndicatorBoost: map.config.selectedSegmentIndicatorBoost ?? DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST,
       gridLineOpacity: map.config.gridLineOpacity ?? DEFAULT_GRID_LINE_OPACITY,

@@ -32,6 +32,8 @@ export interface NodeLane {
   id: string;
   nodeId: string;
   order: number;
+  gridColumn?: number;
+  gridRow?: number;
 }
 
 export interface StationLabel extends MapPoint {
@@ -94,6 +96,8 @@ export interface RailwayMapConfig {
   stationKinds: StationKind[];
   lines: Line[];
   parallelTrackSpacing: number;
+  nodeGroupCellWidth: number;
+  nodeGroupCellHeight: number;
   segmentIndicatorWidth: number;
   selectedSegmentIndicatorBoost: number;
   gridLineOpacity: number;

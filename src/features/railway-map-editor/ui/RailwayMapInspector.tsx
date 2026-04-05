@@ -1,3 +1,4 @@
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { Line, LineRun, MapNode, Segment, Station, StationKind } from "@/entities/railway-map/model/types";
 import { lineStrokeDasharray } from "@/entities/railway-map/model/utils";
@@ -7,9 +8,13 @@ import { Input } from "@/shared/ui/input";
 
 type SelectedNodeLane = {
   id: string;
+  gridColumn?: number;
+  gridRow?: number;
+  cellLabel: string;
   lineNames: Array<string | undefined>;
   lineColors: string[];
   segmentIds: string[];
+  connections: Array<{ side: "left" | "right" | "up" | "down"; color: string | null }>;
 };
 
 type LabelDiagnostic = {
@@ -40,12 +45,16 @@ type RailwayMapInspectorProps = {
   updateNode: (patch: Partial<MapNode>) => void;
   selectedNodeLanes: SelectedNodeLane[];
   selectedNodeLaneAxis: "horizontal" | "vertical";
-  parallelTrackSpacing: number;
+  nodeGroupCellWidth: number;
+  nodeGroupCellHeight: number;
   selectedNodeMarkerLaneId: string | null;
-  selectedNodeLaneMoveLabels: { backward: string; forward: string; hint: string };
-  moveLaneOrder: (nodeId: string, laneId: string, direction: -1 | 1) => void;
+  updateSelectedNodeLaneCell: (laneId: string, value: string) => void;
+  selectNodeLane: (laneId: string) => void;
   selectedNodeStations: Station[];
   attachStationToSelectedNode: () => void;
+  addNodeToGroup: (nodeId: string) => void;
+  canRemoveSelectedNodeFromGroup: boolean;
+  removeSelectedNodeFromGroup: () => void;
   canRemoveSelectedTrackPoint: boolean;
   removeSelectedTrackPoint: () => void;
   unassignStation: (stationId: string) => void;
@@ -66,7 +75,21 @@ type RailwayMapInspectorProps = {
   addSegmentPolylinePoint: (segmentId: string) => void;
   selectedSegmentPolylinePoint: { segmentId: string; pointIndex: number } | null;
   removeSegmentPolylinePoint: (segmentId: string, pointIndex: number) => void;
+  segmentFromPortOptions: Array<{ value: string; label: string }>;
+  segmentToPortOptions: Array<{ value: string; label: string }>;
+  updateSelectedSegmentPort: (end: "from" | "to", laneId: string) => void;
 };
+
+function toColumnLabel(value: number) {
+  let current = value;
+  let result = "";
+  while (current > 0) {
+    const remainder = (current - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    current = Math.floor((current - 1) / 26);
+  }
+  return result || "A";
+}
 
 export function RailwayMapInspector({
   hasNodeOrStationSelection,
@@ -90,12 +113,16 @@ export function RailwayMapInspector({
   updateNode,
   selectedNodeLanes,
   selectedNodeLaneAxis,
-  parallelTrackSpacing,
+  nodeGroupCellWidth,
+  nodeGroupCellHeight,
   selectedNodeMarkerLaneId,
-  selectedNodeLaneMoveLabels,
-  moveLaneOrder,
+  updateSelectedNodeLaneCell,
+  selectNodeLane,
   selectedNodeStations,
   attachStationToSelectedNode,
+  addNodeToGroup,
+  canRemoveSelectedNodeFromGroup,
+  removeSelectedNodeFromGroup,
   canRemoveSelectedTrackPoint,
   removeSelectedTrackPoint,
   unassignStation,
@@ -116,7 +143,45 @@ export function RailwayMapInspector({
   addSegmentPolylinePoint,
   selectedSegmentPolylinePoint,
   removeSegmentPolylinePoint,
+  segmentFromPortOptions,
+  segmentToPortOptions,
+  updateSelectedSegmentPort,
 }: RailwayMapInspectorProps) {
+  const [laneCellDrafts, setLaneCellDrafts] = useState<Record<string, string>>({});
+  const [activeLaneId, setActiveLaneId] = useState<string | null>(selectedNodeMarkerLaneId);
+  const [extraGridColumns, setExtraGridColumns] = useState(1);
+  const [extraGridRows, setExtraGridRows] = useState(1);
+  useEffect(() => {
+    setLaneCellDrafts(Object.fromEntries(selectedNodeLanes.map((lane) => [lane.id, lane.cellLabel])));
+  }, [selectedNodeLanes]);
+  useEffect(() => {
+    setActiveLaneId(selectedNodeMarkerLaneId ?? selectedNodeLanes[0]?.id ?? null);
+  }, [selectedNodeLanes, selectedNodeMarkerLaneId]);
+  const previewBounds = useMemo(() => {
+    const columns = selectedNodeLanes.map((lane) => lane.gridColumn).filter((value): value is number => !!value);
+    const rows = selectedNodeLanes.map((lane) => lane.gridRow).filter((value): value is number => !!value);
+    return {
+      minColumn: columns.length > 0 ? Math.min(...columns) : 1,
+      maxColumn: columns.length > 0 ? Math.max(...columns) : Math.max(1, selectedNodeLanes.length),
+      minRow: rows.length > 0 ? Math.min(...rows) : 1,
+      maxRow: rows.length > 0 ? Math.max(...rows) : Math.max(1, selectedNodeLanes.length),
+    };
+  }, [selectedNodeLanes]);
+  const editorGrid = useMemo(() => {
+    const minColumn = Math.max(1, previewBounds.minColumn - extraGridColumns);
+    const maxColumn = Math.max(minColumn, previewBounds.maxColumn + extraGridColumns);
+    const minRow = Math.max(1, previewBounds.minRow - extraGridRows);
+    const maxRow = Math.max(minRow, previewBounds.maxRow + extraGridRows);
+    return {
+      columns: Array.from({ length: maxColumn - minColumn + 1 }, (_, index) => minColumn + index),
+      rows: Array.from({ length: maxRow - minRow + 1 }, (_, index) => minRow + index),
+      byCell: new Map(
+        selectedNodeLanes
+          .filter((lane) => lane.gridColumn && lane.gridRow)
+          .map((lane) => [`${lane.gridColumn}:${lane.gridRow}`, lane] as const),
+        ),
+    };
+  }, [extraGridColumns, extraGridRows, previewBounds, selectedNodeLanes]);
   const sortedLines = [...lines].sort((left, right) => {
     const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
     if (byName !== 0) return byName;
@@ -204,15 +269,20 @@ export function RailwayMapInspector({
                   <Input type="number" value={selectedNode.x} onChange={(event) => updateNode({ x: Number(event.target.value) })} />
                   <Input type="number" value={selectedNode.y} onChange={(event) => updateNode({ y: Number(event.target.value) })} />
                 </div>
-                {selectedNodeLanes.length > 1 ? (
+                {selectedNodeLanes.length > 0 ? (
                   <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Lane Order</div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Node Group</div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                       <svg viewBox="0 0 180 56" className="h-14 w-full" aria-hidden="true">
                         {selectedNodeLanes.map((lane, index) => {
-                          const offset = (index - (selectedNodeLanes.length - 1) / 2) * parallelTrackSpacing;
-                          const cx = selectedNodeLaneAxis === "horizontal" ? 90 + offset : 90;
-                          const cy = selectedNodeLaneAxis === "vertical" ? 28 + offset : 28;
+                          const fallbackColumn = selectedNodeLaneAxis === "horizontal" ? index + 1 : 1;
+                          const fallbackRow = selectedNodeLaneAxis === "vertical" ? index + 1 : 1;
+                          const column = lane.gridColumn ?? fallbackColumn;
+                          const row = lane.gridRow ?? fallbackRow;
+                          const centerColumn = (previewBounds.minColumn + previewBounds.maxColumn) / 2;
+                          const centerRow = (previewBounds.minRow + previewBounds.maxRow) / 2;
+                          const cx = 90 + (column - centerColumn) * nodeGroupCellWidth;
+                          const cy = 28 + (row - centerRow) * nodeGroupCellHeight;
                           const stroke = lane.lineColors[0] ?? "#64748b";
                           const isActive = selectedNodeMarkerLaneId === lane.id;
                           return (
@@ -229,38 +299,143 @@ export function RailwayMapInspector({
                         <div
                           key={lane.id}
                           className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
-                            selectedNodeMarkerLaneId === lane.id ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200" : "bg-slate-50 text-ink"
+                            activeLaneId === lane.id ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200" : "bg-slate-50 text-ink"
                           }`}
+                          onClick={() => {
+                            setActiveLaneId(lane.id);
+                            selectNodeLane(lane.id);
+                          }}
                         >
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 font-medium">
                               <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: lane.lineColors[0] ?? "#94a3b8" }} />
                               <span>{lane.lineNames.length > 0 ? lane.lineNames.join(", ") : "Unassigned lane"}</span>
                             </div>
-                            <div className="text-xs text-muted">
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                              <Input
+                                value={laneCellDrafts[lane.id] ?? lane.cellLabel}
+                                onChange={(event) => setLaneCellDrafts((current) => ({ ...current, [lane.id]: event.target.value.toUpperCase() }))}
+                                onBlur={() => updateSelectedNodeLaneCell(lane.id, laneCellDrafts[lane.id] ?? lane.cellLabel)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    updateSelectedNodeLaneCell(lane.id, laneCellDrafts[lane.id] ?? lane.cellLabel);
+                                  }
+                                }}
+                                placeholder="A1"
+                                className="h-8 w-20 bg-white"
+                              />
+                              <div className="flex items-center gap-1">
+                                {lane.connections.map((connection, connectionIndex) => (
+                                  <span
+                                    key={`${lane.id}:connection:${connectionIndex}`}
+                                    className="inline-flex items-center justify-center rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px]"
+                                    style={{ color: connection.color ?? "#64748b" }}
+                                    title={connection.side}
+                                  >
+                                    {connection.side === "left" ? "←" : connection.side === "right" ? "→" : connection.side === "up" ? "↑" : "↓"}
+                                  </span>
+                                ))}
+                              </div>
                               {lane.segmentIds.length} segment{lane.segmentIds.length === 1 ? "" : "s"}
                             </div>
                           </div>
-                          <div className="flex gap-1">
-                            <Button type="button" variant="outline" className="h-8 px-2" disabled={index === 0} onClick={() => moveLaneOrder(selectedNode.id, lane.id, -1)}>
-                              {selectedNodeLaneMoveLabels.backward}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-8 px-2"
-                              disabled={index === selectedNodeLanes.length - 1}
-                              onClick={() => moveLaneOrder(selectedNode.id, lane.id, 1)}
-                            >
-                              {selectedNodeLaneMoveLabels.forward}
-                            </Button>
+                          <div className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            {lane.cellLabel || "Auto"}
                           </div>
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-muted">
-                      {selectedNodeLaneMoveLabels.hint} Use this when parallel tracks at this node need a different visual ordering.
-                    </p>
+                    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Grid Editor</div>
+                        <div className="flex items-center gap-2 text-xs text-muted">
+                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => setExtraGridColumns((value) => Math.max(0, value - 1))}>
+                            Col -
+                          </Button>
+                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => setExtraGridColumns((value) => value + 1)}>
+                            Col +
+                          </Button>
+                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => setExtraGridRows((value) => Math.max(0, value - 1))}>
+                            Row -
+                          </Button>
+                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => setExtraGridRows((value) => value + 1)}>
+                            Row +
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted">Select a port above, then click a cell to place it. Clicking an occupied cell with another active port swaps them.</p>
+                      <div className="overflow-auto rounded-xl border border-slate-200 bg-white p-3">
+                        <div
+                          className="grid gap-2"
+                          style={{
+                            gridTemplateColumns: `24px repeat(${editorGrid.columns.length}, minmax(40px, 1fr))`,
+                          }}
+                        >
+                          <div />
+                          {editorGrid.columns.map((column) => (
+                            <div key={`col:${column}`} className="text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              {toColumnLabel(column)}
+                            </div>
+                          ))}
+                          {editorGrid.rows.map((row) => (
+                            <Fragment key={`row:${row}`}>
+                              <div className="flex items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                {row}
+                              </div>
+                              {editorGrid.columns.map((column) => {
+                                const cellLane = editorGrid.byCell.get(`${column}:${row}`) ?? null;
+                                const isActive = cellLane?.id === activeLaneId;
+                                const targetCellLabel = `${toColumnLabel(column)}${row}`;
+                                return (
+                                  <button
+                                    key={`${column}:${row}`}
+                                    type="button"
+                                    className={`relative h-12 rounded-lg border text-xs transition ${
+                                      cellLane
+                                        ? isActive
+                                          ? "border-sky-400 bg-sky-50 shadow-sm"
+                                          : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                                        : activeLaneId
+                                          ? "border-dashed border-slate-300 bg-white hover:border-sky-300 hover:bg-sky-50/40"
+                                          : "border-dashed border-slate-200 bg-white"
+                                    }`}
+                                    onClick={() => {
+                                      if (cellLane) {
+                                        if (activeLaneId && activeLaneId !== cellLane.id) {
+                                          updateSelectedNodeLaneCell(activeLaneId, targetCellLabel);
+                                          return;
+                                        }
+                                        setActiveLaneId(cellLane.id);
+                                        selectNodeLane(cellLane.id);
+                                        return;
+                                      }
+                                      if (!activeLaneId) return;
+                                      updateSelectedNodeLaneCell(activeLaneId, targetCellLabel);
+                                    }}
+                                  >
+                                  {cellLane ? (
+                                      <div className="flex h-full flex-col items-center justify-center gap-1 px-1">
+                                        <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cellLane.lineColors[0] ?? "#94a3b8" }} />
+                                        <span className="truncate font-medium text-ink">{cellLane.lineNames[0] || "Port"}</span>
+                                        <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                                          {cellLane.connections.map((connection, connectionIndex) => (
+                                            <span key={`${cellLane.id}:cell:${connectionIndex}`} style={{ color: connection.color ?? "#64748b" }}>
+                                              {connection.side === "left" ? "←" : connection.side === "right" ? "→" : connection.side === "up" ? "↑" : "↓"}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-300">{activeLaneId ? "Place" : ""}</span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </Fragment>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ) : null}
                 {selectedNodeStations.length === 0 ? (
@@ -281,6 +456,15 @@ export function RailwayMapInspector({
                 {selectedNodeStations.length === 0 && canRemoveSelectedTrackPoint ? (
                   <Button type="button" variant="outline" onClick={removeSelectedTrackPoint}>
                     Remove track point
+                  </Button>
+                ) : null}
+                <Button type="button" variant="outline" onClick={() => addNodeToGroup(selectedNode.id)}>
+                  <Plus className="h-4 w-4" />
+                  Add node to group
+                </Button>
+                {canRemoveSelectedNodeFromGroup ? (
+                  <Button type="button" variant="outline" onClick={removeSelectedNodeFromGroup}>
+                    Remove node from group
                   </Button>
                 ) : null}
                 <div className="space-y-2">
@@ -369,6 +553,36 @@ export function RailwayMapInspector({
                   <Badge>{selectedSegment.toNodeId}</Badge>
                   <Badge>{selectedSegment.geometry.kind}</Badge>
                   {selectedSegmentPolylinePoint?.segmentId === selectedSegment.id ? <Badge>Bend {selectedSegmentPolylinePoint.pointIndex + 1}</Badge> : null}
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">From port</span>
+                    <select
+                      value={selectedSegment.fromLaneId ?? ""}
+                      onChange={(event) => updateSelectedSegmentPort("from", event.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                    >
+                      {segmentFromPortOptions.map((option) => (
+                        <option key={option.value || "__auto"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">To port</span>
+                    <select
+                      value={selectedSegment.toLaneId ?? ""}
+                      onChange={(event) => updateSelectedSegmentPort("to", event.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                    >
+                      {segmentToPortOptions.map((option) => (
+                        <option key={option.value || "__auto"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" variant="outline" onClick={() => makeSegmentStraight(selectedSegment.id)}>

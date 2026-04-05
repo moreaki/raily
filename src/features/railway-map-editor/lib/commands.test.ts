@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RailwayMap } from "@/entities/railway-map/model/types";
 import {
+  addNodeLane,
   addSegmentPolylinePoint,
   assignLineToSegment,
   assignStationToNode,
@@ -12,6 +13,7 @@ import {
   insertTrackPointOnSegment,
   removeTrackPoint,
   removeSegmentPolylinePoint,
+  removeNodeLane,
   updateSegmentPolylinePoint,
 } from "@/features/railway-map-editor/lib/commands";
 
@@ -34,6 +36,8 @@ function makeMap(): RailwayMap {
         { id: "line-b", name: "B", color: "#dc2626", strokeWidth: 8, strokeStyle: "solid" },
       ],
       parallelTrackSpacing: 18,
+      nodeGroupCellWidth: 22,
+      nodeGroupCellHeight: 22,
       segmentIndicatorWidth: 16,
       selectedSegmentIndicatorBoost: 4,
       gridLineOpacity: 0.45,
@@ -189,6 +193,25 @@ describe("railway-map commands", () => {
 
     const mergedSegment = next.model.segments.find((segment) => segment.fromNodeId === "n1" && segment.toNodeId === "n2");
     expect(mergedSegment).toBeTruthy();
+  });
+
+  it("can add an empty lane to a node group explicitly", () => {
+    const next = addNodeLane(makeMap(), "n2").map;
+    expect(next.model.nodeLanes).toEqual([
+      {
+        id: "nl-n2-manual-1",
+        nodeId: "n2",
+        order: 0,
+        gridColumn: 1,
+        gridRow: 2,
+      },
+    ]);
+  });
+
+  it("can remove an empty lane from a node group explicitly", () => {
+    const withLane = addNodeLane(makeMap(), "n2").map;
+    const next = removeNodeLane(withLane, "n2", "nl-n2-manual-1");
+    expect(next.model.nodeLanes).toEqual([]);
   });
 
   it("deleteSheet removes sheet-owned nodes, stations, segments, and run references", () => {

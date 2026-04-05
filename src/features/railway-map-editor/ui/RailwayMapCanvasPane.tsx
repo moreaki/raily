@@ -185,6 +185,9 @@ type RailwayMapCanvasPaneProps = {
   setNodeAssignmentKindId: (value: string) => void;
   createStationAtNode: (nodeId: string, name: string, kindId: string) => void;
   deleteNodes: (nodeIds: string[]) => void;
+  addNodeToGroup: (nodeId: string) => void;
+  canRemoveNodeFromGroup: boolean;
+  removeNodeFromGroup: (nodeId: string, laneId: string) => void;
   canRemoveTrackPoint: boolean;
   removeTrackPoint: (nodeId: string) => void;
   completeSegmentAtNode: (nodeId: string, laneId: string | null, markerKey: string | null) => void;
@@ -205,7 +208,6 @@ type RailwayMapCanvasPaneProps = {
   makeSegmentPolyline: (segmentId: string) => void;
   addSegmentPolylinePoint: (segmentId: string, point?: MapPoint) => void;
   removeSegmentPolylinePoint: (segmentId: string, pointIndex: number) => void;
-  duplicateSegment: (segmentId: string) => void;
   deleteSegment: (segmentId: string) => void;
   canvasContextMenu: { x: number; y: number; point: MapPoint } | null;
   createTrackPointAtCanvasPoint: (point: MapPoint) => void;
@@ -316,6 +318,9 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     setNodeAssignmentKindId,
     createStationAtNode,
     deleteNodes,
+    addNodeToGroup,
+    canRemoveNodeFromGroup,
+    removeNodeFromGroup,
     canRemoveTrackPoint,
     removeTrackPoint,
     completeSegmentAtNode,
@@ -336,7 +341,6 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     makeSegmentPolyline,
     addSegmentPolylinePoint,
     removeSegmentPolylinePoint,
-    duplicateSegment,
     deleteSegment,
     canvasContextMenu,
     createTrackPointAtCanvasPoint,
@@ -842,6 +846,9 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               setNodeAssignmentKindId={setNodeAssignmentKindId}
               createStationAtNode={createStationAtNode}
               deleteNodes={deleteNodes}
+              addNodeToGroup={addNodeToGroup}
+              canRemoveNodeFromGroup={canRemoveNodeFromGroup}
+              removeNodeFromGroup={removeNodeFromGroup}
               canRemoveTrackPoint={canRemoveTrackPoint}
               removeTrackPoint={removeTrackPoint}
             />
@@ -861,7 +868,6 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               makeSegmentOrthogonal={makeSegmentOrthogonal}
               makeSegmentPolyline={makeSegmentPolyline}
               addSegmentPolylinePoint={addSegmentPolylinePoint}
-              duplicateSegment={duplicateSegment}
               deleteSegment={deleteSegment}
             />
           ) : null}
