@@ -112,6 +112,13 @@ The next planned geometry mode is `spline`.
 
 That is intended for smoother regional or suburban curves where elbows and polylines feel too mechanical. It is not part of the current persisted schema yet, but the editor is being structured so `spline` can be added later without replacing the existing segment model.
 
+## Current model and topology
+
+For the current object model, topology approach, and the known structural inconsistencies, see:
+
+- [Current model and topology](./docs/current-model-and-topology.md)
+- [Segment-based map plan](./docs/segment-based-map-plan.md)
+
 ## Long-term direction
 
 - Keep the editor web-based for rendering and interaction.
