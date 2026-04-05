@@ -18,6 +18,7 @@ import {
   DEFAULT_STATION_FONT_WEIGHT,
   DEFAULT_STATION_SYMBOL_SIZE,
   autoPlaceLabels,
+  pointToSegmentDistance,
 } from "@/features/railway-map-editor/lib/labels";
 import { clamp, pointOnPathAtHalf } from "@/features/railway-map-editor/lib/geometry";
 
@@ -366,7 +367,10 @@ export function makeSegmentPolyline(map: RailwayMap, segmentId: string) {
 export function addSegmentPolylinePoint(
   map: RailwayMap,
   segmentId: string,
-  snapPoint?: (point: MapPoint) => MapPoint,
+  options?: {
+    point?: MapPoint;
+    snapPoint?: (point: MapPoint) => MapPoint;
+  },
 ) {
   const segment = map.model.segments.find((candidate) => candidate.id === segmentId);
   if (!segment) return map;
@@ -375,14 +379,39 @@ export function addSegmentPolylinePoint(
   const sourcePoints = buildSegmentPoints(segment, nodesById);
   if (sourcePoints.length < 2) return map;
 
-  const insertedPoint = snapPoint ? snapPoint(pointOnPathAtHalf(sourcePoints)) : pointOnPathAtHalf(sourcePoints);
+  const nearestLegIndex = options?.point
+    ? sourcePoints.reduce(
+        (bestIndex, _, index) => {
+          if (index >= sourcePoints.length - 1 || !options.point) return bestIndex;
+          const currentDistance = pointToSegmentDistance(options.point, sourcePoints[index], sourcePoints[index + 1]);
+          const bestDistance = pointToSegmentDistance(options.point, sourcePoints[bestIndex], sourcePoints[bestIndex + 1]);
+          return currentDistance < bestDistance ? index : bestIndex;
+        },
+        0,
+      )
+    : sourcePoints.reduce(
+        (bestIndex, _, index) => {
+          if (index >= sourcePoints.length - 1) return bestIndex;
+          const currentLength = Math.hypot(sourcePoints[index + 1].x - sourcePoints[index].x, sourcePoints[index + 1].y - sourcePoints[index].y);
+          const bestLength = Math.hypot(sourcePoints[bestIndex + 1].x - sourcePoints[bestIndex].x, sourcePoints[bestIndex + 1].y - sourcePoints[bestIndex].y);
+          return currentLength > bestLength ? index : bestIndex;
+        },
+        0,
+      );
+  const midpoint = {
+    x: (sourcePoints[nearestLegIndex].x + sourcePoints[nearestLegIndex + 1].x) / 2,
+    y: (sourcePoints[nearestLegIndex].y + sourcePoints[nearestLegIndex + 1].y) / 2,
+  };
+  const insertedPoint = options?.snapPoint
+    ? options.snapPoint(options?.point ?? midpoint)
+    : (options?.point ?? midpoint);
   const existingPoints =
     segment.geometry.kind === "polyline"
       ? [...segment.geometry.points]
       : segment.geometry.kind === "orthogonal"
         ? [segment.geometry.elbow]
         : [];
-  const insertIndex = Math.ceil(existingPoints.length / 2);
+  const insertIndex = nearestLegIndex;
   existingPoints.splice(insertIndex, 0, insertedPoint);
 
   return {

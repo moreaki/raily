@@ -1,3 +1,4 @@
+import type { MapPoint } from "@/entities/railway-map/model/types";
 import { useState } from "react";
 
 export type NodeContextMenuState = {
@@ -13,6 +14,7 @@ export type SegmentContextMenuState = {
   segmentId: string;
   x: number;
   y: number;
+  point?: MapPoint;
 };
 
 export function useRailwayMapContextMenus() {

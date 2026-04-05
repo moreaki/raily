@@ -139,6 +139,18 @@ describe("railway-map commands", () => {
     }
   });
 
+  it("inserts a bend point near the clicked segment leg when a point is provided", () => {
+    const map = makeSegmentPolyline(makeMap(), "sg1");
+    const next = addSegmentPolylinePoint(map, "sg1", { point: { x: 80, y: 12 } });
+    const segment = next.model.segments.find((candidate) => candidate.id === "sg1");
+
+    expect(segment?.geometry.kind).toBe("polyline");
+    if (segment?.geometry.kind === "polyline") {
+      expect(segment.geometry.points).toHaveLength(2);
+      expect(segment.geometry.points[1]).toEqual({ x: 80, y: 12 });
+    }
+  });
+
   it("deleteNodes removes connected segments and line-run references", () => {
     const map = assignLineToSegment(makeMap(), "line-b", "sg1");
     const next = deleteNodes(map, ["n2"]);

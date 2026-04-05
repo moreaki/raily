@@ -1106,8 +1106,11 @@ export default function RailwayMapEditor() {
     updateMap((current) => updateSegmentOrthogonalElbowCommand(current, segmentId, elbow), options);
   }
 
-  function addSegmentPolylinePoint(segmentId: string) {
-    updateMap((current) => addSegmentPolylinePointCommand(current, segmentId, snapToGrid ? snapPointToGrid : undefined));
+  function addSegmentPolylinePoint(segmentId: string, point?: MapPoint) {
+    updateMap((current) => addSegmentPolylinePointCommand(current, segmentId, {
+      point,
+      snapPoint: snapToGrid ? snapPointToGrid : undefined,
+    }));
     setSelectedSegmentId(segmentId);
     setSegmentContextMenu(null);
   }
@@ -1360,10 +1363,12 @@ export default function RailwayMapEditor() {
     event.stopPropagation();
     setCanvasContextMenu(null);
     prepareSegmentSelectionForContextMenu(event, segmentId);
+    const point = svgRef.current ? getSvgPoint(svgRef.current, event.clientX, event.clientY) : null;
     setSegmentContextMenu({
       segmentId,
       x: event.clientX,
       y: event.clientY,
+      point: point ?? undefined,
     });
   }
 

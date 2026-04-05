@@ -1,3 +1,4 @@
+import type { MapPoint } from "@/entities/railway-map/model/types";
 import { CornerDownRight, Minus, Plus, Spline, Trash2 } from "lucide-react";
 import type { Line, Segment } from "@/entities/railway-map/model/types";
 
@@ -5,6 +6,7 @@ type SegmentContextMenuState = {
   segmentId: string;
   x: number;
   y: number;
+  point?: MapPoint;
 };
 
 type SegmentContextMenuProps = {
@@ -19,7 +21,7 @@ type SegmentContextMenuProps = {
   makeSegmentStraight: (segmentId: string) => void;
   makeSegmentOrthogonal: (segmentId: string) => void;
   makeSegmentPolyline: (segmentId: string) => void;
-  addSegmentPolylinePoint: (segmentId: string) => void;
+  addSegmentPolylinePoint: (segmentId: string, point?: MapPoint) => void;
   duplicateSegment: (segmentId: string) => void;
   deleteSegment: (segmentId: string) => void;
 };
@@ -118,7 +120,7 @@ export function SegmentContextMenu(props: SegmentContextMenuProps) {
       <button
         type="button"
         className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-        onClick={() => addSegmentPolylinePoint(contextMenuSegment.id)}
+        onClick={() => addSegmentPolylinePoint(contextMenuSegment.id, segmentContextMenu.point)}
       >
         <Plus className="h-4 w-4" />
         Add bend point

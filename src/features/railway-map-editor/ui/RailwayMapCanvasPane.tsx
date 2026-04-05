@@ -29,6 +29,7 @@ type SegmentContextMenuState = {
   segmentId: string;
   x: number;
   y: number;
+  point?: MapPoint;
 };
 
 type SegmentDrawState = {
@@ -189,7 +190,7 @@ type RailwayMapCanvasPaneProps = {
   makeSegmentStraight: (segmentId: string) => void;
   makeSegmentOrthogonal: (segmentId: string) => void;
   makeSegmentPolyline: (segmentId: string) => void;
-  addSegmentPolylinePoint: (segmentId: string) => void;
+  addSegmentPolylinePoint: (segmentId: string, point?: MapPoint) => void;
   duplicateSegment: (segmentId: string) => void;
   deleteSegment: (segmentId: string) => void;
   canvasContextMenu: { x: number; y: number; point: MapPoint } | null;
