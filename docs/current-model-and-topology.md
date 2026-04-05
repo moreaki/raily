@@ -61,6 +61,15 @@ This is also configuration, not geometry by itself.
 Saved in `config`:
 
 - `parallelTrackSpacing`
+- `nodeGroupCellWidth`
+- `nodeGroupCellHeight`
+- `hubOutlineMode`
+- `hubOutlineColor`
+- `hubOutlineStrokeStyle`
+- `hubOutlineScale`
+- `hubOutlineCornerRadius`
+- `hubOutlineStrokeWidth`
+- `hubOutlineConcaveFactor`
 - `segmentIndicatorWidth`
 - `selectedSegmentIndicatorBoost`
 - `gridLineOpacity`
@@ -91,6 +100,11 @@ Current fields:
 - `sheetId`
 - `x`
 - `y`
+- `showGroupOutline?`
+- `groupOutlineMode?`
+- `groupOutlineStrokeWidth?`
+- `groupOutlineColor?`
+- `groupOutlineStrokeStyle?`
 
 Important current meaning:
 
@@ -200,13 +214,18 @@ Current fields:
 - `id`
 - `nodeId`
 - `order`
+- `lineId?`
+- `gridColumn?`
+- `gridRow?`
 
 Important current meaning:
 
-- node lanes are derived / normalized topology aids
+- node lanes are still sanitized/normalized, but they are no longer just derived helpers
 - segment endpoints reference them through `fromLaneId` and `toLaneId`
-- they define how grouped station markers are rendered and ordered
-- they can now also be added explicitly by the user to widen a station / node group before all connecting segments exist
+- they define how grouped station markers are rendered, assigned, and ordered
+- they can be added explicitly by the user to widen a station / node group before all connecting segments exist
+- they can carry an explicit line identity
+- they can carry explicit grid placement inside the nodegroup editor
 
 Practical interpretation:
 
@@ -257,6 +276,30 @@ The intended mental model is now:
 - larger stops and hubs simply expose more lanes inside the same logical node
 
 ## 4. Geometry and topology are separated, but only partially
+
+- segment geometry is explicit authored path data
+- nodegroup topology is explicit enough to place ports and wire endpoints
+- line continuity is still represented partly by `lineRuns` and partly by port assignment
+- some sanitizer logic still participates in keeping the model coherent
+
+## 5. Nodegroups are now authored structure
+
+This is the most important recent shift.
+
+Nodegroups are no longer just a rendering consequence of parallel segments. They now have explicit authored structure through:
+
+- `nodeLanes`
+- per-lane line assignment
+- per-lane grid placement
+- explicit segment endpoint-to-port wiring
+- optional hub-outline display on the node
+
+So the intended mental model today is:
+
+- `MapNode` = group anchor
+- `NodeLane` = port inside that group
+- `Segment.fromLaneId/toLaneId` = which port the segment uses
+- nodegroup grid = authored internal station topology
 
 The topology says which nodes connect to which nodes.
 

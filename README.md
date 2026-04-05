@@ -10,6 +10,29 @@ Raily is a web-rendered application foundation for railway schematic editing.
 - Tailwind CSS
 - Zod
 - Yarn 4 (Plug'n'Play)
+- Vitest
+
+## Stack outlook
+
+The current stack is still a good fit for the editor.
+
+At the moment, the pressure points are:
+
+- editor-state complexity
+- topology-model complexity
+- large editor files
+
+not a mismatch between the app and React/Vite/TypeScript.
+
+So the recommended next step is not a framework migration, but a cleanup/stabilization round.
+
+The main cleanup targets are:
+
+- split the large command module by domain
+- split the inspector into smaller sections
+- split canvas rendering layers
+- add more topology-focused tests
+- consider introducing a versioned document schema before import becomes first-class
 
 ## Run
 
@@ -116,6 +139,7 @@ That is intended for smoother regional or suburban curves where elbows and polyl
 
 For the current object model, topology approach, and the known structural inconsistencies, see:
 
+- [Agent handoff](./AGENTS.md)
 - [Current model and topology](./docs/current-model-and-topology.md)
 - [Segment-based map plan](./docs/segment-based-map-plan.md)
 
