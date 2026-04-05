@@ -1,20 +1,13 @@
 import type { MouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, Trash2 } from "lucide-react";
-import { DEVELOPMENT_BOOTSTRAP_MAP, INITIAL_MAP, LINE_PRESETS } from "@/entities/railway-map/model/constants";
+import { INITIAL_MAP } from "@/entities/railway-map/model/constants";
 import { railwayMapSchema } from "@/entities/railway-map/model/schema";
 import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape, StationLabelFontWeight } from "@/entities/railway-map/model/types";
 import {
   buildSegmentPoints,
-  createDefaultLine,
-  createDefaultNodeForSheet,
-  createDefaultSheet,
   createDefaultStation,
-  createDefaultStationAtNode,
   createLineRunId,
-  createSegmentId,
-  createStationKindId,
-  createStraightSegmentForSheet,
   lineStrokeDasharray,
   sanitizeRailwayMap,
 } from "@/entities/railway-map/model/utils";
@@ -29,7 +22,6 @@ import {
   normalizeSearchValue,
   offsetPoints,
   pathFromPoints,
-  pointOnPathAtHalf,
   snapCoordinate,
   sortPointsForSide,
   withAnchoredSegmentEndpoints,
@@ -938,18 +930,6 @@ export default function RailwayMapEditor() {
     updateMap((current) => autoPlaceSheetLabels(current, currentSheetId));
   }
 
-  function updateCurrentSheetName(name: string) {
-    if (!currentSheet) return;
-
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        sheets: current.model.sheets.map((sheet) => (sheet.id === currentSheet.id ? { ...sheet, name } : sheet)),
-      },
-    }));
-  }
-
   function startRenamingSheet(sheetId: string, currentName: string) {
     setRenamingSheetId(sheetId);
     setSheetNameDraft(currentName);
@@ -1036,23 +1016,6 @@ export default function RailwayMapEditor() {
       };
     });
     setSelectedSegmentId(segmentId);
-  }
-
-  function deleteSelectedSegment() {
-    if (!selectedSegment) return;
-
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        segments: current.model.segments.filter((segment) => segment.id !== selectedSegment.id),
-        lineRuns: current.model.lineRuns.map((lineRun) => ({
-          ...lineRun,
-          segmentIds: lineRun.segmentIds.filter((segmentId) => segmentId !== selectedSegment.id),
-        })),
-      },
-    }));
-    setSegmentContextMenu(null);
   }
 
   function deleteSegment(segmentId: string) {
