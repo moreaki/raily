@@ -53,6 +53,7 @@ import {
 } from "@/features/railway-map-editor/lib/labels";
 import { useRailwayMapContextMenus } from "@/features/railway-map-editor/lib/useRailwayMapContextMenus";
 import { useRailwayMapHistory } from "@/features/railway-map-editor/lib/useRailwayMapHistory";
+import { useRailwayMapInteractions } from "@/features/railway-map-editor/lib/useRailwayMapInteractions";
 import { useRailwayMapKeyboardShortcuts } from "@/features/railway-map-editor/lib/useRailwayMapKeyboardShortcuts";
 import { useRailwayMapSelection } from "@/features/railway-map-editor/lib/useRailwayMapSelection";
 import { useRailwayMapViewport } from "@/features/railway-map-editor/lib/useRailwayMapViewport";
@@ -73,8 +74,6 @@ const ZOOM_STEP = 1.04;
 const WORLD_SIZE = 200000;
 const MIN_GRID_STEP = 4;
 const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12l-3 3-3-3'/><path d='M2 12l3-3 3 3'/><path d='M19.016 14v-1.95A7.05 7.05 0 0 0 8 6.22'/><path d='M16.016 17.845A7.05 7.05 0 0 1 5 12.015V10'/><path d='M5 10V9'/><path d='M19 15v-1'/></svg>") 12 12, crosshair`;
-const NODE_SEGMENT_LONG_PRESS_MS = 260;
-const NODE_SEGMENT_LONG_PRESS_MOVE_THRESHOLD = 6;
 
 type NodeMarker = {
   key: string;
@@ -206,28 +205,13 @@ export default function RailwayMapEditor() {
   const [manageSection, setManageSection] = useState<"development" | "lines" | "stationKinds">("lines");
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
   const [sheetNameDraft, setSheetNameDraft] = useState("");
-  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
-  const [draggingLabelStationId, setDraggingLabelStationId] = useState<string | null>(null);
-  const [rotatingLabelState, setRotatingLabelState] = useState<{
-    stationId: string;
-    center: MapPoint;
-    startAngle: number;
-    startRotation: number;
-  } | null>(null);
-  const [dragLastPoint, setDragLastPoint] = useState<{ x: number; y: number } | null>(null);
-  const [marqueeSelection, setMarqueeSelection] = useState<{ start: MapPoint; end: MapPoint } | null>(null);
-  const [pendingSegmentStart, setPendingSegmentStart] = useState<{ nodeId: string; laneId: string | null; markerKey: string | null } | null>(null);
-  const [segmentDrawState, setSegmentDrawState] = useState<{
-    nodeId: string;
-    laneId: string | null;
-    markerKey: string;
-    currentPoint: MapPoint;
-  } | null>(null);
   const {
     nodeContextMenu,
     setNodeContextMenu,
+    closeNodeContextMenu,
     segmentContextMenu,
     setSegmentContextMenu,
+    closeSegmentContextMenu,
     closeAllContextMenus,
     nodeAssignmentQuery,
     setNodeAssignmentQuery,
@@ -237,23 +221,8 @@ export default function RailwayMapEditor() {
   } = useRailwayMapContextMenus();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
-  const nodeDragSnapshotRef = useRef<{
-    startPoint: MapPoint;
-    positionsByNodeId: Map<string, MapPoint>;
-    labelOffsetsByStationId: Map<string, MapPoint>;
-  } | null>(null);
-  const nodeLongPressTimeoutRef = useRef<number | null>(null);
-  const nodeLongPressPressRef = useRef<{
-    nodeId: string;
-    laneId: string | null;
-    markerKey: string;
-    clientX: number;
-    clientY: number;
-    startPoint: MapPoint;
-  } | null>(null);
 
   const currentSheet = model.sheets.find((sheet) => sheet.id === currentSheetId) ?? null;
-  const pendingSegmentStartNodeId = pendingSegmentStart?.nodeId ?? null;
   const contextMenuNodeId = nodeContextMenu?.nodeIds.length === 1 ? nodeContextMenu.nodeIds[0] : null;
   const contextMenuNode = contextMenuNodeId ? model.nodes.find((node) => node.id === contextMenuNodeId) ?? null : null;
   const contextMenuSegment = segmentContextMenu ? model.segments.find((segment) => segment.id === segmentContextMenu.segmentId) ?? null : null;
@@ -815,15 +784,6 @@ export default function RailwayMapEditor() {
       closeAllContextMenus();
     }
   }
-
-  function clearCanvasSelections() {
-    clearPrimarySelection();
-    setPendingSegmentStart(null);
-    setSegmentDrawState(null);
-    setNodeContextMenu(null);
-    setRotatingLabelState(null);
-    clearNodeLongPress();
-  }
   function addStation() {
     const nextKindId = newStationKindId || (config.stationKinds[0]?.id ?? "");
     updateMap((current) => ({
@@ -1013,9 +973,7 @@ export default function RailwayMapEditor() {
     });
     setViewportCenter({ x: 620, y: 955 });
     setZoom(0.46);
-    setMarqueeSelection(null);
-    setNodeContextMenu(null);
-    setPendingSegmentStart(null);
+    clearCanvasSelections();
   }
 
   function autoPlaceCurrentSheetLabels() {
@@ -1544,34 +1502,6 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
   }
 
-  function clearNodeLongPress() {
-    if (nodeLongPressTimeoutRef.current !== null) {
-      window.clearTimeout(nodeLongPressTimeoutRef.current);
-      nodeLongPressTimeoutRef.current = null;
-    }
-    nodeLongPressPressRef.current = null;
-  }
-
-  function beginSegmentDrawFromNode(nodeId: string, laneId: string | null, markerKey: string, startPoint: MapPoint) {
-    clearNodeLongPress();
-    setDraggingNodeId(null);
-    setDragLastPoint(null);
-    nodeDragSnapshotRef.current = null;
-    setSegmentDrawState({
-      nodeId,
-      laneId,
-      markerKey,
-      currentPoint: startPoint,
-    });
-    setPendingSegmentStart({ nodeId, laneId, markerKey });
-  }
-
-  function cancelSegmentDraw() {
-    clearNodeLongPress();
-    setSegmentDrawState(null);
-    setPendingSegmentStart(null);
-  }
-
   function updateStationKind(kindId: string, patch: Partial<StationKind>) {
     updateMap((current) => ({
       ...current,
@@ -1581,549 +1511,84 @@ export default function RailwayMapEditor() {
       },
     }));
   }
-
-  function createSegmentFromPendingNode(nextNodeId: string, nextLaneId: string | null) {
-    if (!currentSheet) return;
-    if (!pendingSegmentStart) {
-      setPendingSegmentStart({ nodeId: nextNodeId, laneId: nextLaneId, markerKey: null });
-      return;
-    }
-    if (pendingSegmentStart.nodeId === nextNodeId) {
-      setPendingSegmentStart({ nodeId: nextNodeId, laneId: nextLaneId, markerKey: null });
-      return;
-    }
-    const existingSegment = currentSegments.find(
-      (segment) =>
-        ((segment.fromNodeId === pendingSegmentStart.nodeId &&
-          segment.toNodeId === nextNodeId &&
-          (segment.fromLaneId ?? null) === (pendingSegmentStart.laneId ?? null) &&
-          (segment.toLaneId ?? null) === (nextLaneId ?? null)) ||
-          (segment.fromNodeId === nextNodeId &&
-            segment.toNodeId === pendingSegmentStart.nodeId &&
-            (segment.fromLaneId ?? null) === (nextLaneId ?? null) &&
-            (segment.toLaneId ?? null) === (pendingSegmentStart.laneId ?? null))),
-    );
-
-    if (existingSegment) {
-      setSelectedSegmentId(existingSegment.id);
-      setPendingSegmentStart(null);
-      return;
-    }
-
-    const segment = {
-      ...createStraightSegmentForSheet(currentSheet.id, pendingSegmentStart.nodeId, nextNodeId),
-      fromLaneId: pendingSegmentStart.laneId ?? undefined,
-      toLaneId: nextLaneId ?? undefined,
-    };
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        segments: [...current.model.segments, segment],
-      },
-    }));
-    setSelectedSegmentId(segment.id);
-    setPendingSegmentStart(null);
-  }
-
-  function startSegmentFromNode(nodeId: string, laneId: string | null, markerKey: string | null) {
-    setSelectedNodeId(nodeId);
-    setSelectedNodeIds([nodeId]);
-    setSelectedNodeMarkerKey(markerKey);
-    setSegmentDrawState(null);
-    setPendingSegmentStart({ nodeId, laneId, markerKey });
-    setNodeContextMenu(null);
-  }
-
-  function cancelPendingSegment() {
-    cancelSegmentDraw();
-    setNodeContextMenu(null);
-  }
-
-  function completeSegmentAtNode(nodeId: string, laneId: string | null, markerKey: string | null) {
-    selectSingleNode(nodeId);
-    setSelectedNodeMarkerKey(markerKey);
-    createSegmentFromPendingNode(nodeId, laneId);
-    setNodeContextMenu(null);
-  }
-
-  function handleNodeMouseDown(
-    event: MouseEvent<SVGGElement>,
-    nodeId: string,
-    markerKey: string,
-    segmentIds: string[],
-    laneId: string | null,
-  ) {
-    event.stopPropagation();
-    clearNodeLongPress();
-    setNodeContextMenu(null);
-    setSegmentContextMenu(null);
-    setSidePanel("edit");
-    if (event.altKey) {
-      setPanning(true);
-      setPanStart({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        centerX: viewportCenter.x,
-        centerY: viewportCenter.y,
-      });
-      return;
-    }
-    if (event.metaKey) {
-      setSelectedNodeIds((current) => {
-        if (current.includes(nodeId)) {
-          const next = current.filter((value) => value !== nodeId);
-          setSelectedNodeId(next[0] ?? "");
-          if (selectedNodeMarkerKey === markerKey) {
-            setSelectedNodeMarkerKey(null);
-          }
-          if (selectedStationId && currentStations.find((station) => station.id === selectedStationId)?.nodeId === nodeId) {
-            setSelectedStationId("");
-          }
-          if (segmentIds.includes(selectedSegmentId)) {
-            setSelectedSegmentId("");
-          }
-          return next;
-        }
-
-        const next = [...current, nodeId];
-        setSelectedNodeId(nodeId);
-        setSelectedNodeMarkerKey(markerKey);
-        const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
-        setSelectedStationId(station?.id ?? "");
-        setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
-        return next;
-      });
-    } else if (!selectedNodeIdsSet.has(nodeId)) {
-      selectSingleNode(nodeId);
-      setSelectedNodeMarkerKey(markerKey);
-      setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
-    } else {
-      setSelectedNodeId(nodeId);
-      setSelectedNodeMarkerKey(markerKey);
-      const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
-      if (station) setSelectedStationId(station.id);
-      setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
-    }
-
-    setDraggingNodeId(nodeId);
-    if (svgRef.current) {
-      const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-      if (point) {
-        setDragLastPoint({ x: point.x, y: point.y });
-        const nodeIdsToMove = selectedNodeIdsSet.has(nodeId) ? selectedNodeIds : [nodeId];
-        nodeDragSnapshotRef.current = {
-          startPoint: { x: point.x, y: point.y },
-          positionsByNodeId: new Map(
-            model.nodes
-              .filter((node) => nodeIdsToMove.includes(node.id))
-              .map((node) => [node.id, { x: node.x, y: node.y }]),
-          ),
-          labelOffsetsByStationId: new Map(
-            model.stations
-              .filter((station) => !!station.nodeId && nodeIdsToMove.includes(station.nodeId) && !!station.label)
-              .map((station) => {
-                const node = model.nodes.find((candidate) => candidate.id === station.nodeId)!;
-                return [
-                  station.id,
-                  {
-                    x: station.label!.x - node.x,
-                    y: station.label!.y - node.y,
-                  },
-                ];
-              }),
-          ),
-        };
-        nodeLongPressPressRef.current = {
-          nodeId,
-          laneId,
-          markerKey,
-          clientX: event.clientX,
-          clientY: event.clientY,
-          startPoint: point,
-        };
-        nodeLongPressTimeoutRef.current = window.setTimeout(() => {
-          const press = nodeLongPressPressRef.current;
-          if (!press) return;
-          if (press.nodeId !== nodeId || press.markerKey !== markerKey) return;
-          beginSegmentDrawFromNode(nodeId, laneId, markerKey, press.startPoint);
-        }, NODE_SEGMENT_LONG_PRESS_MS);
-      }
-    }
-  }
-
-  function handleNodeMouseUp(event: MouseEvent<SVGGElement>, nodeId: string, markerKey: string, laneId: string | null) {
-    if (!segmentDrawState) {
-      clearNodeLongPress();
-      return;
-    }
-
-    event.stopPropagation();
-    clearNodeLongPress();
-    setDraggingNodeId(null);
-    setDragLastPoint(null);
-    nodeDragSnapshotRef.current = null;
-
-    if (segmentDrawState.nodeId === nodeId && segmentDrawState.markerKey === markerKey) {
-      cancelSegmentDraw();
-      return;
-    }
-
-    setSegmentDrawState(null);
-    completeSegmentAtNode(nodeId, laneId, markerKey);
-  }
-
-  function handleLabelMouseDown(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
-    event.stopPropagation();
-    clearNodeLongPress();
-    setNodeContextMenu(null);
-    setSegmentContextMenu(null);
-    setSidePanel("edit");
-    if (event.altKey) {
-      setPanning(true);
-      setPanStart({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        centerX: viewportCenter.x,
-        centerY: viewportCenter.y,
-      });
-      return;
-    }
-    setSelectedNodeId(nodeId);
-    setSelectedNodeIds([nodeId]);
-    setSelectedNodeMarkerKey(null);
-    setSelectedStationId(stationId);
-    setSelectedSegmentId("");
-    setDraggingNodeId(null);
-    setDraggingLabelStationId(stationId);
-    beginTransientMapChange();
-    if (svgRef.current) {
-      const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-      if (point) {
-        setDragLastPoint({ x: point.x, y: point.y });
-      }
-    }
-  }
-
-  function handleLabelRotateMouseDown(
-    event: MouseEvent<SVGRectElement>,
-    stationId: string,
-    nodeId: string,
-    center: MapPoint,
-    currentRotation: number,
-  ) {
-    event.stopPropagation();
-    clearNodeLongPress();
-    setNodeContextMenu(null);
-    setSegmentContextMenu(null);
-    setSidePanel("edit");
-    setSelectedNodeId(nodeId);
-    setSelectedNodeIds([nodeId]);
-    setSelectedNodeMarkerKey(null);
-    setSelectedStationId(stationId);
-    setSelectedSegmentId("");
-    setDraggingNodeId(null);
-    setDraggingLabelStationId(null);
-
-    if (!svgRef.current) return;
-    const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-    if (!point) return;
-
-    setRotatingLabelState({
-      stationId,
-      center,
-      startAngle: Math.atan2(point.y - center.y, point.x - center.x),
-      startRotation: currentRotation,
-    });
-    beginTransientMapChange();
-  }
+  const {
+    draggingNodeId,
+    draggingLabelStationId,
+    rotatingLabelState,
+    marqueeSelection,
+    pendingSegmentStart,
+    segmentDrawState,
+    nodeDragSnapshotRef,
+    startSegmentFromNode,
+    cancelPendingSegment,
+    completeSegmentAtNode,
+    clearCanvasSelections,
+    handleNodeMouseDown,
+    handleNodeMouseUp,
+    handleLabelMouseDown,
+    handleLabelRotateMouseDown,
+    handleCanvasMouseDown,
+    handleSegmentMouseDown,
+    handleSegmentContextMenu,
+    handleSvgMouseMove,
+    handleSvgMouseUp,
+    prepareStationContextMenu,
+    prepareNodeContextMenu,
+  } = useRailwayMapInteractions({
+    svgRef,
+    model,
+    currentSheetId,
+    currentSheetExists: !!currentSheet,
+    currentSegments,
+    currentStations,
+    selectedNodeIds,
+    selectedNodeIdsSet,
+    selectedNodeMarkerKey,
+    selectedStationId,
+    selectedSegmentId,
+    lineIdBySegmentId,
+    viewportCenter,
+    panning,
+    panStart,
+    setPanning,
+    setPanStart,
+    viewBox,
+    canvasWidth: CANVAS_WIDTH,
+    canvasHeight: CANVAS_HEIGHT,
+    snapToGrid,
+    snapPointToGrid,
+    updateMap,
+    beginTransientMapChange,
+    completeTransientMapChange,
+    selectSingleNode,
+    clearPrimarySelection,
+    setSelectedNodeId,
+    setSelectedNodeIds,
+    setSelectedNodeMarkerKey,
+    setSelectedStationId,
+    setSelectedSegmentId,
+    setSelectedLineId,
+    setSidePanel,
+    closeAllContextMenus,
+    closeNodeContextMenu,
+    closeSegmentContextMenu,
+    resetNodeAssignmentDrafts,
+    setViewportCenter,
+  });
+  const pendingSegmentStartNodeId = pendingSegmentStart?.nodeId ?? null;
 
   function handleStationContextMenu(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
     event.preventDefault();
     event.stopPropagation();
-    clearNodeLongPress();
-    setSegmentContextMenu(null);
-    setSidePanel("edit");
-    setSelectedNodeId(nodeId);
-    setSelectedNodeIds([nodeId]);
-    setSelectedNodeMarkerKey(null);
-    setSelectedStationId(stationId);
-    setSelectedSegmentId("");
-    resetNodeAssignmentDrafts();
-    setNodeContextMenu({
-      nodeIds: [nodeId],
-      x: event.clientX,
-      y: event.clientY,
-      markerKey: null,
-      laneId: null,
-      segmentId: null,
-    });
-  }
-
-  function handleCanvasMouseDown(event: MouseEvent<SVGSVGElement>) {
-    if (event.target !== event.currentTarget) return;
-    clearNodeLongPress();
-    setNodeContextMenu(null);
-    setSegmentContextMenu(null);
-    setDraggingNodeId(null);
-    setDraggingLabelStationId(null);
-    setRotatingLabelState(null);
-    setSegmentDrawState(null);
-    setPendingSegmentStart(null);
-    nodeDragSnapshotRef.current = null;
-    if (!svgRef.current) return;
-    const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-    if (!point) return;
-
-    if (event.altKey) {
-      setPanning(true);
-      setPanStart({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        centerX: viewportCenter.x,
-        centerY: viewportCenter.y,
-      });
-      return;
-    }
-
-    setMarqueeSelection({ start: { x: point.x, y: point.y }, end: { x: point.x, y: point.y } });
-  }
-
-  function handleSegmentMouseDown(segmentId: string) {
-    clearNodeLongPress();
-    setNodeContextMenu(null);
-    setSegmentContextMenu(null);
-    setSidePanel("edit");
-    setSelectedNodeMarkerKey(null);
-    setSelectedSegmentId(segmentId);
-    setSelectedLineId(lineIdBySegmentId.get(segmentId) ?? "");
-    setSelectedNodeId("");
-    setSelectedNodeIds([]);
-    setSelectedStationId("");
-
-  }
-
-  function handleSegmentContextMenu(event: MouseEvent<SVGPathElement>, segmentId: string) {
-    event.preventDefault();
-    event.stopPropagation();
-    clearNodeLongPress();
-    setNodeContextMenu(null);
-    setSelectedNodeMarkerKey(null);
-    setSelectedSegmentId(segmentId);
-    setSelectedLineId(lineIdBySegmentId.get(segmentId) ?? "");
-    setSelectedNodeId("");
-    setSelectedNodeIds([]);
-    setSelectedStationId("");
-    setSegmentContextMenu({
-      segmentId,
-      x: event.clientX,
-      y: event.clientY,
-    });
-  }
-
-  function handleSvgMouseMove(event: MouseEvent<SVGSVGElement>) {
-    if (!svgRef.current) return;
-    const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-    if (!svgPoint) return;
-
-    if (segmentDrawState) {
-      setSegmentDrawState((current) => (current ? { ...current, currentPoint: svgPoint } : current));
-      return;
-    }
-
-    if (marqueeSelection) {
-      setMarqueeSelection((current) => (current ? { ...current, end: { x: svgPoint.x, y: svgPoint.y } } : current));
-      return;
-    }
-
-    if (panning && panStart) {
-      const deltaX = ((event.clientX - panStart.clientX) / CANVAS_WIDTH) * viewBox.width;
-      const deltaY = ((event.clientY - panStart.clientY) / CANVAS_HEIGHT) * viewBox.height;
-      setViewportCenter({
-        x: panStart.centerX - deltaX,
-        y: panStart.centerY - deltaY,
-      });
-      return;
-    }
-
-    if (rotatingLabelState) {
-      const nextAngle = Math.atan2(svgPoint.y - rotatingLabelState.center.y, svgPoint.x - rotatingLabelState.center.x);
-      const nextRotation = normalizeRotation(
-        rotatingLabelState.startRotation + ((nextAngle - rotatingLabelState.startAngle) * 180) / Math.PI,
-      );
-
-      updateMap((current) => ({
-        ...current,
-        model: {
-          ...current.model,
-          stations: current.model.stations.map((station) => {
-            if (station.id !== rotatingLabelState.stationId) return station;
-            const stationNode = station.nodeId ? current.model.nodes.find((node) => node.id === station.nodeId) : null;
-            return {
-              ...station,
-              label: {
-                x: station.label?.x ?? ((stationNode?.x ?? 0) + 12),
-                y: station.label?.y ?? ((stationNode?.y ?? 0) - 10),
-                align: station.label?.align ?? "right",
-                rotation: nextRotation,
-              },
-            };
-          }),
-        },
-      }), { trackHistory: false });
-      return;
-    }
-
-    if (draggingLabelStationId && dragLastPoint) {
-      const deltaX = Math.round(svgPoint.x - dragLastPoint.x);
-      const deltaY = Math.round(svgPoint.y - dragLastPoint.y);
-      if (deltaX === 0 && deltaY === 0) return;
-
-      updateMap((current) => ({
-        ...current,
-        model: {
-          ...current.model,
-          stations: current.model.stations.map((station) => {
-            if (station.id !== draggingLabelStationId) return station;
-            const stationNode = station.nodeId ? current.model.nodes.find((node) => node.id === station.nodeId) : null;
-            return {
-              ...station,
-              label: {
-                ...station.label,
-                x: (station.label?.x ?? ((stationNode?.x ?? 0) + 12)) + deltaX,
-                y: (station.label?.y ?? ((stationNode?.y ?? 0) - 10)) + deltaY,
-                align: station.label?.align ?? "right",
-              },
-            };
-          }),
-        },
-      }), { trackHistory: false });
-      setDragLastPoint({ x: svgPoint.x, y: svgPoint.y });
-      return;
-    }
-
-    if (!draggingNodeId) return;
-    const dragSnapshot = nodeDragSnapshotRef.current;
-    if (!dragSnapshot) return;
-
-    const draggedNodeStart = dragSnapshot.positionsByNodeId.get(draggingNodeId);
-    if (!draggedNodeStart) return;
-
-    const rawDeltaX = svgPoint.x - dragSnapshot.startPoint.x;
-    const rawDeltaY = svgPoint.y - dragSnapshot.startPoint.y;
-    let deltaX = Math.round(rawDeltaX);
-    let deltaY = Math.round(rawDeltaY);
-
-    const longPress = nodeLongPressPressRef.current;
-    if (
-      longPress &&
-      (Math.abs(event.clientX - longPress.clientX) > NODE_SEGMENT_LONG_PRESS_MOVE_THRESHOLD ||
-        Math.abs(event.clientY - longPress.clientY) > NODE_SEGMENT_LONG_PRESS_MOVE_THRESHOLD)
-    ) {
-      clearNodeLongPress();
-    }
-
-    if (snapToGrid) {
-      const snappedTarget = snapPointToGrid({
-        x: draggedNodeStart.x + rawDeltaX,
-        y: draggedNodeStart.y + rawDeltaY,
-      });
-      deltaX = snappedTarget.x - draggedNodeStart.x;
-      deltaY = snappedTarget.y - draggedNodeStart.y;
-    }
-
-    if (deltaX === 0 && deltaY === 0) return;
-
-    beginTransientMapChange();
-
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        nodes: current.model.nodes.map((node) => {
-          const start = dragSnapshot.positionsByNodeId.get(node.id);
-          return start ? { ...node, x: start.x + deltaX, y: start.y + deltaY } : node;
-        }),
-        stations: current.model.stations.map((station) => {
-          if (!station.nodeId || !station.label) return station;
-          if (!dragSnapshot.positionsByNodeId.has(station.nodeId)) return station;
-          const startNode = dragSnapshot.positionsByNodeId.get(station.nodeId);
-          const labelOffset = dragSnapshot.labelOffsetsByStationId.get(station.id);
-          if (!startNode || !labelOffset) return station;
-          return {
-            ...station,
-            label: {
-              ...station.label,
-              x: startNode.x + deltaX + labelOffset.x,
-              y: startNode.y + deltaY + labelOffset.y,
-            },
-          };
-        }),
-      },
-    }), { trackHistory: false });
-  }
-
-  function handleSvgMouseUp() {
-    clearNodeLongPress();
-    completeTransientMapChange();
-    setRotatingLabelState(null);
-    if (segmentDrawState) {
-      setSegmentDrawState(null);
-      setPendingSegmentStart(null);
-    }
-    if (marqueeSelection) {
-      const rect = normalizeRect(marqueeSelection.start, marqueeSelection.end);
-      setMarqueeSelection(null);
-
-      if (rect.width < 4 && rect.height < 4) {
-        clearCanvasSelections();
-      } else {
-        const nextSelectedNodeIds = currentNodes
-          .filter((node) => node.x >= rect.minX && node.x <= rect.maxX && node.y >= rect.minY && node.y <= rect.maxY)
-          .map((node) => node.id);
-
-        setSelectedNodeIds(nextSelectedNodeIds);
-        setSelectedNodeId(nextSelectedNodeIds[0] ?? "");
-        setSelectedNodeMarkerKey(null);
-        const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
-        setSelectedStationId(firstStation?.id ?? "");
-        setSelectedSegmentId("");
-      }
-    }
-
-    setDraggingNodeId(null);
-    setDraggingLabelStationId(null);
-    setDragLastPoint(null);
-    nodeDragSnapshotRef.current = null;
-    setPanning(false);
-    setPanStart(null);
+    const nextMenu = prepareStationContextMenu(stationId, nodeId, event.clientX, event.clientY);
+    setNodeContextMenu(nextMenu);
   }
 
   function handleNodeContextMenu(event: MouseEvent<SVGGElement>, nodeId: string, markerKey: string, segmentIds: string[], laneId: string | null) {
     event.preventDefault();
     event.stopPropagation();
-    setSegmentContextMenu(null);
-    const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
-    if (!selectedNodeIdsSet.has(nodeId)) {
-      selectSingleNode(nodeId);
-      setSelectedStationId(station?.id ?? "");
-    }
-    if (selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length <= 1) {
-      setSelectedNodeId(nodeId);
-      setSelectedStationId(station?.id ?? "");
-    }
-    setSelectedNodeMarkerKey(markerKey);
-    setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
-    const nodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
-    resetNodeAssignmentDrafts();
-    setNodeContextMenu({
-      nodeIds,
-      x: event.clientX,
-      y: event.clientY,
-      markerKey,
-      laneId,
-      segmentId: segmentIds.length === 1 ? segmentIds[0] : null,
-    });
+    const nextMenu = prepareNodeContextMenu(nodeId, markerKey, segmentIds, laneId, event.clientX, event.clientY);
+    setNodeContextMenu(nextMenu);
   }
 
   function exportSvg() {
