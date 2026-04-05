@@ -3,7 +3,7 @@ import { buildSegmentPoints } from "@/entities/railway-map/model/utils";
 import { clamp } from "@/features/railway-map-editor/lib/geometry";
 
 export const LABEL_FONT_SIZE = 14;
-const LABEL_PADDING_X = 10;
+const LABEL_PADDING_X = 6;
 const LABEL_PADDING_Y = 8;
 export const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, sans-serif';
 export const DEFAULT_STATION_FONT_WEIGHT: StationLabelFontWeight = "600";
@@ -51,8 +51,48 @@ export function rotatePoint(point: MapPoint, center: MapPoint, rotation: number)
   };
 }
 
+function estimateTextWidth(label: string, fontSize: number) {
+  const normalized = label.normalize("NFD").replace(/\p{Diacritic}+/gu, "");
+  let width = 0;
+
+  for (const char of normalized) {
+    if (char === " ") {
+      width += fontSize * 0.33;
+      continue;
+    }
+    if (/[.,:;!'"`|]/.test(char)) {
+      width += fontSize * 0.22;
+      continue;
+    }
+    if (/[-_/()]/.test(char)) {
+      width += fontSize * 0.3;
+      continue;
+    }
+    if (/[iljftI]/.test(char)) {
+      width += fontSize * 0.32;
+      continue;
+    }
+    if (/[mwMW@#&%]/.test(char)) {
+      width += fontSize * 0.82;
+      continue;
+    }
+    if (/[A-ZÀ-Ý]/.test(char)) {
+      width += fontSize * 0.62;
+      continue;
+    }
+    if (/[0-9]/.test(char)) {
+      width += fontSize * 0.56;
+      continue;
+    }
+
+    width += fontSize * 0.5;
+  }
+
+  return Math.max(fontSize * 1.4, width);
+}
+
 export function estimateLabelBox(label: string, x: number, y: number, fontSize = LABEL_FONT_SIZE, rotation = 0): LabelBox {
-  const width = Math.max(38, label.length * (fontSize * 0.54));
+  const width = estimateTextWidth(label, fontSize);
   const height = fontSize + 8;
   const localMinX = x - LABEL_PADDING_X / 2;
   const localMaxX = x + width + LABEL_PADDING_X / 2;
