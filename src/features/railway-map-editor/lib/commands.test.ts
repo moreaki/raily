@@ -43,6 +43,7 @@ function makeMap(): RailwayMap {
       parallelTrackSpacing: 18,
       nodeGroupCellWidth: 22,
       nodeGroupCellHeight: 22,
+      hubOutlineScale: 1,
       hubOutlineCornerRadius: 10,
       hubOutlineStrokeWidth: 3.25,
       hubOutlineConcaveFactor: 0.45,

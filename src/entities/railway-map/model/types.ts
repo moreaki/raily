@@ -28,6 +28,9 @@ export interface MapNode extends MapPoint {
   sheetId: string;
   showGroupOutline?: boolean;
   groupOutlineMode?: "box" | "cells";
+  groupOutlineStrokeWidth?: number;
+  groupOutlineColor?: string;
+  groupOutlineStrokeStyle?: LineStrokeStyle;
 }
 
 export interface NodeLane {
@@ -101,6 +104,7 @@ export interface RailwayMapConfig {
   parallelTrackSpacing: number;
   nodeGroupCellWidth: number;
   nodeGroupCellHeight: number;
+  hubOutlineScale: number;
   hubOutlineCornerRadius: number;
   hubOutlineStrokeWidth: number;
   hubOutlineConcaveFactor: number;

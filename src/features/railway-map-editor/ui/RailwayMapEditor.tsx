@@ -1494,6 +1494,13 @@ export default function RailwayMapEditor() {
     }));
   }
 
+  function updateHubOutlineScale(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: { ...current.config, hubOutlineScale: Math.min(2, Math.max(0.25, value || 1)) },
+    }));
+  }
+
   function updateHubOutlineStrokeWidth(value: number) {
     updateMap((current) => ({
       ...current,
@@ -1832,6 +1839,7 @@ export default function RailwayMapEditor() {
             setGridStepY={setGridStepY}
             nodeGroupCellWidth={config.nodeGroupCellWidth}
             nodeGroupCellHeight={config.nodeGroupCellHeight}
+            hubOutlineScale={config.hubOutlineScale}
             hubOutlineCornerRadius={config.hubOutlineCornerRadius}
             hubOutlineStrokeWidth={config.hubOutlineStrokeWidth}
             hubOutlineConcaveFactor={config.hubOutlineConcaveFactor}
@@ -2039,6 +2047,7 @@ export default function RailwayMapEditor() {
                     <RailwayMapSettings
                       nodeGroupCellWidth={nodeGroupCellWidth}
                       nodeGroupCellHeight={nodeGroupCellHeight}
+                      hubOutlineScale={config.hubOutlineScale}
                       hubOutlineCornerRadius={config.hubOutlineCornerRadius}
                       hubOutlineStrokeWidth={config.hubOutlineStrokeWidth}
                       hubOutlineConcaveFactor={config.hubOutlineConcaveFactor}
@@ -2048,6 +2057,7 @@ export default function RailwayMapEditor() {
                       labelAxisSnapSensitivity={config.labelAxisSnapSensitivity}
                       updateNodeGroupCellWidth={updateNodeGroupCellWidth}
                       updateNodeGroupCellHeight={updateNodeGroupCellHeight}
+                      updateHubOutlineScale={updateHubOutlineScale}
                       updateHubOutlineCornerRadius={updateHubOutlineCornerRadius}
                       updateHubOutlineStrokeWidth={updateHubOutlineStrokeWidth}
                       updateHubOutlineConcaveFactor={updateHubOutlineConcaveFactor}

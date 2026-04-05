@@ -331,8 +331,8 @@ export function RailwayMapInspector({
                   <span>Show nodegroup as hub outline</span>
                 </label>
                 {(selectedNode.showGroupOutline ?? selectedNodeLanes.length > 1) && selectedNodeLanes.length > 1 ? (
-                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink">
-                    <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Outline shape</span>
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink">
+                    <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Outline</span>
                     <select
                       value={selectedNode.groupOutlineMode ?? "box"}
                       onChange={(event) => updateNode({ groupOutlineMode: event.target.value as "box" | "cells" })}
@@ -341,7 +341,32 @@ export function RailwayMapInspector({
                       <option value="box">Bounding box</option>
                       <option value="cells">Follow cells</option>
                     </select>
-                  </label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={12}
+                      step={0.25}
+                      value={selectedNode.groupOutlineStrokeWidth ?? ""}
+                      onChange={(event) => updateNode({ groupOutlineStrokeWidth: event.target.value ? Number(event.target.value) : undefined })}
+                      placeholder="Width"
+                      className="h-9 w-24 bg-white"
+                    />
+                    <Input
+                      type="color"
+                      value={selectedNode.groupOutlineColor ?? "#111827"}
+                      onChange={(event) => updateNode({ groupOutlineColor: event.target.value })}
+                      className="h-9 w-14 bg-white p-1"
+                    />
+                    <select
+                      value={selectedNode.groupOutlineStrokeStyle ?? "solid"}
+                      onChange={(event) => updateNode({ groupOutlineStrokeStyle: event.target.value as "solid" | "dashed" | "dotted" })}
+                      className="h-9 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                    >
+                      <option value="solid">Solid</option>
+                      <option value="dashed">Dashed</option>
+                      <option value="dotted">Dotted</option>
+                    </select>
+                  </div>
                 ) : null}
                 {selectedNodeLanes.length > 0 ? (
                   <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3">

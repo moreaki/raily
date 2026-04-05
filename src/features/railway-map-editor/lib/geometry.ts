@@ -198,19 +198,18 @@ export function normalizeRect(start: MapPoint, end: MapPoint) {
 
 type GridOutlineCell = { column: number; row: number };
 
-function roundedOrthogonalPath(points: MapPoint[], cornerRadius: number, concaveFactor: number) {
+function roundedPolygonPath(points: MapPoint[], cornerRadius: number, smoothFactor: number) {
   if (points.length < 2) return "";
   if (points.length === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
 
-  const loop = points[0].x === points[points.length - 1].x && points[0].y === points[points.length - 1].y ? points : [...points, points[0]];
+  const loop = [...points, points[0]];
   let path = "";
 
-  for (let index = 0; index < loop.length - 1; index += 1) {
-    const prev = loop[(index - 1 + loop.length - 1) % (loop.length - 1)];
+  for (let index = 0; index < points.length; index += 1) {
+    const prev = loop[index === 0 ? points.length - 1 : index - 1];
     const current = loop[index];
     const next = loop[index + 1];
-    const after = loop[(index + 2) % (loop.length - 1)];
-    if (!prev || !current || !next || !after) continue;
+    if (!prev || !current || !next) continue;
 
     const inDx = current.x - prev.x;
     const inDy = current.y - prev.y;
@@ -220,9 +219,7 @@ function roundedOrthogonalPath(points: MapPoint[], cornerRadius: number, concave
     const outLength = Math.hypot(outDx, outDy);
     if (inLength === 0 || outLength === 0) continue;
 
-    const cross = (inDx / inLength) * (outDy / outLength) - (inDy / inLength) * (outDx / outLength);
-    const isConcave = cross > 0;
-    const radius = Math.min(cornerRadius * (isConcave ? concaveFactor : 1), inLength / 2, outLength / 2);
+    const radius = Math.min(cornerRadius * (0.5 + smoothFactor * 0.5), inLength / 2, outLength / 2);
     const start = { x: current.x - (inDx / inLength) * radius, y: current.y - (inDy / inLength) * radius };
     const end = { x: current.x + (outDx / outLength) * radius, y: current.y + (outDy / outLength) * radius };
 
@@ -237,6 +234,30 @@ function roundedOrthogonalPath(points: MapPoint[], cornerRadius: number, concave
   return `${path} Z`;
 }
 
+function convexHull(points: MapPoint[]) {
+  const sorted = [...points].sort((left, right) => (left.x === right.x ? left.y - right.y : left.x - right.x));
+  if (sorted.length <= 1) return sorted;
+
+  const cross = (origin: MapPoint, a: MapPoint, b: MapPoint) => (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x);
+  const lower: MapPoint[] = [];
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
+      lower.pop();
+    }
+    lower.push(point);
+  }
+  const upper: MapPoint[] = [];
+  for (const point of [...sorted].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
+      upper.pop();
+    }
+    upper.push(point);
+  }
+  lower.pop();
+  upper.pop();
+  return [...lower, ...upper];
+}
+
 export function buildNodeGroupCellsOutlinePath(
   cells: GridOutlineCell[],
   center: MapPoint,
@@ -246,47 +267,17 @@ export function buildNodeGroupCellsOutlinePath(
   concaveFactor: number,
 ) {
   if (cells.length === 0) return "";
-  const edgeMap = new Map<string, { start: MapPoint; end: MapPoint }>();
-
-  const addOrToggleEdge = (start: MapPoint, end: MapPoint) => {
-    const forward = `${start.x},${start.y}|${end.x},${end.y}`;
-    const reverse = `${end.x},${end.y}|${start.x},${start.y}`;
-    if (edgeMap.has(reverse)) {
-      edgeMap.delete(reverse);
-    } else {
-      edgeMap.set(forward, { start, end });
-    }
-  };
-
+  const corners: MapPoint[] = [];
   for (const cell of cells) {
     const x0 = center.x + (cell.column - 0.5) * cellWidth;
     const x1 = center.x + (cell.column + 0.5) * cellWidth;
     const y0 = center.y + (cell.row - 0.5) * cellHeight;
     const y1 = center.y + (cell.row + 0.5) * cellHeight;
-    addOrToggleEdge({ x: x0, y: y0 }, { x: x1, y: y0 });
-    addOrToggleEdge({ x: x1, y: y0 }, { x: x1, y: y1 });
-    addOrToggleEdge({ x: x1, y: y1 }, { x: x0, y: y1 });
-    addOrToggleEdge({ x: x0, y: y1 }, { x: x0, y: y0 });
+    corners.push({ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 });
   }
 
-  const remaining = new Map(edgeMap);
-  const firstEdge = remaining.values().next().value as { start: MapPoint; end: MapPoint } | undefined;
-  if (!firstEdge) return "";
-
-  const pathPoints: MapPoint[] = [firstEdge.start, firstEdge.end];
-  remaining.delete(`${firstEdge.start.x},${firstEdge.start.y}|${firstEdge.end.x},${firstEdge.end.y}`);
-
-  while (remaining.size > 0) {
-    const current = pathPoints[pathPoints.length - 1];
-    const nextEntry = [...remaining.entries()].find(([, edge]) => edge.start.x === current.x && edge.start.y === current.y);
-    if (!nextEntry) break;
-    const [key, edge] = nextEntry;
-    pathPoints.push(edge.end);
-    remaining.delete(key);
-    if (edge.end.x === pathPoints[0].x && edge.end.y === pathPoints[0].y) break;
-  }
-
-  return roundedOrthogonalPath(pathPoints, cornerRadius, concaveFactor);
+  const hull = convexHull(corners);
+  return roundedPolygonPath(hull, cornerRadius, concaveFactor);
 }
 
 export function normalizeSearchValue(value: string) {

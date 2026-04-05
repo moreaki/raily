@@ -107,6 +107,7 @@ type RailwayMapCanvasPaneProps = {
   setGridStepY: (value: number) => void;
   nodeGroupCellWidth: number;
   nodeGroupCellHeight: number;
+  hubOutlineScale: number;
   hubOutlineCornerRadius: number;
   hubOutlineStrokeWidth: number;
   hubOutlineConcaveFactor: number;
@@ -252,6 +253,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
   setGridStepY,
   nodeGroupCellWidth,
   nodeGroupCellHeight,
+  hubOutlineScale,
   hubOutlineCornerRadius,
   hubOutlineStrokeWidth,
   hubOutlineConcaveFactor,
@@ -632,10 +634,13 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                 const symbolSize = primaryStation ? stationKindsById.get(primaryStation.kindId)?.symbolSize ?? DEFAULT_STATION_SYMBOL_SIZE : DEFAULT_STATION_SYMBOL_SIZE;
                 const showGroupOutline = (node.showGroupOutline ?? (markers.length > 1)) && markers.length > 1;
                 const groupOutlineMode = node.groupOutlineMode ?? "box";
+                const outlineStrokeWidth = node.groupOutlineStrokeWidth ?? hubOutlineStrokeWidth;
+                const outlineStrokeColor = node.groupOutlineColor ?? "#111827";
+                const outlineStrokeStyle = node.groupOutlineStrokeStyle ?? "solid";
                 const xs = markers.map((marker) => marker.center.x);
                 const ys = markers.map((marker) => marker.center.y);
-                const outlinePaddingX = Math.max(nodeGroupCellWidth * 0.38, 12 * symbolSize);
-                const outlinePaddingY = Math.max(nodeGroupCellHeight * 0.38, 12 * symbolSize);
+                const outlinePaddingX = Math.max(nodeGroupCellWidth * 0.38, 12 * symbolSize) * hubOutlineScale;
+                const outlinePaddingY = Math.max(nodeGroupCellHeight * 0.38, 12 * symbolSize) * hubOutlineScale;
                 const nodeLaneLayout = nodeLaneLayoutByNodeId.get(node.id) ?? [];
                 const minColumn = nodeLaneLayout.length > 0 ? Math.min(...nodeLaneLayout.map((cell) => cell.column)) : 0;
                 const maxColumn = nodeLaneLayout.length > 0 ? Math.max(...nodeLaneLayout.map((cell) => cell.column)) : 0;
@@ -651,9 +656,9 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                           row: cell.row - centerRow,
                         })),
                         { x: node.x, y: node.y },
-                        nodeGroupCellWidth,
-                        nodeGroupCellHeight,
-                        hubOutlineCornerRadius,
+                        nodeGroupCellWidth * hubOutlineScale,
+                        nodeGroupCellHeight * hubOutlineScale,
+                        hubOutlineCornerRadius * hubOutlineScale,
                         hubOutlineConcaveFactor,
                       )
                     : "";
@@ -663,7 +668,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       y: Math.min(...ys) - outlinePaddingY,
                       width: Math.max(...xs) - Math.min(...xs) + outlinePaddingX * 2,
                       height: Math.max(...ys) - Math.min(...ys) + outlinePaddingY * 2,
-                      rx: hubOutlineCornerRadius,
+                      rx: hubOutlineCornerRadius * hubOutlineScale,
                     }
                   : null;
 
@@ -673,7 +678,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       <>
                         {primaryStation?.id === highlightedStationId ? (
                           outlinePath ? (
-                            <path d={outlinePath} fill="#fde68a" fillOpacity="0.2" stroke="#eab308" strokeWidth={hubOutlineStrokeWidth + 2} />
+                            <path d={outlinePath} fill="#fde68a" fillOpacity="0.2" stroke="#eab308" strokeWidth={outlineStrokeWidth + 2} />
                           ) : (
                             <rect
                               x={outlineRect!.x - 4}
@@ -689,7 +694,19 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                           )
                         ) : null}
                         {outlinePath ? (
-                          <path d={outlinePath} fill="white" stroke="#111827" strokeWidth={hubOutlineStrokeWidth} />
+                          <path
+                            d={outlinePath}
+                            fill="white"
+                            stroke={outlineStrokeColor}
+                            strokeWidth={outlineStrokeWidth}
+                            strokeDasharray={lineStrokeDasharray({
+                              id: "hub-outline",
+                              name: "Hub Outline",
+                              color: outlineStrokeColor,
+                              strokeWidth: outlineStrokeWidth,
+                              strokeStyle: outlineStrokeStyle,
+                            })}
+                          />
                         ) : (
                           <rect
                             x={outlineRect!.x}
@@ -698,8 +715,15 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                             height={outlineRect!.height}
                             rx={outlineRect!.rx}
                             fill="white"
-                            stroke="#111827"
-                            strokeWidth={hubOutlineStrokeWidth}
+                            stroke={outlineStrokeColor}
+                            strokeWidth={outlineStrokeWidth}
+                            strokeDasharray={lineStrokeDasharray({
+                              id: "hub-outline",
+                              name: "Hub Outline",
+                              color: outlineStrokeColor,
+                              strokeWidth: outlineStrokeWidth,
+                              strokeStyle: outlineStrokeStyle,
+                            })}
                           />
                         )}
                       </>

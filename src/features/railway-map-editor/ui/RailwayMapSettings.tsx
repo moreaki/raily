@@ -3,6 +3,7 @@ import { Input } from "@/shared/ui/input";
 type RailwayMapSettingsProps = {
   nodeGroupCellWidth: number;
   nodeGroupCellHeight: number;
+  hubOutlineScale: number;
   hubOutlineCornerRadius: number;
   hubOutlineStrokeWidth: number;
   hubOutlineConcaveFactor: number;
@@ -12,6 +13,7 @@ type RailwayMapSettingsProps = {
   labelAxisSnapSensitivity: number;
   updateNodeGroupCellWidth: (value: number) => void;
   updateNodeGroupCellHeight: (value: number) => void;
+  updateHubOutlineScale: (value: number) => void;
   updateHubOutlineCornerRadius: (value: number) => void;
   updateHubOutlineStrokeWidth: (value: number) => void;
   updateHubOutlineConcaveFactor: (value: number) => void;
@@ -24,6 +26,7 @@ type RailwayMapSettingsProps = {
 export function RailwayMapSettings({
   nodeGroupCellWidth,
   nodeGroupCellHeight,
+  hubOutlineScale,
   hubOutlineCornerRadius,
   hubOutlineStrokeWidth,
   hubOutlineConcaveFactor,
@@ -33,6 +36,7 @@ export function RailwayMapSettings({
   labelAxisSnapSensitivity,
   updateNodeGroupCellWidth,
   updateNodeGroupCellHeight,
+  updateHubOutlineScale,
   updateHubOutlineCornerRadius,
   updateHubOutlineStrokeWidth,
   updateHubOutlineConcaveFactor,
@@ -43,6 +47,7 @@ export function RailwayMapSettings({
 }: RailwayMapSettingsProps) {
   const safeNodeGroupCellWidth = nodeGroupCellWidth ?? 22;
   const safeNodeGroupCellHeight = nodeGroupCellHeight ?? 22;
+  const safeHubOutlineScale = hubOutlineScale ?? 1;
   const safeHubOutlineCornerRadius = hubOutlineCornerRadius ?? 10;
   const safeHubOutlineStrokeWidth = hubOutlineStrokeWidth ?? 3.25;
   const safeHubOutlineConcaveFactor = hubOutlineConcaveFactor ?? 0.45;
@@ -87,6 +92,18 @@ export function RailwayMapSettings({
       <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Hub Outline</div>
         <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Scale</span>
+            <Input
+              type="number"
+              min={0.25}
+              max={2}
+              step={0.05}
+              value={safeHubOutlineScale}
+              onChange={(event) => updateHubOutlineScale(Number(event.target.value) || safeHubOutlineScale)}
+              className="w-24"
+            />
+          </label>
           <label className="flex items-center gap-2 text-sm text-ink">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Radius</span>
             <Input
