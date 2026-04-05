@@ -198,6 +198,85 @@ export function normalizeRect(start: MapPoint, end: MapPoint) {
 
 type GridOutlineCell = { column: number; row: number };
 
+function areContiguous(values: number[]) {
+  if (values.length === 0) return false;
+  const sorted = [...values].sort((left, right) => left - right);
+  for (let index = 1; index < sorted.length; index += 1) {
+    if (sorted[index] !== sorted[index - 1] + 1) return false;
+  }
+  return true;
+}
+
+function buildCompressedRunPath(
+  cells: GridOutlineCell[],
+  center: MapPoint,
+  cellWidth: number,
+  cellHeight: number,
+  cornerRadius: number,
+  concavityFactor: number,
+) {
+  const rows = [...new Set(cells.map((cell) => cell.row))];
+  const columns = [...new Set(cells.map((cell) => cell.column))];
+  const horizontal = rows.length === 1 && areContiguous(columns);
+  const vertical = columns.length === 1 && areContiguous(rows);
+  if (!horizontal && !vertical) return "";
+
+  const concavity = Math.min(0.95, Math.max(0, concavityFactor));
+  const radius = cornerRadius;
+
+  if (horizontal) {
+    const sortedColumns = [...columns].sort((left, right) => left - right);
+    const left = center.x + (sortedColumns[0] - 0.5) * cellWidth;
+    const right = center.x + (sortedColumns[sortedColumns.length - 1] + 0.5) * cellWidth;
+    const row = rows[0];
+    const cy = center.y + row * cellHeight;
+    const top = cy - cellHeight / 2;
+    const bottom = cy + cellHeight / 2;
+    const seamX = center.x + ((sortedColumns[0] + sortedColumns[sortedColumns.length - 1]) / 2) * cellWidth;
+    const pinch = (cellHeight / 2) * concavity * 0.85;
+    const topPinchY = cy - Math.max(4, cellHeight / 2 - pinch);
+    const bottomPinchY = cy + Math.max(4, cellHeight / 2 - pinch);
+
+    return [
+      `M ${left + radius} ${top}`,
+      `Q ${left} ${top} ${left} ${top + radius}`,
+      `L ${left} ${bottom - radius}`,
+      `Q ${left} ${bottom} ${left + radius} ${bottom}`,
+      `Q ${seamX} ${bottomPinchY} ${right - radius} ${bottom}`,
+      `Q ${right} ${bottom} ${right} ${bottom - radius}`,
+      `L ${right} ${top + radius}`,
+      `Q ${right} ${top} ${right - radius} ${top}`,
+      `Q ${seamX} ${topPinchY} ${left + radius} ${top}`,
+      "Z",
+    ].join(" ");
+  }
+
+  const sortedRows = [...rows].sort((left, right) => left - right);
+  const column = columns[0];
+  const cx = center.x + column * cellWidth;
+  const top = center.y + (sortedRows[0] - 0.5) * cellHeight;
+  const bottom = center.y + (sortedRows[sortedRows.length - 1] + 0.5) * cellHeight;
+  const left = cx - cellWidth / 2;
+  const right = cx + cellWidth / 2;
+  const seamY = center.y + ((sortedRows[0] + sortedRows[sortedRows.length - 1]) / 2) * cellHeight;
+  const pinch = (cellWidth / 2) * concavity * 0.85;
+  const leftPinchX = cx - Math.max(4, cellWidth / 2 - pinch);
+  const rightPinchX = cx + Math.max(4, cellWidth / 2 - pinch);
+
+  return [
+    `M ${left} ${top + radius}`,
+    `Q ${left} ${top} ${left + radius} ${top}`,
+    `L ${right - radius} ${top}`,
+    `Q ${right} ${top} ${right} ${top + radius}`,
+    `Q ${rightPinchX} ${seamY} ${right} ${bottom - radius}`,
+    `Q ${right} ${bottom} ${right - radius} ${bottom}`,
+    `L ${left + radius} ${bottom}`,
+    `Q ${left} ${bottom} ${left} ${bottom - radius}`,
+    `Q ${leftPinchX} ${seamY} ${left} ${top + radius}`,
+    "Z",
+  ].join(" ");
+}
+
 function roundedPolygonPath(points: MapPoint[], cornerRadius: number, smoothFactor: number) {
   if (points.length < 2) return "";
   if (points.length === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
@@ -267,6 +346,8 @@ export function buildNodeGroupCellsOutlinePath(
   concaveFactor: number,
 ) {
   if (cells.length === 0) return "";
+  const compressedRunPath = buildCompressedRunPath(cells, center, cellWidth, cellHeight, cornerRadius, concaveFactor);
+  if (compressedRunPath) return compressedRunPath;
   const corners: MapPoint[] = [];
   for (const cell of cells) {
     const x0 = center.x + (cell.column - 0.5) * cellWidth;
