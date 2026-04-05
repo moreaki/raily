@@ -34,6 +34,12 @@ type NodeDragSnapshot = {
   labelOffsetsByStationId: Map<string, MapPoint>;
 };
 
+type LabelDragSnapshot = {
+  stationId: string;
+  startPoint: MapPoint;
+  startLabel: MapPoint;
+};
+
 type MarqueeSelection = {
   start: MapPoint;
   end: MapPoint;
@@ -153,13 +159,13 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [draggingLabelStationId, setDraggingLabelStationId] = useState<string | null>(null);
   const [rotatingLabelState, setRotatingLabelState] = useState<RotatingLabelState | null>(null);
-  const [dragLastPoint, setDragLastPoint] = useState<{ x: number; y: number } | null>(null);
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null);
   const [pendingSegmentStart, setPendingSegmentStart] = useState<PendingSegmentStart | null>(null);
   const [segmentDrawState, setSegmentDrawState] = useState<SegmentDrawState | null>(null);
   const [labelAxisGuide, setLabelAxisGuide] = useState<LabelAxisGuide | null>(null);
 
   const nodeDragSnapshotRef = useRef<NodeDragSnapshot | null>(null);
+  const labelDragSnapshotRef = useRef<LabelDragSnapshot | null>(null);
   const labelAxisBreakoutRef = useRef<LabelAxisBreakoutState | null>(null);
   const nodeLongPressTimeoutRef = useRef<number | null>(null);
   const nodeLongPressPressRef = useRef<{
@@ -201,7 +207,6 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
   function beginSegmentDrawFromNode(nodeId: string, laneId: string | null, markerKey: string, startPoint: MapPoint) {
     clearNodeLongPress();
     setDraggingNodeId(null);
-    setDragLastPoint(null);
     nodeDragSnapshotRef.current = null;
     setSegmentDrawState({
       nodeId,
@@ -357,7 +362,6 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
     if (!point) return;
 
-    setDragLastPoint({ x: point.x, y: point.y });
     const nodeIdsToMove = selectedNodeIdsSet.has(nodeId) ? selectedNodeIds : [nodeId];
     nodeDragSnapshotRef.current = {
       startPoint: { x: point.x, y: point.y },
@@ -372,9 +376,13 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
           .map((station) => {
             const node = model.nodes.find((candidate) => candidate.id === station.nodeId)!;
             return [station.id, { x: station.label!.x - node.x, y: station.label!.y - node.y }];
-          }),
+        }),
       ),
     };
+    if (nodeIdsToMove.length > 1) {
+      nodeLongPressPressRef.current = null;
+      return;
+    }
     nodeLongPressPressRef.current = {
       nodeId,
       laneId,
@@ -400,7 +408,6 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     event.stopPropagation();
     clearNodeLongPress();
     setDraggingNodeId(null);
-    setDragLastPoint(null);
     nodeDragSnapshotRef.current = null;
 
     if (segmentDrawState.nodeId === nodeId && segmentDrawState.markerKey === markerKey) {
@@ -434,6 +441,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     setSelectedStationId(stationId);
     setSelectedSegmentId("");
     setDraggingNodeId(null);
+    labelDragSnapshotRef.current = null;
     setLabelAxisGuide(null);
     labelAxisBreakoutRef.current = {
       stationId,
@@ -446,9 +454,17 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     beginTransientMapChange();
     if (!svgRef.current) return;
     const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-    if (point) {
-      setDragLastPoint({ x: point.x, y: point.y });
-    }
+    if (!point) return;
+    const station = model.stations.find((candidate) => candidate.id === stationId);
+    const stationNode = station?.nodeId ? model.nodes.find((candidate) => candidate.id === station.nodeId) : null;
+    labelDragSnapshotRef.current = {
+      stationId,
+      startPoint: point,
+      startLabel: {
+        x: station?.label?.x ?? ((stationNode?.x ?? 0) + 12),
+        y: station?.label?.y ?? ((stationNode?.y ?? 0) - 10),
+      },
+    };
   }
 
   function handleLabelRotateMouseDown(
@@ -606,9 +622,10 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
       return;
     }
 
-    if (draggingLabelStationId && dragLastPoint) {
-      const deltaX = Math.round(svgPoint.x - dragLastPoint.x);
-      const deltaY = Math.round(svgPoint.y - dragLastPoint.y);
+    if (draggingLabelStationId && labelDragSnapshotRef.current?.stationId === draggingLabelStationId) {
+      const labelDragSnapshot = labelDragSnapshotRef.current;
+      const deltaX = Math.round(svgPoint.x - labelDragSnapshot.startPoint.x);
+      const deltaY = Math.round(svgPoint.y - labelDragSnapshot.startPoint.y);
       if (deltaX === 0 && deltaY === 0) return;
 
       updateMap((current) => ({
@@ -621,8 +638,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
             const stationKind = stationKindsById.get(station.kindId);
             const nextLabel = {
               ...station.label,
-              x: (station.label?.x ?? ((stationNode?.x ?? 0) + 12)) + deltaX,
-              y: (station.label?.y ?? ((stationNode?.y ?? 0) - 10)) + deltaY,
+              x: labelDragSnapshot.startLabel.x + deltaX,
+              y: labelDragSnapshot.startLabel.y + deltaY,
               align: station.label?.align ?? "right",
               rotation: station.label?.rotation ?? 0,
             };
@@ -768,7 +785,6 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
           }),
         },
       }), { trackHistory: false });
-      setDragLastPoint({ x: svgPoint.x, y: svgPoint.y });
       return;
     }
 
@@ -862,8 +878,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
     setLabelAxisGuide(null);
+    labelDragSnapshotRef.current = null;
     labelAxisBreakoutRef.current = null;
-    setDragLastPoint(null);
     nodeDragSnapshotRef.current = null;
     setPanning(false);
     setPanStart(null);

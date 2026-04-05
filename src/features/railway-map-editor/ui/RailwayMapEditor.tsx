@@ -1205,7 +1205,7 @@ export default function RailwayMapEditor() {
     handleLabelRotateMouseDown,
     handleCanvasMouseDown,
     handleSegmentMouseDown,
-    handleSegmentContextMenu,
+    handleSegmentContextMenu: prepareSegmentSelectionForContextMenu,
     handleSvgMouseMove,
     handleSvgMouseUp,
     prepareStationContextMenu,
@@ -1264,6 +1264,17 @@ export default function RailwayMapEditor() {
     event.stopPropagation();
     const nextMenu = prepareNodeContextMenu(nodeId, markerKey, segmentIds, laneId, event.clientX, event.clientY);
     setNodeContextMenu(nextMenu);
+  }
+
+  function handleSegmentContextMenu(event: MouseEvent<SVGPathElement>, segmentId: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    prepareSegmentSelectionForContextMenu(event, segmentId);
+    setSegmentContextMenu({
+      segmentId,
+      x: event.clientX,
+      y: event.clientY,
+    });
   }
 
   function exportSvg() {
@@ -1459,12 +1470,13 @@ export default function RailwayMapEditor() {
                       labelDiagnostics={labelDiagnostics}
                       selectedSegment={selectedSegment}
                       selectedLine={selectedLine}
-                      selectedLineId={selectedLineId}
-                      lines={config.lines}
-                      selectedLineRun={selectedLineRun}
-                      segmentsById={segmentsById}
-                      handleSelectedLineInspectorChange={handleSelectedLineInspectorChange}
-                    />
+              selectedLineId={selectedLineId}
+              lines={config.lines}
+              selectedLineRun={selectedLineRun}
+              segmentsById={segmentsById}
+              handleSelectedLineInspectorChange={handleSelectedLineInspectorChange}
+              insertTrackPointOnSegment={insertTrackPointOnSegment}
+            />
                   ) : (
                     <RailwayMapManagement
                       manageSection={manageSection}

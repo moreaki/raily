@@ -57,6 +57,7 @@ type RailwayMapInspectorProps = {
   selectedLineRun: LineRun | null;
   segmentsById: Map<string, Segment>;
   handleSelectedLineInspectorChange: (lineId: string) => void;
+  insertTrackPointOnSegment: (segmentId: string) => void;
 };
 
 export function RailwayMapInspector({
@@ -98,6 +99,7 @@ export function RailwayMapInspector({
   selectedLineRun,
   segmentsById,
   handleSelectedLineInspectorChange,
+  insertTrackPointOnSegment,
 }: RailwayMapInspectorProps) {
   return (
     <>
@@ -335,6 +337,12 @@ export function RailwayMapInspector({
                   <Badge>{selectedSegment.fromNodeId}</Badge>
                   <Badge>to</Badge>
                   <Badge>{selectedSegment.toNodeId}</Badge>
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => insertTrackPointOnSegment(selectedSegment.id)}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Insert track point
+                  </Button>
                 </div>
               </div>
             ) : (
