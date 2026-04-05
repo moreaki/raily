@@ -517,6 +517,62 @@ function candidateLabelPositions(node: MapNode) {
   );
 }
 
+function inferLabelAlign(node: MapNode, position: { x: number; y: number; align?: "left" | "right" | "top" | "bottom" }) {
+  if (position.align) return position.align;
+  const deltaX = position.x - node.x;
+  const deltaY = position.y - node.y;
+  if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+    return deltaX >= 0 ? "right" : "left";
+  }
+  return deltaY >= 0 ? "bottom" : "top";
+}
+
+function candidateBootstrapLabelPositions(station: Station, node: MapNode) {
+  const current = getStationLabelPosition(station, node);
+  const localOffsets = [
+    { x: 0, y: 0 },
+    { x: 12, y: 0 },
+    { x: -12, y: 0 },
+    { x: 0, y: -12 },
+    { x: 0, y: 12 },
+    { x: 18, y: 0 },
+    { x: -18, y: 0 },
+    { x: 0, y: -18 },
+    { x: 0, y: 18 },
+    { x: 12, y: -12 },
+    { x: 12, y: 12 },
+    { x: -12, y: -12 },
+    { x: -12, y: 12 },
+    { x: 24, y: 0 },
+    { x: -24, y: 0 },
+    { x: 0, y: -24 },
+    { x: 0, y: 24 },
+  ];
+
+  const localCandidates = localOffsets.map((offset) => {
+    const next = {
+      x: current.x + offset.x,
+      y: current.y + offset.y,
+      rotation: current.rotation ?? 0,
+    };
+    return {
+      ...next,
+      align: inferLabelAlign(node, next),
+    };
+  });
+
+  const fallbackCandidates = candidateLabelPositions(node).filter((candidate) => candidate.rotation === 0);
+  const uniqueCandidates = new Map<string, (typeof localCandidates)[number]>();
+  for (const candidate of [...localCandidates, ...fallbackCandidates]) {
+    const key = `${Math.round(candidate.x)}:${Math.round(candidate.y)}:${candidate.align}:${candidate.rotation ?? 0}`;
+    if (!uniqueCandidates.has(key)) {
+      uniqueCandidates.set(key, candidate);
+    }
+  }
+
+  return [...uniqueCandidates.values()];
+}
+
 function buildStationLineIdsByStationId(map: RailwayMap) {
   const segmentIdsByNodeId = new Map<string, Set<string>>();
 
@@ -626,6 +682,11 @@ function computeLabelPenalty(
     return {
       score: Number.POSITIVE_INFINITY,
       box: estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId)), position.rotation ?? 0),
+      overlapPenalty: Number.POSITIVE_INFINITY,
+      segmentPenalty: Number.POSITIVE_INFINITY,
+      offsetPenalty: Number.POSITIVE_INFINITY,
+      rotationPenalty: Number.POSITIVE_INFINITY,
+      alignmentPenalty: Number.POSITIVE_INFINITY,
     };
   }
 
@@ -634,6 +695,11 @@ function computeLabelPenalty(
     return {
       score: Number.POSITIVE_INFINITY,
       box: estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKindsById.get(station.kindId)), position.rotation ?? 0),
+      overlapPenalty: Number.POSITIVE_INFINITY,
+      segmentPenalty: Number.POSITIVE_INFINITY,
+      offsetPenalty: Number.POSITIVE_INFINITY,
+      rotationPenalty: Number.POSITIVE_INFINITY,
+      alignmentPenalty: Number.POSITIVE_INFINITY,
     };
   }
 
@@ -703,10 +769,18 @@ function computeLabelPenalty(
     }
   }
 
-  return { score: overlapPenalty + segmentPenalty + offsetPenalty + rotationPenalty + alignmentPenalty, box };
+  return {
+    score: overlapPenalty + segmentPenalty + offsetPenalty + rotationPenalty + alignmentPenalty,
+    box,
+    overlapPenalty,
+    segmentPenalty,
+    offsetPenalty,
+    rotationPenalty,
+    alignmentPenalty,
+  };
 }
 
-function autoPlaceLabels(current: RailwayMap) {
+function autoPlaceLabels(current: RailwayMap, options?: { preserveExisting?: boolean; bootstrapMode?: boolean }) {
   const nodesById = new Map(current.model.nodes.map((node) => [node.id, node]));
   const stationKindsById = new Map(current.config.stationKinds.map((kind) => [kind.id, kind]));
   const stationLineIdsByStationId = buildStationLineIdsByStationId(current);
@@ -717,7 +791,38 @@ function autoPlaceLabels(current: RailwayMap) {
     const node = nodesById.get(station.nodeId);
     if (!node) return station;
 
-    const candidate = candidateLabelPositions(node)
+    const currentPosition = getStationLabelPosition(station, node);
+    const currentAnalysis = computeLabelPenalty(
+      current,
+      station,
+      currentPosition,
+      resolvedPlacements,
+      nodesById,
+      stationKindsById,
+      stationLineIdsByStationId,
+    );
+
+    if (options?.preserveExisting && currentAnalysis.overlapPenalty === 0 && currentAnalysis.segmentPenalty === 0) {
+      resolvedPlacements.push({
+        stationId: station.id,
+        nodeId: station.nodeId,
+        box: currentAnalysis.box,
+        position: currentPosition,
+      });
+      return {
+        ...station,
+        label: {
+          x: currentPosition.x,
+          y: currentPosition.y,
+          align: currentPosition.align,
+          rotation: currentPosition.rotation ?? 0,
+        },
+      };
+    }
+
+    const candidates = options?.bootstrapMode ? candidateBootstrapLabelPositions(station, node) : candidateLabelPositions(node);
+
+    const candidate = candidates
       .map((position) => {
         const analysis = computeLabelPenalty(
           current,
@@ -728,7 +833,12 @@ function autoPlaceLabels(current: RailwayMap) {
           stationKindsById,
           stationLineIdsByStationId,
         );
-        return { position, box: analysis.box, score: analysis.score };
+        const currentDeltaPenalty =
+          options?.bootstrapMode
+            ? Math.hypot(position.x - currentPosition.x, position.y - currentPosition.y) * 0.35 +
+              Math.abs((position.rotation ?? 0) - (currentPosition.rotation ?? 0)) * 1.5
+            : 0;
+        return { position, box: analysis.box, score: analysis.score + currentDeltaPenalty };
       })
       .sort((left, right) => left.score - right.score)[0];
 
@@ -1841,7 +1951,7 @@ export default function RailwayMapEditor() {
       ...seededMap,
       model: {
         ...seededMap.model,
-        stations: autoPlaceLabels(seededMap),
+        stations: autoPlaceLabels(seededMap, { preserveExisting: true, bootstrapMode: true }),
       },
     };
 

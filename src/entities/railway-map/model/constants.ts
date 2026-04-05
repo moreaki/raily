@@ -148,6 +148,88 @@ function octilinearizeMapLayout(
   };
 }
 
+type BootstrapLabelSide = "left" | "right" | "top" | "bottom";
+
+function estimateBootstrapLabelWidth(label: string, fontSize: number) {
+  return Math.max(38, label.length * (fontSize * 0.54));
+}
+
+function resolveValenciaBootstrapLabelSide(stationId: string): BootstrapLabelSide {
+  if (stationId.startsWith("s-c5-")) return "left";
+  if (stationId.startsWith("s-c6-")) return "right";
+  if (stationId === "s-sagunt") return "right";
+  if (["s-pucol", "s-puig", "s-massalfassar", "s-albuixech", "s-roca", "s-cabanyal", "s-font", "s-nord"].includes(stationId)) {
+    return "right";
+  }
+  if (["s-c3-0", "s-c3-0a", "s-c3-1", "s-c3-2", "s-c3-2a", "s-c3-3", "s-c3-4"].includes(stationId)) {
+    return "left";
+  }
+  if (["s-c3-5", "s-c3-6", "s-c3-7", "s-c3-8", "s-c3-9"].includes(stationId)) {
+    return "top";
+  }
+  if (["s-c3-6a", "s-c3-8a"].includes(stationId)) {
+    return "bottom";
+  }
+  if (["s-alfafar", "s-massanassa", "s-catarroja", "s-albal", "s-silla"].includes(stationId)) {
+    return "right";
+  }
+  if (stationId.startsWith("s-c1-")) return "right";
+  if (stationId.startsWith("s-c2-")) return "left";
+  return "right";
+}
+
+function applyValenciaBootstrapLabelLayout(map: RailwayMap): RailwayMap {
+  const nodesById = new Map(map.model.nodes.map((node) => [node.id, node]));
+  const stationKindsById = new Map(map.config.stationKinds.map((kind) => [kind.id, kind]));
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      stations: map.model.stations.map((station) => {
+        if (!station.nodeId) return station;
+        const node = nodesById.get(station.nodeId);
+        if (!node) return station;
+
+        const fontSize = stationKindsById.get(station.kindId)?.fontSize ?? DEFAULT_STATION_FONT_SIZE;
+        const width = estimateBootstrapLabelWidth(station.name, fontSize);
+        const side = resolveValenciaBootstrapLabelSide(station.id);
+
+        const label =
+          side === "left"
+            ? { x: node.x - width - 18, y: node.y - 8, align: "left" as const }
+            : side === "top"
+              ? { x: node.x - width / 2, y: node.y - 18, align: "top" as const }
+              : side === "bottom"
+                ? { x: node.x - width / 2, y: node.y + fontSize + 14, align: "bottom" as const }
+                : { x: node.x + 18, y: node.y - 8, align: "right" as const };
+
+        const extraX =
+          station.id === "s-c6-2a" ? 12 :
+          station.id === "s-c5-7" ? -12 :
+          station.id === "s-nord" ? 18 :
+          station.id === "s-font" ? 12 :
+          0;
+        const extraY =
+          station.id === "s-nord" ? 10 :
+          station.id === "s-font" ? 4 :
+          station.id === "s-sagunt" ? -4 :
+          0;
+
+        return {
+          ...station,
+          label: {
+            ...label,
+            x: label.x + extraX,
+            y: label.y + extraY,
+            rotation: 0,
+          },
+        };
+      }),
+    },
+  };
+}
+
 const VALENCIA_BOOTSTRAP_EDGE_DIRECTIONS: Record<string, { x: number; y: number }> = {
   "n-c5-0::n-c5-1": { x: 1, y: 1 },
   "n-c5-1::n-c5-2": { x: 1, y: 1 },
@@ -542,9 +624,11 @@ const DEVELOPMENT_BOOTSTRAP_MAP_BASE: RailwayMap = {
   },
 };
 
-export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = octilinearizeMapLayout(
-  scaleMapLayout(DEVELOPMENT_BOOTSTRAP_MAP_BASE, 1.12, 1.12, 660, 920),
-  "n-nord",
-  48,
-  VALENCIA_BOOTSTRAP_EDGE_DIRECTIONS,
+export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = applyValenciaBootstrapLabelLayout(
+  octilinearizeMapLayout(
+    scaleMapLayout(DEVELOPMENT_BOOTSTRAP_MAP_BASE, 1.12, 1.12, 660, 920),
+    "n-nord",
+    48,
+    VALENCIA_BOOTSTRAP_EDGE_DIRECTIONS,
+  ),
 );
