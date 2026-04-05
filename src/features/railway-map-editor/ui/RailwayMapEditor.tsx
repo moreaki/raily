@@ -35,6 +35,34 @@ import {
   withAnchoredSegmentEndpoints,
 } from "@/features/railway-map-editor/lib/geometry";
 import {
+  addLine as addLineCommand,
+  addNodeToSheet,
+  addSheet as addSheetCommand,
+  addStationKind as addStationKindCommand,
+  addUnassignedStation,
+  assignLineToSegment as assignLineToSegmentCommand,
+  assignStationToNode as assignStationToNodeCommand,
+  attachDefaultStationToNode,
+  autoPlaceSheetLabels,
+  buildBootstrapMap,
+  createStationAtNode as createStationAtNodeCommand,
+  deleteLine as deleteLineCommand,
+  deleteNodes as deleteNodesCommand,
+  deleteSegment as deleteSegmentCommand,
+  deleteSheet as deleteSheetCommand,
+  deleteStation as deleteStationCommand,
+  deleteStationKind as deleteStationKindCommand,
+  duplicateSegment as duplicateSegmentCommand,
+  insertTrackPointOnSegment as insertTrackPointOnSegmentCommand,
+  moveLaneOrder as moveLaneOrderCommand,
+  renameSheet,
+  unassignLineFromSegment as unassignLineFromSegmentCommand,
+  updateLine as updateLineCommand,
+  updateNode as updateNodeCommand,
+  updateStation as updateStationCommand,
+  updateStationKind as updateStationKindCommand,
+} from "@/features/railway-map-editor/lib/commands";
+import {
   autoPlaceLabels,
   boxesOverlap,
   DEFAULT_STATION_FONT_FAMILY,
@@ -786,19 +814,7 @@ export default function RailwayMapEditor() {
   }
   function addStation() {
     const nextKindId = newStationKindId || (config.stationKinds[0]?.id ?? "");
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        stations: [
-          ...current.model.stations,
-          {
-            ...createDefaultStation(current, null, newStationName),
-            kindId: nextKindId,
-          },
-        ],
-      },
-    }));
+    updateMap((current) => addUnassignedStation(current, newStationName, nextKindId));
     setNewStationName("");
   }
 
@@ -807,34 +823,14 @@ export default function RailwayMapEditor() {
     updateMap((current) => {
       const placement = findNearbyFreePoint(current, currentSheet.id, viewportCenter);
       const snappedPlacement = snapToGrid ? snapPointToGrid(placement) : placement;
-      return {
-        ...current,
-        model: {
-          ...current.model,
-          nodes: [
-            ...current.model.nodes,
-            {
-              ...createDefaultNodeForSheet(current, currentSheet.id),
-              x: snappedPlacement.x,
-              y: snappedPlacement.y,
-            },
-          ],
-        },
-      };
+      return addNodeToSheet(current, currentSheet.id, snappedPlacement);
     });
   }
 
   function attachStationToSelectedNode() {
     if (!selectedNode) return;
     if (selectedNodeStations.length > 0) return;
-
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        stations: [...current.model.stations, createDefaultStationAtNode(current, selectedNode, newStationName)],
-      },
-    }));
+    updateMap((current) => attachDefaultStationToNode(current, selectedNode, newStationName));
     setNewStationName("");
   }
 
@@ -844,15 +840,7 @@ export default function RailwayMapEditor() {
     const stationAtNode = model.stations.find((candidate) => candidate.nodeId === nodeId);
     if (stationAtNode && stationAtNode.id !== stationId) return;
 
-    updateStation(stationId, {
-      nodeId,
-      label: {
-        x: node.x + 12,
-        y: node.y - 10,
-        align: "right",
-        rotation: 0,
-      },
-    });
+    updateMap((current) => assignStationToNodeCommand(current, stationId, nodeId));
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
     setSelectedNodeMarkerKey(null);
@@ -867,17 +855,9 @@ export default function RailwayMapEditor() {
     if (model.stations.some((candidate) => candidate.nodeId === nodeId)) return;
 
     const stationName = name.trim() || `Station ${model.stations.length + 1}`;
-    const createdStation = {
-      ...createDefaultStationAtNode(map, node, stationName),
-      kindId: kindId || config.stationKinds[0]?.id || "",
-    };
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        stations: [...current.model.stations, createdStation],
-      },
-    }));
+    const { station: createdStation } = createStationAtNodeCommand(map, nodeId, stationName, kindId || config.stationKinds[0]?.id || "");
+    if (!createdStation) return;
+    updateMap((current) => createStationAtNodeCommand(current, nodeId, stationName, kindId || config.stationKinds[0]?.id || "").map);
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
     setSelectedNodeMarkerKey(null);
@@ -888,14 +868,8 @@ export default function RailwayMapEditor() {
   }
 
   function addSheet() {
-    const nextSheet = createDefaultSheet(map, "");
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        sheets: [...current.model.sheets, nextSheet],
-      },
-    }));
+    const { sheet: nextSheet } = addSheetCommand(map);
+    updateMap((current) => addSheetCommand(current).map);
     setSheetViews((current) => ({
       ...current,
       [nextSheet.id]: { zoom: 1, centerX: CANVAS_WIDTH / 2, centerY: CANVAS_HEIGHT / 2 },
@@ -906,23 +880,24 @@ export default function RailwayMapEditor() {
   }
 
   function addStationKind() {
-    const stationKind: StationKind = {
-      id: createStationKindId(),
-      name: newStationKindName.trim() || `Kind ${config.stationKinds.length + 1}`,
+    const { stationKind } = addStationKindCommand(map, {
+      name: newStationKindName,
       shape: newStationKindShape,
-      symbolSize: clamp(newStationKindSymbolSize, 0.6, 2.5),
-      fontFamily: newStationKindFontFamily.trim() || DEFAULT_STATION_FONT_FAMILY,
+      symbolSize: newStationKindSymbolSize,
+      fontFamily: newStationKindFontFamily,
       fontWeight: newStationKindFontWeight,
-      fontSize: clamp(newStationKindFontSize, 8, 72),
-    };
-
-    updateMap((current) => ({
-      ...current,
-      config: {
-        ...current.config,
-        stationKinds: [...current.config.stationKinds, stationKind],
-      },
-    }));
+      fontSize: newStationKindFontSize,
+    });
+    updateMap((current) =>
+      addStationKindCommand(current, {
+        name: newStationKindName,
+        shape: newStationKindShape,
+        symbolSize: newStationKindSymbolSize,
+        fontFamily: newStationKindFontFamily,
+        fontWeight: newStationKindFontWeight,
+        fontSize: newStationKindFontSize,
+      }).map,
+    );
     setSelectedStationKindId(stationKind.id);
     setNewStationKindName("");
     setNewStationKindShape("circle");
@@ -933,31 +908,13 @@ export default function RailwayMapEditor() {
   }
 
   function addLine() {
-    const preset = LINE_PRESETS[config.lines.length % LINE_PRESETS.length];
-    const nextLine = createDefaultLine(config.lines.length, preset);
-    updateMap((current) => ({
-      ...current,
-      config: {
-        ...current.config,
-        lines: [...current.config.lines, nextLine],
-      },
-      model: {
-        ...current.model,
-        lineRuns: [...current.model.lineRuns, { id: `lr-${nextLine.id}`, lineId: nextLine.id, segmentIds: [] }],
-      },
-    }));
+    const { line: nextLine } = addLineCommand(map);
+    updateMap((current) => addLineCommand(current).map);
     setSelectedLineId(nextLine.id);
   }
 
   function bootstrapDevelopmentModel() {
-    const seededMap = JSON.parse(JSON.stringify(DEVELOPMENT_BOOTSTRAP_MAP)) as RailwayMap;
-    const nextMap = {
-      ...seededMap,
-      model: {
-        ...seededMap.model,
-        stations: autoPlaceLabels(seededMap, { preserveExisting: true, bootstrapMode: true }),
-      },
-    };
+    const nextMap = buildBootstrapMap();
 
     replaceMap(nextMap);
     setSelectedNodeId(nextMap.model.nodes[0]?.id ?? "");
@@ -978,19 +935,7 @@ export default function RailwayMapEditor() {
 
   function autoPlaceCurrentSheetLabels() {
     if (!currentSheetId) return;
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        stations: autoPlaceLabels(current).map((station) => {
-        if (!station.nodeId) return station;
-        const node = current.model.nodes.find((candidate) => candidate.id === station.nodeId);
-        return node?.sheetId === currentSheetId
-          ? station
-          : current.model.stations.find((candidate) => candidate.id === station.id) ?? station;
-      }),
-      },
-    }));
+    updateMap((current) => autoPlaceSheetLabels(current, currentSheetId));
   }
 
   function updateCurrentSheetName(name: string) {
@@ -1019,13 +964,7 @@ export default function RailwayMapEditor() {
       return;
     }
 
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        sheets: current.model.sheets.map((sheet) => (sheet.id === renamingSheetId ? { ...sheet, name: nextName } : sheet)),
-      },
-    }));
+    updateMap((current) => renameSheet(current, renamingSheetId, nextName));
     setRenamingSheetId(null);
     setSheetNameDraft("");
   }
@@ -1037,23 +976,7 @@ export default function RailwayMapEditor() {
     const nextSheetId = model.sheets.find((sheet) => sheet.id !== currentSheet.id)?.id;
     if (!nextSheetId) return;
 
-    const nodeIdsToRemove = new Set(model.nodes.filter((node) => node.sheetId === currentSheet.id).map((node) => node.id));
-    const segmentIdsToRemove = new Set(model.segments.filter((segment) => segment.sheetId === currentSheet.id).map((segment) => segment.id));
-
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        sheets: current.model.sheets.filter((sheet) => sheet.id !== currentSheet.id),
-        nodes: current.model.nodes.filter((node) => node.sheetId !== currentSheet.id),
-        stations: current.model.stations.filter((station) => !station.nodeId || !nodeIdsToRemove.has(station.nodeId)),
-        segments: current.model.segments.filter((segment) => segment.sheetId !== currentSheet.id),
-        lineRuns: current.model.lineRuns.map((lineRun) => ({
-          ...lineRun,
-          segmentIds: lineRun.segmentIds.filter((segmentId) => !segmentIdsToRemove.has(segmentId)),
-        })),
-      },
-    }));
+    updateMap((current) => deleteSheetCommand(current, currentSheet.id));
     setSheetViews((current) => {
       const next = { ...current };
       delete next[currentSheet.id];
@@ -1133,17 +1056,7 @@ export default function RailwayMapEditor() {
   }
 
   function deleteSegment(segmentId: string) {
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        segments: current.model.segments.filter((segment) => segment.id !== segmentId),
-        lineRuns: current.model.lineRuns.map((lineRun) => ({
-          ...lineRun,
-          segmentIds: lineRun.segmentIds.filter((candidate) => candidate !== segmentId),
-        })),
-      },
-    }));
+    updateMap((current) => deleteSegmentCommand(current, segmentId));
     if (selectedSegmentId === segmentId) {
       setSelectedSegmentId("");
     }
@@ -1154,20 +1067,9 @@ export default function RailwayMapEditor() {
     const source = model.segments.find((segment) => segment.id === segmentId);
     if (!source) return;
 
-    const duplicated = {
-      ...JSON.parse(JSON.stringify(source)),
-      id: createSegmentId(),
-      fromLaneId: undefined,
-      toLaneId: undefined,
-    };
-
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        segments: [...current.model.segments, duplicated],
-      },
-    }));
+    const { duplicated } = duplicateSegmentCommand(map, segmentId);
+    if (!duplicated) return;
+    updateMap((current) => duplicateSegmentCommand(current, segmentId).map);
     setSelectedSegmentId(duplicated.id);
     setSegmentContextMenu(null);
   }
@@ -1176,37 +1078,9 @@ export default function RailwayMapEditor() {
     const source = model.segments.find((segment) => segment.id === segmentId);
     if (!source) return;
 
-    const sourcePoints = buildSegmentPoints(source, new Map(model.nodes.map((node) => [node.id, node])));
-    if (sourcePoints.length < 2) return;
-    const halfwayPoint = pointOnPathAtHalf(sourcePoints);
-    const snappedHalfwayPoint = snapToGrid ? snapPointToGrid(halfwayPoint) : halfwayPoint;
-    const insertedNode = {
-      ...createDefaultNodeForSheet(map, source.sheetId),
-      ...snappedHalfwayPoint,
-    };
-
-    updateMap((current) => {
-      const currentSource = current.model.segments.find((segment) => segment.id === segmentId);
-      if (!currentSource) return current;
-
-      const firstSegment = createStraightSegmentForSheet(currentSource.sheetId, currentSource.fromNodeId, insertedNode.id);
-      const secondSegment = createStraightSegmentForSheet(currentSource.sheetId, insertedNode.id, currentSource.toNodeId);
-
-      return {
-        ...current,
-        model: {
-          ...current.model,
-          nodes: [...current.model.nodes, insertedNode],
-          segments: [...current.model.segments.filter((segment) => segment.id !== segmentId), firstSegment, secondSegment],
-          lineRuns: current.model.lineRuns.map((lineRun) => ({
-            ...lineRun,
-            segmentIds: lineRun.segmentIds.flatMap((candidateId) =>
-              candidateId === segmentId ? [firstSegment.id, secondSegment.id] : [candidateId],
-            ),
-          })),
-        },
-      };
-    });
+    const { insertedNode } = insertTrackPointOnSegmentCommand(map, segmentId, snapToGrid ? snapPointToGrid : undefined);
+    if (!insertedNode) return;
+    updateMap((current) => insertTrackPointOnSegmentCommand(current, segmentId, snapToGrid ? snapPointToGrid : undefined).map);
 
     setSelectedSegmentId("");
     setSelectedNodeId(insertedNode.id);
@@ -1217,85 +1091,14 @@ export default function RailwayMapEditor() {
   }
 
   function assignLineToSegment(lineId: string, segmentId: string) {
-    updateMap((current) => {
-      const { current: ensuredCurrent, lineRun } = ensureLineRun(current, lineId);
-      const segmentsByNodeId = new Map<string, Segment[]>();
-      for (const segment of ensuredCurrent.model.segments) {
-        const fromSegments = segmentsByNodeId.get(segment.fromNodeId) ?? [];
-        fromSegments.push(segment);
-        segmentsByNodeId.set(segment.fromNodeId, fromSegments);
-
-        const toSegments = segmentsByNodeId.get(segment.toNodeId) ?? [];
-        toSegments.push(segment);
-        segmentsByNodeId.set(segment.toNodeId, toSegments);
-      }
-
-      const segmentIdsToAssign = new Set<string>();
-      const queue = [segmentId];
-
-      while (queue.length > 0) {
-        const currentSegmentId = queue.shift();
-        if (!currentSegmentId || segmentIdsToAssign.has(currentSegmentId)) continue;
-        segmentIdsToAssign.add(currentSegmentId);
-
-        const currentSegment = ensuredCurrent.model.segments.find((segment) => segment.id === currentSegmentId);
-        if (!currentSegment) continue;
-
-        for (const nodeId of [currentSegment.fromNodeId, currentSegment.toNodeId]) {
-          const connectedSegments = segmentsByNodeId.get(nodeId) ?? [];
-          if (connectedSegments.length !== 2) continue;
-
-          for (const connectedSegment of connectedSegments) {
-            if (!segmentIdsToAssign.has(connectedSegment.id)) {
-              queue.push(connectedSegment.id);
-            }
-          }
-        }
-      }
-
-      return {
-        ...ensuredCurrent,
-        model: {
-          ...ensuredCurrent.model,
-          lineRuns: ensuredCurrent.model.lineRuns.map((candidate) => {
-            if (candidate.id === lineRun.id) {
-              const segmentIds = [...candidate.segmentIds.filter((value) => !segmentIdsToAssign.has(value))];
-              for (const propagatedSegmentId of segmentIdsToAssign) {
-                if (!segmentIds.includes(propagatedSegmentId)) {
-                  segmentIds.push(propagatedSegmentId);
-                }
-              }
-              return { ...candidate, segmentIds };
-            }
-
-            return {
-              ...candidate,
-              segmentIds: candidate.segmentIds.filter((value) => !segmentIdsToAssign.has(value)),
-            };
-          }),
-        },
-      };
-    });
+    updateMap((current) => assignLineToSegmentCommand(current, lineId, segmentId));
     setSelectedLineId(lineId);
     setSelectedSegmentId(segmentId);
     setSegmentContextMenu(null);
   }
 
   function unassignLineFromSegment(lineId: string, segmentId: string) {
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        lineRuns: current.model.lineRuns.map((lineRun) =>
-          lineRun.lineId !== lineId
-            ? lineRun
-            : {
-                ...lineRun,
-                segmentIds: lineRun.segmentIds.filter((candidate) => candidate !== segmentId),
-              },
-        ),
-      },
-    }));
+    updateMap((current) => unassignLineFromSegmentCommand(current, lineId, segmentId));
     setSegmentContextMenu(null);
   }
 
@@ -1311,25 +1114,7 @@ export default function RailwayMapEditor() {
   function deleteNodes(nodeIds: string[]) {
     if (nodeIds.length === 0) return;
     const nodeIdSet = new Set(nodeIds);
-    const connectedSegmentIds = new Set(
-      model.segments
-        .filter((segment) => nodeIdSet.has(segment.fromNodeId) || nodeIdSet.has(segment.toNodeId))
-        .map((segment) => segment.id),
-    );
-
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        nodes: current.model.nodes.filter((node) => !nodeIdSet.has(node.id)),
-        stations: current.model.stations.filter((station) => !station.nodeId || !nodeIdSet.has(station.nodeId)),
-        segments: current.model.segments.filter((segment) => !connectedSegmentIds.has(segment.id)),
-        lineRuns: current.model.lineRuns.map((lineRun) => ({
-          ...lineRun,
-          segmentIds: lineRun.segmentIds.filter((segmentId) => !connectedSegmentIds.has(segmentId)),
-        })),
-      },
-    }));
+    updateMap((current) => deleteNodesCommand(current, nodeIds));
 
     setSelectedNodeIds((current) => current.filter((nodeId) => !nodeIdSet.has(nodeId)));
     if (selectedNodeId && nodeIdSet.has(selectedNodeId)) setSelectedNodeId("");
@@ -1345,13 +1130,7 @@ export default function RailwayMapEditor() {
   }
 
   function deleteStation(stationId: string) {
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        stations: current.model.stations.filter((station) => station.id !== stationId),
-      },
-    }));
+    updateMap((current) => deleteStationCommand(current, stationId));
     if (selectedStationId === stationId) {
       setSelectedStationId("");
     }
@@ -1365,35 +1144,13 @@ export default function RailwayMapEditor() {
     const fallbackKindId = config.stationKinds.find((kind) => kind.id !== selectedStationKind.id)?.id;
     if (!fallbackKindId) return;
 
-    updateMap((current) => ({
-      ...current,
-      config: {
-        ...current.config,
-        stationKinds: current.config.stationKinds.filter((kind) => kind.id !== selectedStationKind.id),
-      },
-      model: {
-        ...current.model,
-        stations: current.model.stations.map((station) =>
-          station.kindId === selectedStationKind.id ? { ...station, kindId: fallbackKindId } : station,
-        ),
-      },
-    }));
+    updateMap((current) => deleteStationKindCommand(current, selectedStationKind.id, fallbackKindId));
   }
 
   function deleteSelectedLine() {
     if (!selectedLine) return;
 
-    updateMap((current) => ({
-      ...current,
-      config: {
-        ...current.config,
-        lines: current.config.lines.filter((line) => line.id !== selectedLine.id),
-      },
-      model: {
-        ...current.model,
-        lineRuns: current.model.lineRuns.filter((lineRun) => lineRun.lineId !== selectedLine.id),
-      },
-    }));
+    updateMap((current) => deleteLineCommand(current, selectedLine.id));
 
     if (selectedLineId === selectedLine.id) {
       setSelectedLineId(config.lines.find((line) => line.id !== selectedLine.id)?.id ?? "");
@@ -1403,94 +1160,22 @@ export default function RailwayMapEditor() {
   function updateNode(patch: Partial<MapNode>) {
     if (!selectedNode) return;
 
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        nodes: current.model.nodes.map((node) => (node.id === selectedNode.id ? { ...node, ...patch } : node)),
-        stations: current.model.stations.map((station) =>
-          station.nodeId !== selectedNode.id || !station.label
-            ? station
-            : {
-                ...station,
-                label: {
-                  ...station.label,
-                  x: station.label.x + ((patch.x ?? selectedNode.x) - selectedNode.x),
-                  y: station.label.y + ((patch.y ?? selectedNode.y) - selectedNode.y),
-                },
-              },
-        ),
-      },
-    }));
+    updateMap((current) => updateNodeCommand(current, selectedNode.id, selectedNode, patch));
   }
 
   function moveLaneOrder(nodeId: string, laneId: string, direction: -1 | 1) {
-    updateMap((current) => {
-      const referenceNodeLanes = current.model.nodeLanes
-        .filter((lane) => lane.nodeId === nodeId)
-        .sort((left, right) => left.order - right.order);
-      const currentIndex = referenceNodeLanes.findIndex((lane) => lane.id === laneId);
-      const nextIndex = currentIndex + direction;
-      if (currentIndex < 0) {
-        return current;
-      }
-
-      const targetNodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
-      const orderByLaneId = new Map<string, number>();
-
-      for (const targetNodeId of targetNodeIds) {
-        const nodeLanes = current.model.nodeLanes
-          .filter((lane) => lane.nodeId === targetNodeId)
-          .sort((left, right) => left.order - right.order);
-        if (nextIndex < 0 || nextIndex >= nodeLanes.length) {
-          continue;
-        }
-
-        const reordered = [...nodeLanes];
-        const [moved] = reordered.splice(currentIndex, 1);
-        if (!moved) continue;
-        reordered.splice(nextIndex, 0, moved);
-        for (let index = 0; index < reordered.length; index += 1) {
-          orderByLaneId.set(reordered[index].id, index);
-        }
-      }
-
-      if (orderByLaneId.size === 0) {
-        return current;
-      }
-
-      return {
-        ...current,
-        model: {
-          ...current.model,
-          nodeLanes: current.model.nodeLanes.map((lane) =>
-            orderByLaneId.has(lane.id) ? { ...lane, order: orderByLaneId.get(lane.id) ?? lane.order } : lane,
-          ),
-        },
-      };
-    });
+    const targetNodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
+    updateMap((current) => moveLaneOrderCommand(current, targetNodeIds, nodeId, laneId, direction));
   }
 
   function updateLine(patch: Partial<Line>) {
     if (!selectedLine) return;
 
-    updateMap((current) => ({
-      ...current,
-      config: {
-        ...current.config,
-        lines: current.config.lines.map((line) => (line.id === selectedLine.id ? { ...line, ...patch } : line)),
-      },
-    }));
+    updateMap((current) => updateLineCommand(current, selectedLine.id, patch));
   }
 
   function updateStation(stationId: string, patch: Partial<Station>) {
-    updateMap((current) => ({
-      ...current,
-      model: {
-        ...current.model,
-        stations: current.model.stations.map((station) => (station.id === stationId ? { ...station, ...patch } : station)),
-      },
-    }));
+    updateMap((current) => updateStationCommand(current, stationId, patch));
   }
 
   function unassignStation(stationId: string) {
@@ -1503,13 +1188,7 @@ export default function RailwayMapEditor() {
   }
 
   function updateStationKind(kindId: string, patch: Partial<StationKind>) {
-    updateMap((current) => ({
-      ...current,
-      config: {
-        ...current.config,
-        stationKinds: current.config.stationKinds.map((kind) => (kind.id === kindId ? { ...kind, ...patch } : kind)),
-      },
-    }));
+    updateMap((current) => updateStationKindCommand(current, kindId, patch));
   }
   const {
     draggingNodeId,
