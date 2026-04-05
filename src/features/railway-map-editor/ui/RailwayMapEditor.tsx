@@ -1281,13 +1281,8 @@ export default function RailwayMapEditor() {
       <div className="mx-auto max-w-[1500px] space-y-4">
         <header className="flex flex-col gap-3 rounded-3xl border border-slate-200/80 bg-white/75 px-5 py-4 shadow-panel backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Raily editor</p>
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
-              <h1 className="text-2xl font-bold tracking-tight text-ink">Map workspace</h1>
-              <p className="text-sm text-muted">
-                Keep the canvas central. Use the side panel only when you need editing or management controls.
-              </p>
-            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-sky-700 sm:text-3xl">Raily Editor</h1>
+            <p className="text-xs text-muted">Copyright © R. &amp; K. Nibali</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant={sidePanel === "edit" ? "default" : "outline"} onClick={() => setSidePanel(sidePanel === "edit" ? "closed" : "edit")}>

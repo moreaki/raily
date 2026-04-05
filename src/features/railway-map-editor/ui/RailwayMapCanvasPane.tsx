@@ -282,7 +282,6 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
       <CardContent className="p-0">
         <div className="relative min-h-[78vh] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.08),transparent_28%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 p-4">
-            <div className="pointer-events-auto text-xl font-semibold text-ink">Canvas Editor</div>
             {pendingSegmentStart ? (
               <div className="pointer-events-auto rounded-2xl border border-sky-200 bg-sky-50/95 px-3 py-2 text-xs text-sky-800 shadow-sm">
                 Segment start: {pendingSegmentStart.nodeId}
