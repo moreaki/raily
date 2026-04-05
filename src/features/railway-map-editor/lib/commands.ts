@@ -857,6 +857,8 @@ export function extendLineFromNode(
     delta?: MapPoint;
     lineId?: string;
     fromLaneId?: string;
+    stationKindId?: string;
+    stationName?: string;
   },
 ) {
   const sourceNode = map.model.nodes.find((candidate) => candidate.id === nodeId);
@@ -886,9 +888,13 @@ export function extendLineFromNode(
       segments: [...map.model.segments, insertedSegment],
     },
   };
+  const withStation =
+    options?.stationKindId
+      ? createStationAtNode(nextMap, insertedNode.id, options.stationName ?? "", options.stationKindId).map
+      : nextMap;
 
   return {
-    map: options?.lineId ? assignLineToSegment(nextMap, options.lineId, insertedSegment.id) : nextMap,
+    map: options?.lineId ? assignLineToSegment(withStation, options.lineId, insertedSegment.id) : withStation,
     insertedNode,
     insertedSegment,
   };

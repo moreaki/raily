@@ -408,7 +408,7 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
             <p className="text-xs text-muted">Stations are created as standalone objects first and can later be assigned to track points on the canvas.</p>
           </div>
           <div className="space-y-2">
-            <Input value={stationSearch} onChange={(event) => setStationSearch(event.target.value)} placeholder="Search stations, kinds, or sheet names" />
+            <Input value={stationSearch} onChange={(event) => setStationSearch(event.target.value)} placeholder="Search stations on this sheet" />
             <div className="max-h-[240px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
               {filteredStations.map((station) => {
                 const node = station.nodeId ? nodesById.get(station.nodeId) ?? null : null;

@@ -520,8 +520,8 @@ export default function RailwayMapEditor() {
 
       byNodeId.set(
         node.id,
-        effectiveLaneIds.map((laneId, index) => ({
-          key: `${node.id}:slot:${index}:${laneId}`,
+        effectiveLaneIds.map((laneId) => ({
+          key: `${node.id}:slot:${laneId}`,
           center: slotCenterByLaneId.get(laneId) ?? { x: node.x, y: node.y },
           segmentIds: allMarkers.flatMap((marker) => (marker.laneId === laneId ? marker.segmentIds : [])),
           laneId,
@@ -847,6 +847,46 @@ export default function RailwayMapEditor() {
 
     return matchingLanes.length === 1 ? matchingLanes[0].id : null;
   }, [lineIdBySegmentId, selectedNodeExtensionLineId, selectedNodeId, selectedNodeLanes, selectedNodeMarkerLaneId]);
+  const selectedNodeExtensionDelta = useMemo(() => {
+    if (!selectedNodeId) return null;
+
+    const candidateSegments = currentSegments.filter((segment) => {
+      const touchesNode = segment.fromNodeId === selectedNodeId || segment.toNodeId === selectedNodeId;
+      if (!touchesNode) return false;
+      if (
+        selectedNodeMarkerLaneId &&
+        (segment.fromNodeId === selectedNodeId ? segment.fromLaneId : segment.toLaneId) !== selectedNodeMarkerLaneId
+      ) {
+        return false;
+      }
+      if (selectedNodeExtensionLineId && lineIdBySegmentId.get(segment.id) !== selectedNodeExtensionLineId) {
+        return false;
+      }
+      return true;
+    });
+
+    const directionalSegment =
+      (selectedSegmentId ? candidateSegments.find((segment) => segment.id === selectedSegmentId) : null) ??
+      (candidateSegments.length === 1 ? candidateSegments[0] : null);
+
+    if (!directionalSegment) return null;
+
+    const otherNodeId = directionalSegment.fromNodeId === selectedNodeId ? directionalSegment.toNodeId : directionalSegment.fromNodeId;
+    const otherNode = nodesById.get(otherNodeId);
+    const sourceNode = nodesById.get(selectedNodeId);
+    if (!otherNode || !sourceNode) return null;
+
+    const deltaX = sourceNode.x - otherNode.x;
+    const deltaY = sourceNode.y - otherNode.y;
+    const length = Math.hypot(deltaX, deltaY);
+    if (length < 1) return null;
+
+    const step = Math.max(90, nodeGroupCellWidth * 4);
+    return {
+      x: (deltaX / length) * step,
+      y: (deltaY / length) * step,
+    };
+  }, [currentSegments, lineIdBySegmentId, nodeGroupCellWidth, nodesById, selectedNodeExtensionLineId, selectedNodeId, selectedNodeMarkerLaneId, selectedSegmentId]);
   const segmentFromPortOptions = useMemo(() => {
     if (!selectedSegment) return [{ value: "", label: "Auto" }];
     return [
@@ -938,21 +978,16 @@ export default function RailwayMapEditor() {
     const owningRun = model.lineRuns.find((lineRun) => lineRun.segmentIds.includes(contextMenuSegment.id));
     return owningRun ? linesById.get(owningRun.lineId) ?? null : null;
   }, [contextMenuSegment, linesById, model.lineRuns]);
-  const assignableLinesForContextSegment = useMemo(() => {
-    if (!contextMenuSegment) return [];
-
-    return config.lines
-      .filter((line) => line.id !== assignedLineForContextSegment?.id)
-      .sort((left, right) => {
-        const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
-        if (byName !== 0) return byName;
-        return left.id.localeCompare(right.id);
-      });
-  }, [assignedLineForContextSegment, config.lines, contextMenuSegment]);
   const lineSummaries = useMemo(() => {
     const currentSegmentIds = new Set(currentSegments.map((segment) => segment.id));
+    const currentSheetLineIds = new Set(
+      model.lineRuns
+        .filter((lineRun) => lineRun.segmentIds.some((segmentId) => currentSegmentIds.has(segmentId)))
+        .map((lineRun) => lineRun.lineId),
+    );
 
     return [...config.lines]
+      .filter((line) => currentSheetLineIds.has(line.id))
       .sort((left, right) => {
         const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
         if (byName !== 0) return byName;
@@ -978,6 +1013,47 @@ export default function RailwayMapEditor() {
         };
       });
   }, [config.lines, currentSegments, model.lineRuns, segmentsById, stationsByNodeId]);
+  const visibleLineIds = useMemo(() => {
+    const currentSegmentIds = new Set(currentSegments.map((segment) => segment.id));
+    const ids = new Set<string>();
+
+    for (const lineRun of model.lineRuns) {
+      if (lineRun.segmentIds.some((segmentId) => currentSegmentIds.has(segmentId))) {
+        ids.add(lineRun.lineId);
+      }
+    }
+
+    if (selectedLineId) {
+      ids.add(selectedLineId);
+    }
+    if (assignedLineForContextSegment?.id) {
+      ids.add(assignedLineForContextSegment.id);
+    }
+
+    return ids;
+  }, [assignedLineForContextSegment?.id, currentSegments, model.lineRuns, selectedLineId]);
+  const visibleLines = useMemo(
+    () =>
+      config.lines
+        .filter((line) => visibleLineIds.has(line.id))
+        .sort((left, right) => {
+          const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+          if (byName !== 0) return byName;
+          return left.id.localeCompare(right.id);
+        }),
+    [config.lines, visibleLineIds],
+  );
+  const assignableLinesForContextSegment = useMemo(() => {
+    if (!contextMenuSegment) return [];
+
+    return visibleLines
+      .filter((line) => line.id !== assignedLineForContextSegment?.id)
+      .sort((left, right) => {
+        const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+        if (byName !== 0) return byName;
+        return left.id.localeCompare(right.id);
+      });
+  }, [assignedLineForContextSegment, contextMenuSegment, visibleLines]);
 
   const deleteCurrentSelection = useCallback(() => {
     if (selectedSegmentPolylinePoint) {
@@ -1422,10 +1498,12 @@ export default function RailwayMapEditor() {
     if (!selectedNode) return;
 
     const step = Math.max(90, nodeGroupCellWidth * 4);
+    const stationKindId = (stationsByNodeId.get(selectedNode.id) ?? [])[0]?.kindId ?? config.stationKinds[0]?.id;
     const { map: nextMap, insertedNode, insertedSegment } = extendLineFromNodeCommand(map, selectedNode.id, {
-      delta: { x: step, y: 0 },
+      delta: selectedNodeExtensionDelta ?? { x: step, y: 0 },
       lineId: selectedNodeExtensionLineId ?? undefined,
       fromLaneId: selectedNodeExtensionLaneId ?? undefined,
+      stationKindId,
     });
     if (!insertedNode || !insertedSegment) return;
 
@@ -1433,7 +1511,8 @@ export default function RailwayMapEditor() {
     setSelectedNodeId(insertedNode.id);
     setSelectedNodeIds([insertedNode.id]);
     setSelectedNodeMarkerKey(null);
-    setSelectedStationId("");
+    const createdStation = nextMap.model.stations.find((station) => station.nodeId === insertedNode.id) ?? null;
+    setSelectedStationId(createdStation?.id ?? "");
     setSelectedSegmentId(insertedSegment.id);
     setSelectedSegmentPolylinePoint(null);
     if (selectedNodeExtensionLineId) {
@@ -1857,7 +1936,7 @@ export default function RailwayMapEditor() {
   }
 
   const selectedNodeStations = selectedNode ? stationsByNodeId.get(selectedNode.id) ?? [] : [];
-  const visibleStations = useMemo(() => [...currentStations, ...unassignedStations], [currentStations, unassignedStations]);
+  const visibleStations = useMemo(() => [...currentStations], [currentStations]);
 
   useEffect(() => {
     if (!isResizingSidePanel) return;
@@ -2152,9 +2231,9 @@ export default function RailwayMapEditor() {
                       updateStation={updateStation}
                       labelDiagnostics={labelDiagnostics}
                       selectedSegment={selectedSegment}
-                      selectedLine={selectedLine}
+                      selectedLine={visibleLines.find((line) => line.id === selectedLineId) ?? null}
               selectedLineId={selectedLineId}
-              lines={config.lines}
+              lines={visibleLines}
               selectedLineRun={selectedLineRun}
               segmentsById={segmentsById}
               handleSelectedLineInspectorChange={handleSelectedLineInspectorChange}
@@ -2205,8 +2284,8 @@ export default function RailwayMapEditor() {
                       selectedLineId={selectedLineId}
                       setSelectedLineId={setSelectedLineId}
                       addLine={addLine}
-                      selectedLine={selectedLine}
-                      lines={config.lines}
+                      selectedLine={visibleLines.find((line) => line.id === selectedLineId) ?? null}
+                      lines={visibleLines}
                       currentSegments={currentSegments}
                       lineIdBySegmentId={lineIdBySegmentId}
                       linesById={linesById}
@@ -2227,7 +2306,7 @@ export default function RailwayMapEditor() {
                       unassignStation={unassignStation}
                       nodesById={nodesById}
                       sheets={model.sheets}
-                      segments={model.segments}
+                      segments={currentSegments}
                       focusStation={focusStation}
                       newStationKindName={newStationKindName}
                       setNewStationKindName={setNewStationKindName}

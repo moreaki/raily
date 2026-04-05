@@ -246,6 +246,29 @@ export function RailwayMapInspector({
       ),
     };
   }, [previewBounds, selectedNodeLanes]);
+  const nodeGroupPreview = useMemo(() => {
+    const columns = selectedNodeLanes.map((lane) => lane.effectiveGridColumn);
+    const rows = selectedNodeLanes.map((lane) => lane.effectiveGridRow);
+    const minColumn = columns.length > 0 ? Math.min(...columns) : previewBounds.minColumn;
+    const maxColumn = columns.length > 0 ? Math.max(...columns) : previewBounds.maxColumn;
+    const minRow = rows.length > 0 ? Math.min(...rows) : previewBounds.minRow;
+    const maxRow = rows.length > 0 ? Math.max(...rows) : previewBounds.maxRow;
+    const paddingX = Math.max(18, nodeGroupCellWidth * 0.75);
+    const paddingY = Math.max(18, nodeGroupCellHeight * 0.75);
+    const width = Math.max(nodeGroupCellWidth, (maxColumn - minColumn) * nodeGroupCellWidth + paddingX * 2);
+    const height = Math.max(nodeGroupCellHeight, (maxRow - minRow) * nodeGroupCellHeight + paddingY * 2);
+    const centerColumn = (minColumn + maxColumn) / 2;
+    const centerRow = (minRow + maxRow) / 2;
+
+    return {
+      width,
+      height,
+      centerColumn,
+      centerRow,
+      centerX: width / 2,
+      centerY: height / 2,
+    };
+  }, [nodeGroupCellHeight, nodeGroupCellWidth, previewBounds.maxColumn, previewBounds.maxRow, previewBounds.minColumn, previewBounds.minRow, selectedNodeLanes]);
   const dragLane = selectedNodeLanes.find((lane) => lane.id === dragLaneId) ?? null;
   const dragLaneColumn = dragLane?.effectiveGridColumn ?? previewBounds.minColumn;
   const dragLaneRow = dragLane?.effectiveGridRow ?? previewBounds.minRow;
@@ -289,7 +312,7 @@ export function RailwayMapInspector({
 
           <section className="space-y-3">
             <div className="text-sm font-semibold text-ink">Station Search</div>
-            <Input value={overviewStationSearch} onChange={(event) => setOverviewStationSearch(event.target.value)} placeholder="Search all stations" />
+            <Input value={overviewStationSearch} onChange={(event) => setOverviewStationSearch(event.target.value)} placeholder="Search stations on this sheet" />
             <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
               {overviewStations.map((station) => (
                 <div
@@ -403,14 +426,12 @@ export function RailwayMapInspector({
                   <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Node Group</div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                      <svg viewBox="0 0 180 56" className="h-14 w-full" aria-hidden="true">
-                        {selectedNodeLanes.map((lane, index) => {
+                      <svg viewBox={`0 0 ${nodeGroupPreview.width} ${nodeGroupPreview.height}`} className="h-14 w-full" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                        {selectedNodeLanes.map((lane) => {
                           const column = lane.effectiveGridColumn;
                           const row = lane.effectiveGridRow;
-                          const centerColumn = (previewBounds.minColumn + previewBounds.maxColumn) / 2;
-                          const centerRow = (previewBounds.minRow + previewBounds.maxRow) / 2;
-                          const cx = 90 + (column - centerColumn) * nodeGroupCellWidth;
-                          const cy = 28 + (row - centerRow) * nodeGroupCellHeight;
+                          const cx = nodeGroupPreview.centerX + (column - nodeGroupPreview.centerColumn) * nodeGroupCellWidth;
+                          const cy = nodeGroupPreview.centerY + (row - nodeGroupPreview.centerRow) * nodeGroupCellHeight;
                           const stroke = lane.lineColors[0] ?? "#64748b";
                           const isActive = selectedNodeMarkerLaneId === lane.id;
                           return (
