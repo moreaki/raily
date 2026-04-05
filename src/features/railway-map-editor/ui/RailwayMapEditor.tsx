@@ -44,6 +44,8 @@ const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.or
 const AUTO_LABEL_ROTATIONS = [0, 45, -45, 90, -90, 135, -135, 180] as const;
 const WHEEL_LINE_HEIGHT = 16;
 const WHEEL_PAGE_HEIGHT = 120;
+const NODE_SEGMENT_LONG_PRESS_MS = 260;
+const NODE_SEGMENT_LONG_PRESS_MOVE_THRESHOLD = 6;
 
 type LabelBox = {
   localMinX: number;
@@ -1043,6 +1045,12 @@ export default function RailwayMapEditor() {
   const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; centerX: number; centerY: number } | null>(null);
   const [marqueeSelection, setMarqueeSelection] = useState<{ start: MapPoint; end: MapPoint } | null>(null);
   const [pendingSegmentStart, setPendingSegmentStart] = useState<{ nodeId: string; laneId: string | null; markerKey: string | null } | null>(null);
+  const [segmentDrawState, setSegmentDrawState] = useState<{
+    nodeId: string;
+    laneId: string | null;
+    markerKey: string;
+    currentPoint: MapPoint;
+  } | null>(null);
   const [nodeContextMenu, setNodeContextMenu] = useState<{
     nodeIds: string[];
     x: number;
@@ -1070,6 +1078,15 @@ export default function RailwayMapEditor() {
   const undoStackRef = useRef<RailwayMap[]>([]);
   const redoStackRef = useRef<RailwayMap[]>([]);
   const transientHistoryStartRef = useRef<RailwayMap | null>(null);
+  const nodeLongPressTimeoutRef = useRef<number | null>(null);
+  const nodeLongPressPressRef = useRef<{
+    nodeId: string;
+    laneId: string | null;
+    markerKey: string;
+    clientX: number;
+    clientY: number;
+    startPoint: MapPoint;
+  } | null>(null);
 
   const selectedNode = model.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const selectedStation = model.stations.find((station) => station.id === selectedStationId) ?? null;
@@ -1273,6 +1290,15 @@ export default function RailwayMapEditor() {
   }, [currentNodes, currentSegments, model.nodeLanes, nodesById, segmentOffsetById]);
   const linesById = useMemo(() => new Map(config.lines.map((line) => [line.id, line])), [config.lines]);
   const stationKindsById = useMemo(() => new Map(config.stationKinds.map((kind) => [kind.id, kind])), [config.stationKinds]);
+  const nodeMarkerCenterByKey = useMemo(() => {
+    const next = new Map<string, MapPoint>();
+    for (const markers of nodeMarkerCentersById.values()) {
+      for (const marker of markers) {
+        next.set(marker.key, marker.center);
+      }
+    }
+    return next;
+  }, [nodeMarkerCentersById]);
   const stationsByNodeId = useMemo(() => {
     const next = new Map<string, Station[]>();
 
@@ -1793,8 +1819,10 @@ export default function RailwayMapEditor() {
     setSelectedStationId("");
     setSelectedSegmentId("");
     setPendingSegmentStart(null);
+    setSegmentDrawState(null);
     setNodeContextMenu(null);
     setRotatingLabelState(null);
+    clearNodeLongPress();
   }
 
   function selectSingleNode(nodeId: string) {
@@ -2518,6 +2546,34 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
   }
 
+  function clearNodeLongPress() {
+    if (nodeLongPressTimeoutRef.current !== null) {
+      window.clearTimeout(nodeLongPressTimeoutRef.current);
+      nodeLongPressTimeoutRef.current = null;
+    }
+    nodeLongPressPressRef.current = null;
+  }
+
+  function beginSegmentDrawFromNode(nodeId: string, laneId: string | null, markerKey: string, startPoint: MapPoint) {
+    clearNodeLongPress();
+    setDraggingNodeId(null);
+    setDragLastPoint(null);
+    nodeDragSnapshotRef.current = null;
+    setSegmentDrawState({
+      nodeId,
+      laneId,
+      markerKey,
+      currentPoint: startPoint,
+    });
+    setPendingSegmentStart({ nodeId, laneId, markerKey });
+  }
+
+  function cancelSegmentDraw() {
+    clearNodeLongPress();
+    setSegmentDrawState(null);
+    setPendingSegmentStart(null);
+  }
+
   function updateStationKind(kindId: string, patch: Partial<StationKind>) {
     updateMap((current) => ({
       ...current,
@@ -2576,12 +2632,13 @@ export default function RailwayMapEditor() {
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
     setSelectedNodeMarkerKey(markerKey);
+    setSegmentDrawState(null);
     setPendingSegmentStart({ nodeId, laneId, markerKey });
     setNodeContextMenu(null);
   }
 
   function cancelPendingSegment() {
-    setPendingSegmentStart(null);
+    cancelSegmentDraw();
     setNodeContextMenu(null);
   }
 
@@ -2592,8 +2649,15 @@ export default function RailwayMapEditor() {
     setNodeContextMenu(null);
   }
 
-  function handleNodeMouseDown(event: MouseEvent<SVGGElement>, nodeId: string, markerKey: string, segmentIds: string[]) {
+  function handleNodeMouseDown(
+    event: MouseEvent<SVGGElement>,
+    nodeId: string,
+    markerKey: string,
+    segmentIds: string[],
+    laneId: string | null,
+  ) {
     event.stopPropagation();
+    clearNodeLongPress();
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
     setSidePanel("edit");
@@ -2645,7 +2709,6 @@ export default function RailwayMapEditor() {
     }
 
     setDraggingNodeId(nodeId);
-    beginTransientMapChange();
     if (svgRef.current) {
       const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
       if (point) {
@@ -2673,12 +2736,48 @@ export default function RailwayMapEditor() {
               }),
           ),
         };
+        nodeLongPressPressRef.current = {
+          nodeId,
+          laneId,
+          markerKey,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          startPoint: point,
+        };
+        nodeLongPressTimeoutRef.current = window.setTimeout(() => {
+          const press = nodeLongPressPressRef.current;
+          if (!press) return;
+          if (press.nodeId !== nodeId || press.markerKey !== markerKey) return;
+          beginSegmentDrawFromNode(nodeId, laneId, markerKey, press.startPoint);
+        }, NODE_SEGMENT_LONG_PRESS_MS);
       }
     }
   }
 
+  function handleNodeMouseUp(event: MouseEvent<SVGGElement>, nodeId: string, markerKey: string, laneId: string | null) {
+    if (!segmentDrawState) {
+      clearNodeLongPress();
+      return;
+    }
+
+    event.stopPropagation();
+    clearNodeLongPress();
+    setDraggingNodeId(null);
+    setDragLastPoint(null);
+    nodeDragSnapshotRef.current = null;
+
+    if (segmentDrawState.nodeId === nodeId && segmentDrawState.markerKey === markerKey) {
+      cancelSegmentDraw();
+      return;
+    }
+
+    setSegmentDrawState(null);
+    completeSegmentAtNode(nodeId, laneId, markerKey);
+  }
+
   function handleLabelMouseDown(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
     event.stopPropagation();
+    clearNodeLongPress();
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
     setSidePanel("edit");
@@ -2716,6 +2815,7 @@ export default function RailwayMapEditor() {
     currentRotation: number,
   ) {
     event.stopPropagation();
+    clearNodeLongPress();
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
     setSidePanel("edit");
@@ -2743,6 +2843,7 @@ export default function RailwayMapEditor() {
   function handleStationContextMenu(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
     event.preventDefault();
     event.stopPropagation();
+    clearNodeLongPress();
     setSegmentContextMenu(null);
     setSidePanel("edit");
     setSelectedNodeId(nodeId);
@@ -2764,11 +2865,13 @@ export default function RailwayMapEditor() {
 
   function handleCanvasMouseDown(event: MouseEvent<SVGSVGElement>) {
     if (event.target !== event.currentTarget) return;
+    clearNodeLongPress();
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
     setDraggingNodeId(null);
     setDraggingLabelStationId(null);
     setRotatingLabelState(null);
+    setSegmentDrawState(null);
     setPendingSegmentStart(null);
     nodeDragSnapshotRef.current = null;
     if (!svgRef.current) return;
@@ -2790,6 +2893,7 @@ export default function RailwayMapEditor() {
   }
 
   function handleSegmentMouseDown(segmentId: string) {
+    clearNodeLongPress();
     setNodeContextMenu(null);
     setSegmentContextMenu(null);
     setSidePanel("edit");
@@ -2804,6 +2908,7 @@ export default function RailwayMapEditor() {
   function handleSegmentContextMenu(event: MouseEvent<SVGPathElement>, segmentId: string) {
     event.preventDefault();
     event.stopPropagation();
+    clearNodeLongPress();
     setNodeContextMenu(null);
     setSelectedNodeMarkerKey(null);
     setSelectedSegmentId(segmentId);
@@ -2821,6 +2926,11 @@ export default function RailwayMapEditor() {
     if (!svgRef.current) return;
     const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
     if (!svgPoint) return;
+
+    if (segmentDrawState) {
+      setSegmentDrawState((current) => (current ? { ...current, currentPoint: svgPoint } : current));
+      return;
+    }
 
     if (marqueeSelection) {
       setMarqueeSelection((current) => (current ? { ...current, end: { x: svgPoint.x, y: svgPoint.y } } : current));
@@ -2905,6 +3015,15 @@ export default function RailwayMapEditor() {
     let deltaX = Math.round(rawDeltaX);
     let deltaY = Math.round(rawDeltaY);
 
+    const longPress = nodeLongPressPressRef.current;
+    if (
+      longPress &&
+      (Math.abs(event.clientX - longPress.clientX) > NODE_SEGMENT_LONG_PRESS_MOVE_THRESHOLD ||
+        Math.abs(event.clientY - longPress.clientY) > NODE_SEGMENT_LONG_PRESS_MOVE_THRESHOLD)
+    ) {
+      clearNodeLongPress();
+    }
+
     if (snapToGrid) {
       const snappedTarget = snapPointToGrid({
         x: draggedNodeStart.x + rawDeltaX,
@@ -2915,6 +3034,8 @@ export default function RailwayMapEditor() {
     }
 
     if (deltaX === 0 && deltaY === 0) return;
+
+    beginTransientMapChange();
 
     updateMap((current) => ({
       ...current,
@@ -2944,8 +3065,13 @@ export default function RailwayMapEditor() {
   }
 
   function handleSvgMouseUp() {
+    clearNodeLongPress();
     completeTransientMapChange();
     setRotatingLabelState(null);
+    if (segmentDrawState) {
+      setSegmentDrawState(null);
+      setPendingSegmentStart(null);
+    }
     if (marqueeSelection) {
       const rect = normalizeRect(marqueeSelection.start, marqueeSelection.end);
       setMarqueeSelection(null);
@@ -3294,6 +3420,20 @@ export default function RailwayMapEditor() {
                       });
                     })}
 
+                    {segmentDrawState ? (
+                      <line
+                        x1={(nodeMarkerCenterByKey.get(segmentDrawState.markerKey) ?? nodesById.get(segmentDrawState.nodeId) ?? segmentDrawState.currentPoint).x}
+                        y1={(nodeMarkerCenterByKey.get(segmentDrawState.markerKey) ?? nodesById.get(segmentDrawState.nodeId) ?? segmentDrawState.currentPoint).y}
+                        x2={segmentDrawState.currentPoint.x}
+                        y2={segmentDrawState.currentPoint.y}
+                        stroke="#64748b"
+                        strokeWidth="3"
+                        strokeDasharray="8 6"
+                        strokeLinecap="round"
+                        pointerEvents="none"
+                      />
+                    ) : null}
+
                     {currentNodes.map((node) => {
                       const stations = stationsByNodeId.get(node.id) ?? [];
                       const isSelected = selectedNodeIdsSet.has(node.id);
@@ -3314,7 +3454,8 @@ export default function RailwayMapEditor() {
                           {markers.map((marker) => (
                             <g
                               key={marker.key}
-                              onMouseDown={(event) => handleNodeMouseDown(event, node.id, marker.key, marker.segmentIds)}
+                              onMouseDown={(event) => handleNodeMouseDown(event, node.id, marker.key, marker.segmentIds, marker.laneId)}
+                              onMouseUp={(event) => handleNodeMouseUp(event, node.id, marker.key, marker.laneId)}
                               onContextMenu={(event) => handleNodeContextMenu(event, node.id, marker.key, marker.segmentIds, marker.laneId)}
                             >
                               {renderNodeSymbol(shape, marker.center, isTrackPoint, symbolSize)}
