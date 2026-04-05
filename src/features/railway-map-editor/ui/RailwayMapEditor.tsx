@@ -1316,6 +1316,8 @@ export default function RailwayMapEditor() {
     [contextMenuNodeId, stationsByNodeId],
   );
   const contextMenuStation = contextMenuStations[0] ?? null;
+  const hasNodeOrStationSelection = Boolean(selectedNode || selectedStation);
+  const hasSegmentOrLineSelection = Boolean(selectedSegment || (!hasNodeOrStationSelection && selectedLine));
   const labelDiagnostics = useMemo(() => {
     const diagnostics = new Map<
       string,
@@ -3946,111 +3948,78 @@ export default function RailwayMapEditor() {
                 <CardContent className="flex-1 overflow-auto space-y-6">
                   {sidePanel === "edit" ? (
                     <>
-                      <section className="space-y-3">
-                        <div className="text-sm font-semibold text-ink">Quick Add</div>
-                        <div className="flex gap-2">
-                          <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
-                          <select
-                            value={newStationKindId}
-                            onChange={(event) => setNewStationKindId(event.target.value)}
-                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                          >
-                            {config.stationKinds.map((kind) => (
-                              <option key={kind.id} value={kind.id}>
-                                {kind.name} {stationKindShapeGlyph(kind.shape)}
-                              </option>
-                            ))}
-                          </select>
-                          <Button onClick={addStation}>
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted">Quick add creates an unassigned station object. Use the canvas to assign it to a track point later.</p>
-                      </section>
-
-                      <section className="space-y-3">
-                        <div className="text-sm font-semibold text-ink">Stations</div>
-                        <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                          {visibleStations.map((station) => (
-                            <div
-                              key={station.id}
-                              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
-                                selectedStationId === station.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
-                              }`}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedNodeId(station.nodeId ?? "");
-                                  setSelectedNodeIds(station.nodeId ? [station.nodeId] : []);
-                                  setSelectedStationId(station.id);
-                                }}
-                                className="flex min-w-0 flex-1 items-center justify-between text-left"
+                      {!hasNodeOrStationSelection && !hasSegmentOrLineSelection ? (
+                        <>
+                          <section className="space-y-3">
+                            <div className="text-sm font-semibold text-ink">Quick Add</div>
+                            <div className="flex gap-2">
+                              <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
+                              <select
+                                value={newStationKindId}
+                                onChange={(event) => setNewStationKindId(event.target.value)}
+                                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
                               >
-                                <span className="truncate">{station.name}</span>
-                                <div className="flex items-center gap-2">
-                                  {!station.nodeId ? <Badge>Unassigned</Badge> : null}
-                                  <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
-                                </div>
-                              </button>
-                              <button
-                                type="button"
-                                aria-label={`Delete ${station.name}`}
-                                className={`rounded-lg px-2 py-1 ${
-                                  selectedStationId === station.id ? "bg-white/15 text-white hover:bg-white/25" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                                }`}
-                                onClick={() => (station.nodeId ? deleteNode(station.nodeId) : deleteStation(station.id))}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                                {config.stationKinds.map((kind) => (
+                                  <option key={kind.id} value={kind.id}>
+                                    {kind.name} {stationKindShapeGlyph(kind.shape)}
+                                  </option>
+                                ))}
+                              </select>
+                              <Button onClick={addStation}>
+                                <Plus className="h-4 w-4" />
+                              </Button>
                             </div>
-                          ))}
-                        </div>
-                      </section>
+                            <p className="text-xs text-muted">Quick add creates an unassigned station object. Use the canvas to assign it to a track point later.</p>
+                          </section>
 
-                      <section className="space-y-3">
-                        <div className="text-sm font-semibold text-ink">Selected Station</div>
-                        {selectedStation ? (
-                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            <Input
-                              value={selectedStation.name}
-                              onChange={(event) => updateStation(selectedStation.id, { name: event.target.value })}
-                              placeholder="Station name"
-                            />
-                            <select
-                              value={selectedStation.kindId}
-                              onChange={(event) => updateStation(selectedStation.id, { kindId: event.target.value })}
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                            >
-                              {config.stationKinds.map((kind) => (
-                                <option key={kind.id} value={kind.id}>
-                                  {kind.name} {stationKindShapeGlyph(kind.shape)}
-                                </option>
+                          <section className="space-y-3">
+                            <div className="text-sm font-semibold text-ink">Stations</div>
+                            <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                              {visibleStations.map((station) => (
+                                <div
+                                  key={station.id}
+                                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
+                                    selectedStationId === station.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedNodeId(station.nodeId ?? "");
+                                      setSelectedNodeIds(station.nodeId ? [station.nodeId] : []);
+                                      setSelectedStationId(station.id);
+                                    }}
+                                    className="flex min-w-0 flex-1 items-center justify-between text-left"
+                                  >
+                                    <span className="truncate">{station.name}</span>
+                                    <div className="flex items-center gap-2">
+                                      {!station.nodeId ? <Badge>Unassigned</Badge> : null}
+                                      <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
+                                    </div>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label={`Delete ${station.name}`}
+                                    className={`rounded-lg px-2 py-1 ${
+                                      selectedStationId === station.id ? "bg-white/15 text-white hover:bg-white/25" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                    }`}
+                                    onClick={() => (station.nodeId ? deleteNode(station.nodeId) : deleteStation(station.id))}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               ))}
-                            </select>
-                            {selectedStationId === selectedStation.id && labelDiagnostics.get(selectedStation.id)?.colliding ? (
-                              <p className="text-xs font-medium text-rose-700">
-                                Label collision detected with
-                                {labelDiagnostics.get(selectedStation.id)?.overlapsLabel && labelDiagnostics.get(selectedStation.id)?.overlapsSegment
-                                  ? " another label and a segment."
-                                  : labelDiagnostics.get(selectedStation.id)?.overlapsSegment
-                                    ? " a segment."
-                                    : " another label."}
-                              </p>
-                            ) : null}
-                            {!selectedStation.nodeId ? (
-                              <p className="text-xs text-muted">This station is currently unassigned. Use a track point context menu to assign it to the map.</p>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted">Select a station from the list or canvas.</p>
-                        )}
-                      </section>
+                            </div>
+                          </section>
+                        </>
+                      ) : null}
 
-                      <section className="space-y-3">
-                        <div className="text-sm font-semibold text-ink">Selected Node</div>
-                        {selectedNode ? (
-                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      {hasNodeOrStationSelection ? (
+                        <>
+                          <section className="space-y-3">
+                            <div className="text-sm font-semibold text-ink">Selected Node</div>
+                            {selectedNode ? (
+                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                             <div className="grid grid-cols-2 gap-2">
                               <Input type="number" value={selectedNode.x} onChange={(event) => updateNode({ x: Number(event.target.value) })} />
                               <Input type="number" value={selectedNode.y} onChange={(event) => updateNode({ y: Number(event.target.value) })} />
@@ -4185,30 +4154,73 @@ export default function RailwayMapEditor() {
                               ))}
                               {selectedNodeStations.length === 0 ? <p className="text-xs text-muted">No station is attached to this node.</p> : null}
                             </div>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted">Select a node on the canvas.</p>
-                        )}
-                      </section>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted">Select a node on the canvas.</p>
+                            )}
+                          </section>
 
-                      <section className="space-y-3">
-                        <div className="text-sm font-semibold text-ink">Selected Segment</div>
-                        {selectedSegment ? (
-                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="text-sm font-medium text-ink">{selectedSegment.id}</div>
-                            <div className="text-xs text-muted">
-                              {selectedSegment.fromNodeId} to {selectedSegment.toNodeId}
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted">Select a segment on the canvas.</p>
-                        )}
-                      </section>
+                          <section className="space-y-3">
+                            <div className="text-sm font-semibold text-ink">Selected Station</div>
+                            {selectedStation ? (
+                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <Input
+                                  value={selectedStation.name}
+                                  onChange={(event) => updateStation(selectedStation.id, { name: event.target.value })}
+                                  placeholder="Station name"
+                                />
+                                <select
+                                  value={selectedStation.kindId}
+                                  onChange={(event) => updateStation(selectedStation.id, { kindId: event.target.value })}
+                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                                >
+                                  {config.stationKinds.map((kind) => (
+                                    <option key={kind.id} value={kind.id}>
+                                      {kind.name} {stationKindShapeGlyph(kind.shape)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {selectedStationId === selectedStation.id && labelDiagnostics.get(selectedStation.id)?.colliding ? (
+                                  <p className="text-xs font-medium text-rose-700">
+                                    Label collision detected with
+                                    {labelDiagnostics.get(selectedStation.id)?.overlapsLabel && labelDiagnostics.get(selectedStation.id)?.overlapsSegment
+                                      ? " another label and a segment."
+                                      : labelDiagnostics.get(selectedStation.id)?.overlapsSegment
+                                        ? " a segment."
+                                        : " another label."}
+                                  </p>
+                                ) : null}
+                                {!selectedStation.nodeId ? (
+                                  <p className="text-xs text-muted">This station is currently unassigned. Use a track point context menu to assign it to the map.</p>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted">Select a station from the list or canvas.</p>
+                            )}
+                          </section>
+                        </>
+                      ) : null}
 
-                      <section className="space-y-3">
-                        <div className="text-sm font-semibold text-ink">Selected Line</div>
-                        {selectedLine ? (
-                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      {hasSegmentOrLineSelection ? (
+                        <>
+                          <section className="space-y-3">
+                            <div className="text-sm font-semibold text-ink">Selected Segment</div>
+                            {selectedSegment ? (
+                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <div className="text-sm font-medium text-ink">{selectedSegment.id}</div>
+                                <div className="text-xs text-muted">
+                                  {selectedSegment.fromNodeId} to {selectedSegment.toNodeId}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted">Select a segment on the canvas.</p>
+                            )}
+                          </section>
+
+                          <section className="space-y-3">
+                            <div className="text-sm font-semibold text-ink">Selected Line</div>
+                            {selectedLine ? (
+                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                             <div className="flex items-center gap-3">
                               <div
                                 className="h-3 w-3 rounded-full border border-slate-300"
@@ -4235,11 +4247,13 @@ export default function RailwayMapEditor() {
                               </svg>
                             </div>
                             <p className="text-xs text-muted">Line definitions can be edited in Management.</p>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted">Click a line or a segment on the canvas.</p>
-                        )}
-                      </section>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted">Click a line or a segment on the canvas.</p>
+                            )}
+                          </section>
+                        </>
+                      ) : null}
 
                     </>
                   ) : (
