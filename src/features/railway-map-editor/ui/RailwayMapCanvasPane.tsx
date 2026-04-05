@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent, MutableRefObject } from "react";
+import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import { Download, Plus, Trash2 } from "lucide-react";
 import type { Line, MapNode, MapPoint, Segment, Sheet, Station, StationKind } from "@/entities/railway-map/model/types";
 import { buildSegmentPoints, lineStrokeDasharray } from "@/entities/railway-map/model/utils";
@@ -81,8 +81,8 @@ type RailwayMapCanvasPaneProps = {
   setGridStepX: (value: number) => void;
   setGridStepY: (value: number) => void;
   addNode: () => void;
-  canvasViewportRef: MutableRefObject<HTMLDivElement | null>;
-  svgRef: MutableRefObject<SVGSVGElement | null>;
+  canvasViewportRef: RefObject<HTMLDivElement | null>;
+  svgRef: RefObject<SVGSVGElement | null>;
   canvasWidth: number;
   canvasHeight: number;
   viewBox: { x: number; y: number; width: number; height: number };
@@ -117,7 +117,7 @@ type RailwayMapCanvasPaneProps = {
   currentStations: Station[];
   draggingLabelStationId: string | null;
   draggingNodeId: string | null;
-  nodeDragSnapshotRef: MutableRefObject<{ positionsByNodeId: Map<string, { x: number; y: number }> } | null>;
+  nodeDragSnapshotRef: RefObject<{ positionsByNodeId: Map<string, { x: number; y: number }> } | null>;
   rotatingLabelState: RotatingLabelState | null;
   selectedStationId: string;
   labelDiagnostics: Map<string, LabelDiagnostic>;

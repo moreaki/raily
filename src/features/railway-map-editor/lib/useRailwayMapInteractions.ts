@@ -1,4 +1,4 @@
-import type { MouseEvent, MutableRefObject } from "react";
+import type { MouseEvent, RefObject } from "react";
 import { useRef, useState } from "react";
 import type { MapPoint, RailwayMap, Segment, Station } from "@/entities/railway-map/model/types";
 import { createStraightSegmentForSheet } from "@/entities/railway-map/model/utils";
@@ -40,7 +40,7 @@ type MarqueeSelection = {
 };
 
 type UseRailwayMapInteractionsArgs = {
-  svgRef: MutableRefObject<SVGSVGElement | null>;
+  svgRef: RefObject<SVGSVGElement | null>;
   model: RailwayMap["model"];
   currentSheetId: string;
   currentSheetExists: boolean;

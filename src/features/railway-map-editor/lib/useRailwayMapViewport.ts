@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { MapNode, MapPoint } from "@/entities/railway-map/model/types";
 import { clamp, getSheetContentCenter, getSvgPoint, normalizeWheelDelta } from "@/features/railway-map-editor/lib/geometry";
 
@@ -18,8 +18,8 @@ function loadStoredSheetViews(storageKey: string) {
 }
 
 type UseRailwayMapViewportArgs = {
-  canvasViewportRef: MutableRefObject<HTMLDivElement | null>;
-  svgRef: MutableRefObject<SVGSVGElement | null>;
+  canvasViewportRef: RefObject<HTMLDivElement | null>;
+  svgRef: RefObject<SVGSVGElement | null>;
   currentSheetId: string;
   currentNodes: MapNode[];
   canvasWidth: number;
