@@ -22,13 +22,11 @@ import {
   chooseSlotIndices,
   clamp,
   getClampedMenuPosition,
-  getNodeSide,
-  getSheetContentCenter,
   getSvgPoint,
+  getNodeSide,
   NodeSide,
   normalizeRect,
   normalizeSearchValue,
-  normalizeWheelDelta,
   offsetPoints,
   pathFromPoints,
   pointOnPathAtHalf,
@@ -53,6 +51,7 @@ import {
   segmentIntersectsLabelBox,
   STATION_FONT_WEIGHT_OPTIONS,
 } from "@/features/railway-map-editor/lib/labels";
+import { useRailwayMapViewport } from "@/features/railway-map-editor/lib/useRailwayMapViewport";
 import { RailwayMapInspector } from "@/features/railway-map-editor/ui/RailwayMapInspector";
 import { RailwayMapManagement } from "@/features/railway-map-editor/ui/RailwayMapManagement";
 import { RailwayMapCanvasPane } from "@/features/railway-map-editor/ui/RailwayMapCanvasPane";
@@ -168,19 +167,6 @@ function loadStoredMap() {
   }
 }
 
-function loadStoredSheetViews() {
-  if (typeof window === "undefined") return {} as Record<string, { zoom: number; centerX: number; centerY: number }>;
-
-  const raw = window.localStorage.getItem(SHEET_VIEW_STORAGE_KEY);
-  if (!raw) return {};
-
-  try {
-    return JSON.parse(raw) as Record<string, { zoom: number; centerX: number; centerY: number }>;
-  } catch {
-    return {};
-  }
-}
-
 function cloneMap(map: RailwayMap) {
   return JSON.parse(JSON.stringify(map)) as RailwayMap;
 }
@@ -226,13 +212,6 @@ export default function RailwayMapEditor() {
   const [manageSection, setManageSection] = useState<"development" | "lines" | "stationKinds">("lines");
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
   const [sheetNameDraft, setSheetNameDraft] = useState("");
-  const [zoom, setZoom] = useState(1);
-  const [viewportCenter, setViewportCenter] = useState({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
-  const [sheetViews, setSheetViews] = useState<Record<string, { zoom: number; centerX: number; centerY: number }>>(loadStoredSheetViews);
-  const [showGrid, setShowGrid] = useState(false);
-  const [snapToGrid, setSnapToGrid] = useState(false);
-  const [gridStepX, setGridStepX] = useState(20);
-  const [gridStepY, setGridStepY] = useState(20);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [draggingLabelStationId, setDraggingLabelStationId] = useState<string | null>(null);
   const [rotatingLabelState, setRotatingLabelState] = useState<{
@@ -242,8 +221,6 @@ export default function RailwayMapEditor() {
     startRotation: number;
   } | null>(null);
   const [dragLastPoint, setDragLastPoint] = useState<{ x: number; y: number } | null>(null);
-  const [panning, setPanning] = useState(false);
-  const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; centerX: number; centerY: number } | null>(null);
   const [marqueeSelection, setMarqueeSelection] = useState<{ start: MapPoint; end: MapPoint } | null>(null);
   const [pendingSegmentStart, setPendingSegmentStart] = useState<{ nodeId: string; laneId: string | null; markerKey: string | null } | null>(null);
   const [segmentDrawState, setSegmentDrawState] = useState<{
@@ -264,18 +241,12 @@ export default function RailwayMapEditor() {
   const [nodeAssignmentQuery, setNodeAssignmentQuery] = useState("");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
-  const lastRestoredSheetIdRef = useRef<string | null>(null);
   const mapRef = useRef(map);
-  const zoomRef = useRef(zoom);
-  const viewBoxRef = useRef({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, centerX: CANVAS_WIDTH / 2, centerY: CANVAS_HEIGHT / 2 });
   const nodeDragSnapshotRef = useRef<{
     startPoint: MapPoint;
     positionsByNodeId: Map<string, MapPoint>;
     labelOffsetsByStationId: Map<string, MapPoint>;
   } | null>(null);
-  const wheelZoomDeltaRef = useRef(0);
-  const wheelZoomFocusRef = useRef<MapPoint | null>(null);
-  const wheelZoomFrameRef = useRef<number | null>(null);
   const undoStackRef = useRef<RailwayMap[]>([]);
   const redoStackRef = useRef<RailwayMap[]>([]);
   const transientHistoryStartRef = useRef<RailwayMap | null>(null);
@@ -318,8 +289,44 @@ export default function RailwayMapEditor() {
     () => model.segments.filter((segment) => segment.sheetId === currentSheetId),
     [currentSheetId, model.segments],
   );
-  const effectiveGridStepX = Math.max(MIN_GRID_STEP, gridStepX);
-  const effectiveGridStepY = Math.max(MIN_GRID_STEP, gridStepY);
+  const {
+    zoom,
+    setZoom,
+    viewportCenter,
+    setViewportCenter,
+    sheetViews,
+    setSheetViews,
+    showGrid,
+    setShowGrid,
+    snapToGrid,
+    setSnapToGrid,
+    gridStepX,
+    setGridStepX,
+    gridStepY,
+    setGridStepY,
+    effectiveGridStepX,
+    effectiveGridStepY,
+    panning,
+    setPanning,
+    panStart,
+    setPanStart,
+    viewBox,
+    gridLines,
+    panViewportByPixels,
+    applyZoom,
+    resetViewportToSheet,
+  } = useRailwayMapViewport({
+    canvasViewportRef,
+    svgRef,
+    currentSheetId,
+    currentNodes,
+    canvasWidth: CANVAS_WIDTH,
+    canvasHeight: CANVAS_HEIGHT,
+    minZoom: MIN_ZOOM,
+    maxZoom: MAX_ZOOM,
+    minGridStep: MIN_GRID_STEP,
+    sheetViewStorageKey: SHEET_VIEW_STORAGE_KEY,
+  });
 
   const nodesById = useMemo(() => new Map(currentNodes.map((node) => [node.id, node])), [currentNodes]);
   const segmentsById = useMemo(() => new Map(currentSegments.map((segment) => [segment.id, segment])), [currentSegments]);
@@ -703,11 +710,6 @@ export default function RailwayMapEditor() {
     x: snapCoordinate(point.x, effectiveGridStepX),
     y: snapCoordinate(point.y, effectiveGridStepY),
   });
-  const viewBoxDimensions = useMemo(() => {
-    const width = CANVAS_WIDTH / zoom;
-    const height = CANVAS_HEIGHT / zoom;
-    return { width, height };
-  }, [zoom]);
   const stationAssignmentResults = useMemo(() => {
     if (!contextMenuNode) return [];
 
@@ -741,42 +743,6 @@ export default function RailwayMapEditor() {
 
     return config.lines.filter((line) => line.id !== assignedLineForContextSegment?.id);
   }, [assignedLineForContextSegment, config.lines, contextMenuSegment]);
-  const viewBox = useMemo(() => {
-    const { width, height } = viewBoxDimensions;
-    const centerX = viewportCenter.x;
-    const centerY = viewportCenter.y;
-    return {
-      x: centerX - width / 2,
-      y: centerY - height / 2,
-      width,
-      height,
-      centerX,
-      centerY,
-    };
-  }, [viewBoxDimensions, viewportCenter]);
-  const gridLines = useMemo(() => {
-    if (!showGrid) return { vertical: [] as number[], horizontal: [] as number[] };
-
-    const safeStepX = Math.max(MIN_GRID_STEP, gridStepX);
-    const safeStepY = Math.max(MIN_GRID_STEP, gridStepY);
-    const vertical: number[] = [];
-    const horizontal: number[] = [];
-
-    const startX = Math.floor(viewBox.x / safeStepX) * safeStepX;
-    const endX = Math.ceil((viewBox.x + viewBox.width) / safeStepX) * safeStepX;
-    const startY = Math.floor(viewBox.y / safeStepY) * safeStepY;
-    const endY = Math.ceil((viewBox.y + viewBox.height) / safeStepY) * safeStepY;
-
-    for (let x = startX; x <= endX; x += safeStepX) {
-      vertical.push(x);
-    }
-
-    for (let y = startY; y <= endY; y += safeStepY) {
-      horizontal.push(y);
-    }
-
-    return { vertical, horizontal };
-  }, [gridStepX, gridStepY, showGrid, viewBox.height, viewBox.width, viewBox.x, viewBox.y]);
 
   const deleteCurrentSelection = useCallback(() => {
     if (selectedStation) {
@@ -804,20 +770,6 @@ export default function RailwayMapEditor() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
     }
   }, [map]);
-
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
-
-  useEffect(() => {
-    viewBoxRef.current = viewBox;
-  }, [viewBox]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(SHEET_VIEW_STORAGE_KEY, JSON.stringify(sheetViews));
-    }
-  }, [sheetViews]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -917,43 +869,6 @@ export default function RailwayMapEditor() {
       setCurrentSheetId(model.sheets[0]?.id ?? "");
     }
   }, [currentSheet, model.sheets]);
-
-  useEffect(() => {
-    if (!currentSheetId) return;
-    if (lastRestoredSheetIdRef.current === currentSheetId) return;
-
-    lastRestoredSheetIdRef.current = currentSheetId;
-    const savedView = sheetViews[currentSheetId];
-    if (savedView) {
-      setZoom(savedView.zoom);
-      setViewportCenter({ x: savedView.centerX, y: savedView.centerY });
-      return;
-    }
-
-    setZoom(1);
-    setViewportCenter({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
-  }, [currentSheetId, sheetViews]);
-
-  useEffect(() => {
-    if (!currentSheetId) return;
-    setSheetViews((current) => {
-      const nextView = { zoom, centerX: viewportCenter.x, centerY: viewportCenter.y };
-      const previous = current[currentSheetId];
-      if (
-        previous &&
-        previous.zoom === nextView.zoom &&
-        previous.centerX === nextView.centerX &&
-        previous.centerY === nextView.centerY
-      ) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [currentSheetId]: nextView,
-      };
-    });
-  }, [currentSheetId, viewportCenter.x, viewportCenter.y, zoom]);
 
   function pushUndoSnapshot(snapshot: RailwayMap) {
     undoStackRef.current = [...undoStackRef.current.slice(-99), cloneMap(snapshot)];
@@ -2341,98 +2256,6 @@ export default function RailwayMapEditor() {
       laneId,
       segmentId: segmentIds.length === 1 ? segmentIds[0] : null,
     });
-  }
-
-  function panViewportByPixels(deltaX: number, deltaY: number) {
-    setViewportCenter((current) => ({
-      x: current.x + (deltaX / CANVAS_WIDTH) * viewBox.width,
-      y: current.y + (deltaY / CANVAS_HEIGHT) * viewBox.height,
-    }));
-  }
-
-  function applyZoom(nextZoom: number, focusPoint?: { x: number; y: number }) {
-    const currentZoom = zoomRef.current;
-    const currentViewBox = viewBoxRef.current;
-    const clampedZoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
-    if (clampedZoom === currentZoom) return;
-
-    const currentWidth = CANVAS_WIDTH / currentZoom;
-    const currentHeight = CANVAS_HEIGHT / currentZoom;
-    const nextWidth = CANVAS_WIDTH / clampedZoom;
-    const nextHeight = CANVAS_HEIGHT / clampedZoom;
-    const focusX = focusPoint?.x ?? currentViewBox.centerX;
-    const focusY = focusPoint?.y ?? currentViewBox.centerY;
-
-    const relativeX = (focusX - currentViewBox.x) / currentWidth;
-    const relativeY = (focusY - currentViewBox.y) / currentHeight;
-
-    const nextX = focusX - relativeX * nextWidth;
-    const nextY = focusY - relativeY * nextHeight;
-
-    setZoom(clampedZoom);
-    setViewportCenter({
-      x: nextX + nextWidth / 2,
-      y: nextY + nextHeight / 2,
-    });
-  }
-
-  function flushQueuedWheelZoom() {
-    wheelZoomFrameRef.current = null;
-    const delta = wheelZoomDeltaRef.current;
-    const focusPoint = wheelZoomFocusRef.current ?? undefined;
-    wheelZoomDeltaRef.current = 0;
-    wheelZoomFocusRef.current = null;
-
-    if (Math.abs(delta) < 0.5) return;
-
-    const magnitude = clamp(Math.abs(delta) * 0.0125, 0.06, 0.45);
-    const currentZoom = zoomRef.current;
-    const nextZoom = delta < 0 ? currentZoom * (1 + magnitude) : currentZoom / (1 + magnitude);
-    applyZoom(nextZoom, focusPoint);
-  }
-
-  useEffect(() => {
-    const element = canvasViewportRef.current;
-    if (!element) return;
-
-    function handleNativeWheel(event: globalThis.WheelEvent) {
-      if (!svgRef.current) return;
-      event.preventDefault();
-
-      if (event.ctrlKey || event.metaKey) {
-        const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
-        const normalizedDeltaY = normalizeWheelDelta(event.deltaY, event.deltaMode);
-        if (Math.abs(normalizedDeltaY) < 0.25) return;
-        wheelZoomDeltaRef.current += normalizedDeltaY;
-        wheelZoomFocusRef.current = svgPoint ? { x: svgPoint.x, y: svgPoint.y } : null;
-        if (wheelZoomFrameRef.current === null) {
-          wheelZoomFrameRef.current = window.requestAnimationFrame(flushQueuedWheelZoom);
-        }
-        return;
-      }
-
-      panViewportByPixels(
-        normalizeWheelDelta(event.deltaX, event.deltaMode),
-        normalizeWheelDelta(event.deltaY, event.deltaMode),
-      );
-    }
-
-    element.addEventListener("wheel", handleNativeWheel, { passive: false });
-    return () => {
-      element.removeEventListener("wheel", handleNativeWheel);
-      if (wheelZoomFrameRef.current !== null) {
-        window.cancelAnimationFrame(wheelZoomFrameRef.current);
-        wheelZoomFrameRef.current = null;
-      }
-      wheelZoomDeltaRef.current = 0;
-      wheelZoomFocusRef.current = null;
-    };
-  }, []);
-
-  function resetViewportToSheet() {
-    const center = getSheetContentCenter(currentNodes, CANVAS_WIDTH, CANVAS_HEIGHT);
-    setZoom(1);
-    setViewportCenter(center);
   }
 
   function exportSvg() {
