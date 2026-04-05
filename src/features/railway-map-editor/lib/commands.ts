@@ -251,27 +251,64 @@ export function updateNodeLaneLine(map: RailwayMap, nodeId: string, laneId: stri
     .filter((segment) => segment.fromLaneId === laneId || segment.toLaneId === laneId)
     .map((segment) => segment.id);
   const ensured = lineId ? ensureLineRun(map, lineId).map : map;
+  const owningLineIdBySegmentId = new Map<string, string>();
+  for (const lineRun of ensured.model.lineRuns) {
+    for (const segmentId of lineRun.segmentIds) {
+      if (!owningLineIdBySegmentId.has(segmentId)) {
+        owningLineIdBySegmentId.set(segmentId, lineRun.lineId);
+      }
+    }
+  }
+
+  const reassignedSegmentIds = lineId
+    ? ensured.model.segments
+        .filter((segment) => {
+          const touchesNode =
+            (segment.fromNodeId === nodeId && segment.fromLaneId) ||
+            (segment.toNodeId === nodeId && segment.toLaneId);
+          return Boolean(touchesNode) && owningLineIdBySegmentId.get(segment.id) === lineId;
+        })
+        .map((segment) => segment.id)
+    : [];
+  const allAffectedSegmentIds = [...new Set([...connectedSegmentIds, ...reassignedSegmentIds])];
 
   return {
     ...ensured,
     model: {
       ...ensured.model,
       nodeLanes: ensured.model.nodeLanes.map((candidate) =>
-        candidate.id !== laneId
+        candidate.nodeId !== nodeId
           ? candidate
-          : {
-              ...candidate,
-              lineId: lineId || undefined,
-            },
+          : candidate.id === laneId
+            ? {
+                ...candidate,
+                lineId: lineId || undefined,
+              }
+            : candidate.lineId === lineId
+              ? {
+                  ...candidate,
+                  lineId: undefined,
+                }
+              : candidate,
       ),
+      segments: ensured.model.segments.map((segment) => {
+        if (!lineId || !allAffectedSegmentIds.includes(segment.id)) return segment;
+        if (segment.fromNodeId === nodeId) {
+          return { ...segment, fromLaneId: laneId };
+        }
+        if (segment.toNodeId === nodeId) {
+          return { ...segment, toLaneId: laneId };
+        }
+        return segment;
+      }),
       lineRuns: ensured.model.lineRuns.map((lineRun) => {
-        const withoutConnected = lineRun.segmentIds.filter((segmentId) => !connectedSegmentIds.includes(segmentId));
+        const withoutConnected = lineRun.segmentIds.filter((segmentId) => !allAffectedSegmentIds.includes(segmentId));
         if (!lineId || lineRun.lineId !== lineId) {
           return { ...lineRun, segmentIds: withoutConnected };
         }
         return {
           ...lineRun,
-          segmentIds: [...withoutConnected, ...connectedSegmentIds.filter((segmentId) => !withoutConnected.includes(segmentId))],
+          segmentIds: [...withoutConnected, ...allAffectedSegmentIds.filter((segmentId) => !withoutConnected.includes(segmentId))],
         };
       }),
     },

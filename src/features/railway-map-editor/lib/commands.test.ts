@@ -252,6 +252,33 @@ describe("railway-map commands", () => {
     expect(next.model.lineRuns.find((lineRun) => lineRun.lineId === "line-b")?.segmentIds.sort()).toEqual(["sg1", "sg2"]);
   });
 
+  it("moves same-line continuity from a sibling port onto the newly assigned port", () => {
+    const withLanes = {
+      ...addNodeLane(addNodeLane(makeMap(), "n2").map, "n2").map,
+      model: {
+        ...addNodeLane(addNodeLane(makeMap(), "n2").map, "n2").map.model,
+        segments: addNodeLane(addNodeLane(makeMap(), "n2").map, "n2").map.model.segments.map((segment) =>
+          segment.id === "sg1"
+            ? { ...segment, toLaneId: "nl-n2-manual-1" }
+            : segment.id === "sg2"
+              ? { ...segment, fromLaneId: "nl-n2-manual-2" }
+              : segment,
+        ),
+        lineRuns: [
+          { id: "lr-a", lineId: "line-a", segmentIds: ["sg2"] },
+          { id: "lr-b", lineId: "line-b", segmentIds: ["sg1"] },
+        ],
+      },
+    };
+
+    const next = updateNodeLaneLine(withLanes, "n2", "nl-n2-manual-2", "line-b");
+
+    expect(next.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-2")?.lineId).toBe("line-b");
+    expect(next.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.lineId).toBeUndefined();
+    expect(next.model.segments.find((segment) => segment.id === "sg1")?.toLaneId).toBe("nl-n2-manual-2");
+    expect(next.model.lineRuns.find((lineRun) => lineRun.lineId === "line-b")?.segmentIds.sort()).toEqual(["sg1", "sg2"]);
+  });
+
   it("deleteSheet removes sheet-owned nodes, stations, segments, and run references", () => {
     const map = assignLineToSegment(makeMap(), "line-b", "sg1");
     const next = deleteSheet(map, "sheet-other");
