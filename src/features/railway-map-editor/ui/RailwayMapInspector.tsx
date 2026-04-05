@@ -58,6 +58,10 @@ type RailwayMapInspectorProps = {
   segmentsById: Map<string, Segment>;
   handleSelectedLineInspectorChange: (lineId: string) => void;
   insertTrackPointOnSegment: (segmentId: string) => void;
+  makeSegmentStraight: (segmentId: string) => void;
+  makeSegmentOrthogonal: (segmentId: string) => void;
+  makeSegmentPolyline: (segmentId: string) => void;
+  addSegmentPolylinePoint: (segmentId: string) => void;
 };
 
 export function RailwayMapInspector({
@@ -100,6 +104,10 @@ export function RailwayMapInspector({
   segmentsById,
   handleSelectedLineInspectorChange,
   insertTrackPointOnSegment,
+  makeSegmentStraight,
+  makeSegmentOrthogonal,
+  makeSegmentPolyline,
+  addSegmentPolylinePoint,
 }: RailwayMapInspectorProps) {
   const sortedLines = [...lines].sort((left, right) => {
     const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
@@ -346,8 +354,21 @@ export function RailwayMapInspector({
                   <Badge>{selectedSegment.fromNodeId}</Badge>
                   <Badge>to</Badge>
                   <Badge>{selectedSegment.toNodeId}</Badge>
+                  <Badge>{selectedSegment.geometry.kind}</Badge>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={() => makeSegmentStraight(selectedSegment.id)}>
+                    Straight
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => makeSegmentOrthogonal(selectedSegment.id)}>
+                    Orthogonal
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => makeSegmentPolyline(selectedSegment.id)}>
+                    Polyline
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => addSegmentPolylinePoint(selectedSegment.id)}>
+                    Add bend point
+                  </Button>
                   <Button type="button" variant="outline" onClick={() => insertTrackPointOnSegment(selectedSegment.id)}>
                     <Plus className="mr-1 h-4 w-4" />
                     Insert track point

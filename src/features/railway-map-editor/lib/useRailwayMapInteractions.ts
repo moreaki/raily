@@ -15,6 +15,15 @@ type RotatingLabelState = {
   startRotation: number;
 };
 
+type DraggingSegmentElbowState = {
+  segmentId: string;
+};
+
+type DraggingSegmentPolylinePointState = {
+  segmentId: string;
+  pointIndex: number;
+};
+
 type PendingSegmentStart = {
   nodeId: string;
   laneId: string | null;
@@ -110,6 +119,8 @@ type UseRailwayMapInteractionsArgs = {
   closeSegmentContextMenu: () => void;
   resetNodeAssignmentDrafts: () => void;
   setViewportCenter: (value: MapPoint) => void;
+  updateSegmentOrthogonalElbow: (segmentId: string, elbow: MapPoint, options?: { trackHistory?: boolean }) => void;
+  updateSegmentPolylinePoint: (segmentId: string, pointIndex: number, point: MapPoint, options?: { trackHistory?: boolean }) => void;
 };
 
 export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
@@ -155,11 +166,15 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     closeSegmentContextMenu,
     resetNodeAssignmentDrafts,
     setViewportCenter,
+    updateSegmentOrthogonalElbow,
+    updateSegmentPolylinePoint,
   } = args;
 
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [draggingLabelStationId, setDraggingLabelStationId] = useState<string | null>(null);
   const [rotatingLabelState, setRotatingLabelState] = useState<RotatingLabelState | null>(null);
+  const [draggingSegmentElbowState, setDraggingSegmentElbowState] = useState<DraggingSegmentElbowState | null>(null);
+  const [draggingSegmentPolylinePointState, setDraggingSegmentPolylinePointState] = useState<DraggingSegmentPolylinePointState | null>(null);
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null);
   const [pendingSegmentStart, setPendingSegmentStart] = useState<PendingSegmentStart | null>(null);
   const [segmentDrawState, setSegmentDrawState] = useState<SegmentDrawState | null>(null);
@@ -571,6 +586,36 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     setSelectedStationId("");
   }
 
+  function handleSegmentElbowMouseDown(event: MouseEvent<SVGCircleElement>, segmentId: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    clearNodeLongPress();
+    closeAllContextMenus();
+    beginTransientMapChange();
+    setDraggingSegmentElbowState({ segmentId });
+    setSelectedSegmentId(segmentId);
+    setSelectedNodeMarkerKey(null);
+    setSelectedNodeId("");
+    setSelectedNodeIds([]);
+    setSelectedStationId("");
+    setSidePanel("edit");
+  }
+
+  function handleSegmentPolylinePointMouseDown(event: MouseEvent<SVGCircleElement>, segmentId: string, pointIndex: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    clearNodeLongPress();
+    closeAllContextMenus();
+    beginTransientMapChange();
+    setDraggingSegmentPolylinePointState({ segmentId, pointIndex });
+    setSelectedSegmentId(segmentId);
+    setSelectedNodeMarkerKey(null);
+    setSelectedNodeId("");
+    setSelectedNodeIds([]);
+    setSelectedStationId("");
+    setSidePanel("edit");
+  }
+
   function handleSvgMouseMove(event: MouseEvent<SVGSVGElement>) {
     if (!svgRef.current) return;
     const svgPoint = getSvgPoint(svgRef.current, event.clientX, event.clientY);
@@ -578,6 +623,23 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
 
     if (segmentDrawState) {
       setSegmentDrawState((current) => (current ? { ...current, currentPoint: svgPoint } : current));
+      return;
+    }
+
+    if (draggingSegmentElbowState) {
+      const nextElbow = snapToGrid ? snapPointToGrid(svgPoint) : { x: Math.round(svgPoint.x), y: Math.round(svgPoint.y) };
+      updateSegmentOrthogonalElbow(draggingSegmentElbowState.segmentId, nextElbow, { trackHistory: false });
+      return;
+    }
+
+    if (draggingSegmentPolylinePointState) {
+      const nextPoint = snapToGrid ? snapPointToGrid(svgPoint) : { x: Math.round(svgPoint.x), y: Math.round(svgPoint.y) };
+      updateSegmentPolylinePoint(
+        draggingSegmentPolylinePointState.segmentId,
+        draggingSegmentPolylinePointState.pointIndex,
+        nextPoint,
+        { trackHistory: false },
+      );
       return;
     }
 
@@ -850,6 +912,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
   function handleSvgMouseUp() {
     clearNodeLongPress();
     completeTransientMapChange();
+    setDraggingSegmentElbowState(null);
+    setDraggingSegmentPolylinePointState(null);
     setRotatingLabelState(null);
     setLabelAxisGuide(null);
     if (segmentDrawState) {
@@ -928,6 +992,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     draggingNodeId,
     draggingLabelStationId,
     rotatingLabelState,
+    draggingSegmentElbowState,
+    draggingSegmentPolylinePointState,
     labelAxisGuide,
     marqueeSelection,
     pendingSegmentStart,
@@ -943,6 +1009,8 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     handleLabelRotateMouseDown,
     handleCanvasMouseDown,
     handleSegmentMouseDown,
+    handleSegmentElbowMouseDown,
+    handleSegmentPolylinePointMouseDown,
     handleSegmentContextMenu,
     handleSvgMouseMove,
     handleSvgMouseUp,

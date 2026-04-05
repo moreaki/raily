@@ -55,6 +55,15 @@ type RotatingLabelState = {
   stationId: string;
 };
 
+type DraggingSegmentElbowState = {
+  segmentId: string;
+};
+
+type DraggingSegmentPolylinePointState = {
+  segmentId: string;
+  pointIndex: number;
+};
+
 type LabelAxisGuide = {
   stationId: string;
   nodeId: string;
@@ -130,6 +139,8 @@ type RailwayMapCanvasPaneProps = {
   draggingNodeId: string | null;
   nodeDragSnapshotRef: RefObject<{ positionsByNodeId: Map<string, { x: number; y: number }> } | null>;
   rotatingLabelState: RotatingLabelState | null;
+  draggingSegmentElbowState: DraggingSegmentElbowState | null;
+  draggingSegmentPolylinePointState: DraggingSegmentPolylinePointState | null;
   labelAxisGuide: LabelAxisGuide | null;
   selectedStationId: string;
   highlightedStationId: string;
@@ -143,6 +154,8 @@ type RailwayMapCanvasPaneProps = {
     center: MapPoint,
     currentRotation: number,
   ) => void;
+  handleSegmentElbowMouseDown: (event: ReactMouseEvent<SVGCircleElement>, segmentId: string) => void;
+  handleSegmentPolylinePointMouseDown: (event: ReactMouseEvent<SVGCircleElement>, segmentId: string, pointIndex: number) => void;
   marqueeSelection: MarqueeSelection | null;
   currentSheet: Sheet | null;
   nodeContextMenu: NodeContextMenuState | null;
@@ -173,6 +186,10 @@ type RailwayMapCanvasPaneProps = {
   unassignLineFromSegment: (lineId: string, segmentId: string) => void;
   assignLineToSegment: (lineId: string, segmentId: string) => void;
   insertTrackPointOnSegment: (segmentId: string) => void;
+  makeSegmentStraight: (segmentId: string) => void;
+  makeSegmentOrthogonal: (segmentId: string) => void;
+  makeSegmentPolyline: (segmentId: string) => void;
+  addSegmentPolylinePoint: (segmentId: string) => void;
   duplicateSegment: (segmentId: string) => void;
   deleteSegment: (segmentId: string) => void;
   canvasContextMenu: { x: number; y: number; point: MapPoint } | null;
@@ -209,11 +226,11 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     gridStepY,
     minGridStep,
     setGridStepX,
-  setGridStepY,
-  segmentIndicatorWidth,
-  selectedSegmentIndicatorBoost,
-  gridLineOpacity,
-  canvasViewportRef,
+    setGridStepY,
+    segmentIndicatorWidth,
+    selectedSegmentIndicatorBoost,
+    gridLineOpacity,
+    canvasViewportRef,
     svgRef,
     canvasWidth,
     canvasHeight,
@@ -252,6 +269,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     draggingNodeId,
     nodeDragSnapshotRef,
     rotatingLabelState,
+    draggingSegmentElbowState,
+    draggingSegmentPolylinePointState,
     labelAxisGuide,
     selectedStationId,
     highlightedStationId,
@@ -259,6 +278,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     handleLabelMouseDown,
     handleStationContextMenu,
     handleLabelRotateMouseDown,
+    handleSegmentElbowMouseDown,
+    handleSegmentPolylinePointMouseDown,
     marqueeSelection,
     currentSheet,
     nodeContextMenu,
@@ -289,6 +310,10 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     unassignLineFromSegment,
     assignLineToSegment,
     insertTrackPointOnSegment,
+    makeSegmentStraight,
+    makeSegmentOrthogonal,
+    makeSegmentPolyline,
+    addSegmentPolylinePoint,
     duplicateSegment,
     deleteSegment,
     canvasContextMenu,
@@ -441,6 +466,81 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                   );
                 });
               })}
+
+              {(() => {
+                const selectedSegment = segmentsById.get(selectedSegmentId);
+                if (!selectedSegment) return null;
+
+                if (selectedSegment.geometry.kind === "orthogonal") {
+                  return (
+                    <g>
+                      <circle
+                        cx={selectedSegment.geometry.elbow.x}
+                        cy={selectedSegment.geometry.elbow.y}
+                        r={draggingSegmentElbowState?.segmentId === selectedSegment.id ? "9" : "7"}
+                        fill="white"
+                        stroke="#0f172a"
+                        strokeWidth="2"
+                        onMouseDown={(event) => handleSegmentElbowMouseDown(event, selectedSegment.id)}
+                        style={{ cursor: "move" }}
+                      />
+                      <circle
+                        cx={selectedSegment.geometry.elbow.x}
+                        cy={selectedSegment.geometry.elbow.y}
+                        r="13"
+                        fill="none"
+                        stroke="#0f172a"
+                        strokeDasharray="4 3"
+                        pointerEvents="none"
+                        opacity={draggingSegmentElbowState?.segmentId === selectedSegment.id ? 1 : 0.75}
+                      />
+                    </g>
+                  );
+                }
+
+                if (selectedSegment.geometry.kind === "polyline") {
+                  return (
+                    <g>
+                      {selectedSegment.geometry.points.map((point, pointIndex) => (
+                        <g key={`${selectedSegment.id}:point:${pointIndex}`}>
+                          <circle
+                            cx={point.x}
+                            cy={point.y}
+                            r={
+                              draggingSegmentPolylinePointState?.segmentId === selectedSegment.id &&
+                              draggingSegmentPolylinePointState.pointIndex === pointIndex
+                                ? "9"
+                                : "7"
+                            }
+                            fill="white"
+                            stroke="#0f172a"
+                            strokeWidth="2"
+                            onMouseDown={(event) => handleSegmentPolylinePointMouseDown(event, selectedSegment.id, pointIndex)}
+                            style={{ cursor: "move" }}
+                          />
+                          <circle
+                            cx={point.x}
+                            cy={point.y}
+                            r="13"
+                            fill="none"
+                            stroke="#0f172a"
+                            strokeDasharray="4 3"
+                            pointerEvents="none"
+                            opacity={
+                              draggingSegmentPolylinePointState?.segmentId === selectedSegment.id &&
+                              draggingSegmentPolylinePointState.pointIndex === pointIndex
+                                ? 1
+                                : 0.75
+                            }
+                          />
+                        </g>
+                      ))}
+                    </g>
+                  );
+                }
+
+                return null;
+              })()}
 
               {segmentDrawState ? (
                 <line
@@ -706,6 +806,10 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               unassignLineFromSegment={unassignLineFromSegment}
               assignLineToSegment={assignLineToSegment}
               insertTrackPointOnSegment={insertTrackPointOnSegment}
+              makeSegmentStraight={makeSegmentStraight}
+              makeSegmentOrthogonal={makeSegmentOrthogonal}
+              makeSegmentPolyline={makeSegmentPolyline}
+              addSegmentPolylinePoint={addSegmentPolylinePoint}
               duplicateSegment={duplicateSegment}
               deleteSegment={deleteSegment}
             />

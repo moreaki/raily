@@ -250,6 +250,180 @@ export function deleteSegment(map: RailwayMap, segmentId: string) {
   };
 }
 
+function buildOrthogonalElbow(from: MapPoint, to: MapPoint) {
+  const horizontalFirst = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
+  return horizontalFirst
+    ? { x: to.x, y: from.y }
+    : { x: from.x, y: to.y };
+}
+
+export function makeSegmentStraight(map: RailwayMap, segmentId: string) {
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      segments: map.model.segments.map((segment) =>
+        segment.id !== segmentId
+          ? segment
+          : {
+              ...segment,
+              geometry: { kind: "straight" as const },
+            },
+      ),
+    },
+  };
+}
+
+export function makeSegmentOrthogonal(map: RailwayMap, segmentId: string) {
+  const segment = map.model.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) return map;
+
+  const from = map.model.nodes.find((candidate) => candidate.id === segment.fromNodeId);
+  const to = map.model.nodes.find((candidate) => candidate.id === segment.toNodeId);
+  if (!from || !to) return map;
+
+  const fallbackElbow = buildOrthogonalElbow(from, to);
+  const elbow =
+    segment.geometry.kind === "orthogonal"
+      ? segment.geometry.elbow
+      : segment.geometry.kind === "polyline" && segment.geometry.points.length > 0
+        ? segment.geometry.points[Math.floor((segment.geometry.points.length - 1) / 2)]
+        : fallbackElbow;
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      segments: map.model.segments.map((candidate) =>
+        candidate.id !== segmentId
+          ? candidate
+          : {
+              ...candidate,
+              geometry: {
+                kind: "orthogonal" as const,
+                elbow,
+              },
+            },
+      ),
+    },
+  };
+}
+
+export function updateSegmentOrthogonalElbow(map: RailwayMap, segmentId: string, elbow: MapPoint) {
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      segments: map.model.segments.map((segment) =>
+        segment.id !== segmentId || segment.geometry.kind !== "orthogonal"
+          ? segment
+          : {
+              ...segment,
+              geometry: {
+                ...segment.geometry,
+                elbow,
+              },
+            },
+      ),
+    },
+  };
+}
+
+export function makeSegmentPolyline(map: RailwayMap, segmentId: string) {
+  const segment = map.model.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) return map;
+
+  const nodesById = new Map(map.model.nodes.map((node) => [node.id, node]));
+  const points = buildSegmentPoints(segment, nodesById);
+  if (points.length < 2) return map;
+
+  const polylinePoints =
+    segment.geometry.kind === "polyline"
+      ? segment.geometry.points
+      : segment.geometry.kind === "orthogonal"
+        ? [segment.geometry.elbow]
+        : [pointOnPathAtHalf(points)];
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      segments: map.model.segments.map((candidate) =>
+        candidate.id !== segmentId
+          ? candidate
+          : {
+              ...candidate,
+              geometry: {
+                kind: "polyline" as const,
+                points: polylinePoints,
+              },
+            },
+      ),
+    },
+  };
+}
+
+export function addSegmentPolylinePoint(
+  map: RailwayMap,
+  segmentId: string,
+  snapPoint?: (point: MapPoint) => MapPoint,
+) {
+  const segment = map.model.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) return map;
+
+  const nodesById = new Map(map.model.nodes.map((node) => [node.id, node]));
+  const sourcePoints = buildSegmentPoints(segment, nodesById);
+  if (sourcePoints.length < 2) return map;
+
+  const insertedPoint = snapPoint ? snapPoint(pointOnPathAtHalf(sourcePoints)) : pointOnPathAtHalf(sourcePoints);
+  const existingPoints =
+    segment.geometry.kind === "polyline"
+      ? [...segment.geometry.points]
+      : segment.geometry.kind === "orthogonal"
+        ? [segment.geometry.elbow]
+        : [];
+  const insertIndex = Math.ceil(existingPoints.length / 2);
+  existingPoints.splice(insertIndex, 0, insertedPoint);
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      segments: map.model.segments.map((candidate) =>
+        candidate.id !== segmentId
+          ? candidate
+          : {
+              ...candidate,
+              geometry: {
+                kind: "polyline" as const,
+                points: existingPoints,
+              },
+            },
+      ),
+    },
+  };
+}
+
+export function updateSegmentPolylinePoint(map: RailwayMap, segmentId: string, pointIndex: number, point: MapPoint) {
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      segments: map.model.segments.map((segment) =>
+        segment.id !== segmentId || segment.geometry.kind !== "polyline"
+          ? segment
+          : {
+              ...segment,
+              geometry: {
+                ...segment.geometry,
+                points: segment.geometry.points.map((candidate, index) => (index === pointIndex ? point : candidate)),
+              },
+            },
+      ),
+    },
+  };
+}
+
 export function duplicateSegment(map: RailwayMap, segmentId: string) {
   const source = map.model.segments.find((segment) => segment.id === segmentId);
   if (!source) return { map, duplicated: null as Segment | null };

@@ -38,10 +38,16 @@ import {
   deleteStation as deleteStationCommand,
   deleteStationKind as deleteStationKindCommand,
   duplicateSegment as duplicateSegmentCommand,
+  addSegmentPolylinePoint as addSegmentPolylinePointCommand,
   insertTrackPointOnSegment as insertTrackPointOnSegmentCommand,
+  makeSegmentOrthogonal as makeSegmentOrthogonalCommand,
+  makeSegmentPolyline as makeSegmentPolylineCommand,
+  makeSegmentStraight as makeSegmentStraightCommand,
   moveLaneOrder as moveLaneOrderCommand,
   renameSheet,
   unassignLineFromSegment as unassignLineFromSegmentCommand,
+  updateSegmentOrthogonalElbow as updateSegmentOrthogonalElbowCommand,
+  updateSegmentPolylinePoint as updateSegmentPolylinePointCommand,
   updateLine as updateLineCommand,
   updateNode as updateNodeCommand,
   updateStation as updateStationCommand,
@@ -1078,6 +1084,38 @@ export default function RailwayMapEditor() {
     setSegmentContextMenu(null);
   }
 
+  function makeSegmentStraight(segmentId: string) {
+    updateMap((current) => makeSegmentStraightCommand(current, segmentId));
+    setSelectedSegmentId(segmentId);
+    setSegmentContextMenu(null);
+  }
+
+  function makeSegmentOrthogonal(segmentId: string) {
+    updateMap((current) => makeSegmentOrthogonalCommand(current, segmentId));
+    setSelectedSegmentId(segmentId);
+    setSegmentContextMenu(null);
+  }
+
+  function makeSegmentPolyline(segmentId: string) {
+    updateMap((current) => makeSegmentPolylineCommand(current, segmentId));
+    setSelectedSegmentId(segmentId);
+    setSegmentContextMenu(null);
+  }
+
+  function updateSegmentOrthogonalElbow(segmentId: string, elbow: MapPoint, options?: { trackHistory?: boolean }) {
+    updateMap((current) => updateSegmentOrthogonalElbowCommand(current, segmentId, elbow), options);
+  }
+
+  function addSegmentPolylinePoint(segmentId: string) {
+    updateMap((current) => addSegmentPolylinePointCommand(current, segmentId, snapToGrid ? snapPointToGrid : undefined));
+    setSelectedSegmentId(segmentId);
+    setSegmentContextMenu(null);
+  }
+
+  function updateSegmentPolylinePoint(segmentId: string, pointIndex: number, point: MapPoint, options?: { trackHistory?: boolean }) {
+    updateMap((current) => updateSegmentPolylinePointCommand(current, segmentId, pointIndex, point), options);
+  }
+
   function assignLineToSegment(lineId: string, segmentId: string) {
     updateMap((current) => assignLineToSegmentCommand(current, lineId, segmentId));
     setSelectedLineId(lineId);
@@ -1232,6 +1270,8 @@ export default function RailwayMapEditor() {
     draggingNodeId,
     draggingLabelStationId,
     rotatingLabelState,
+    draggingSegmentElbowState,
+    draggingSegmentPolylinePointState,
     labelAxisGuide,
     marqueeSelection,
     pendingSegmentStart,
@@ -1247,6 +1287,8 @@ export default function RailwayMapEditor() {
     handleLabelRotateMouseDown,
     handleCanvasMouseDown,
     handleSegmentMouseDown,
+    handleSegmentElbowMouseDown,
+    handleSegmentPolylinePointMouseDown,
     handleSegmentContextMenu: prepareSegmentSelectionForContextMenu,
     handleSvgMouseMove,
     handleSvgMouseUp,
@@ -1294,6 +1336,8 @@ export default function RailwayMapEditor() {
     closeSegmentContextMenu,
     resetNodeAssignmentDrafts,
     setViewportCenter,
+    updateSegmentOrthogonalElbow,
+    updateSegmentPolylinePoint,
   });
   function handleStationContextMenu(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
     event.preventDefault();
@@ -1452,6 +1496,8 @@ export default function RailwayMapEditor() {
             draggingNodeId={draggingNodeId}
             nodeDragSnapshotRef={nodeDragSnapshotRef}
             rotatingLabelState={rotatingLabelState}
+            draggingSegmentElbowState={draggingSegmentElbowState}
+            draggingSegmentPolylinePointState={draggingSegmentPolylinePointState}
             labelAxisGuide={labelAxisGuide}
             selectedStationId={selectedStationId}
             highlightedStationId={highlightedStationId}
@@ -1459,6 +1505,8 @@ export default function RailwayMapEditor() {
             handleLabelMouseDown={handleLabelMouseDown}
             handleStationContextMenu={handleStationContextMenu}
             handleLabelRotateMouseDown={handleLabelRotateMouseDown}
+            handleSegmentElbowMouseDown={handleSegmentElbowMouseDown}
+            handleSegmentPolylinePointMouseDown={handleSegmentPolylinePointMouseDown}
             marqueeSelection={marqueeSelection}
             currentSheet={currentSheet}
             nodeContextMenu={nodeContextMenu}
@@ -1489,6 +1537,10 @@ export default function RailwayMapEditor() {
             unassignLineFromSegment={unassignLineFromSegment}
             assignLineToSegment={assignLineToSegment}
             insertTrackPointOnSegment={insertTrackPointOnSegment}
+            makeSegmentStraight={makeSegmentStraight}
+            makeSegmentOrthogonal={makeSegmentOrthogonal}
+            makeSegmentPolyline={makeSegmentPolyline}
+            addSegmentPolylinePoint={addSegmentPolylinePoint}
             duplicateSegment={duplicateSegment}
             deleteSegment={deleteSegment}
             canvasContextMenu={canvasContextMenu}
@@ -1560,6 +1612,10 @@ export default function RailwayMapEditor() {
               segmentsById={segmentsById}
               handleSelectedLineInspectorChange={handleSelectedLineInspectorChange}
               insertTrackPointOnSegment={insertTrackPointOnSegment}
+              makeSegmentStraight={makeSegmentStraight}
+              makeSegmentOrthogonal={makeSegmentOrthogonal}
+              makeSegmentPolyline={makeSegmentPolyline}
+              addSegmentPolylinePoint={addSegmentPolylinePoint}
             />
                   ) : sidePanel === "settings" ? (
                     <RailwayMapSettings

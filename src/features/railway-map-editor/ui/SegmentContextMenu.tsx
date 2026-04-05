@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { CornerDownRight, Minus, Plus, Spline, Trash2 } from "lucide-react";
 import type { Line, Segment } from "@/entities/railway-map/model/types";
 
 type SegmentContextMenuState = {
@@ -16,6 +16,10 @@ type SegmentContextMenuProps = {
   unassignLineFromSegment: (lineId: string, segmentId: string) => void;
   assignLineToSegment: (lineId: string, segmentId: string) => void;
   insertTrackPointOnSegment: (segmentId: string) => void;
+  makeSegmentStraight: (segmentId: string) => void;
+  makeSegmentOrthogonal: (segmentId: string) => void;
+  makeSegmentPolyline: (segmentId: string) => void;
+  addSegmentPolylinePoint: (segmentId: string) => void;
   duplicateSegment: (segmentId: string) => void;
   deleteSegment: (segmentId: string) => void;
 };
@@ -30,6 +34,10 @@ export function SegmentContextMenu(props: SegmentContextMenuProps) {
     unassignLineFromSegment,
     assignLineToSegment,
     insertTrackPointOnSegment,
+    makeSegmentStraight,
+    makeSegmentOrthogonal,
+    makeSegmentPolyline,
+    addSegmentPolylinePoint,
     duplicateSegment,
     deleteSegment,
   } = props;
@@ -77,6 +85,44 @@ export function SegmentContextMenu(props: SegmentContextMenuProps) {
         </div>
       </div>
 
+      <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Geometry</div>
+        <div className="mt-2 space-y-1">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+            onClick={() => makeSegmentStraight(contextMenuSegment.id)}
+          >
+            <Minus className="h-4 w-4" />
+            Make straight
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+            onClick={() => makeSegmentOrthogonal(contextMenuSegment.id)}
+          >
+            <CornerDownRight className="h-4 w-4" />
+            Make orthogonal
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+            onClick={() => makeSegmentPolyline(contextMenuSegment.id)}
+          >
+            <Spline className="h-4 w-4" />
+            Make polyline
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+        onClick={() => addSegmentPolylinePoint(contextMenuSegment.id)}
+      >
+        <Plus className="h-4 w-4" />
+        Add bend point
+      </button>
       <button
         type="button"
         className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"

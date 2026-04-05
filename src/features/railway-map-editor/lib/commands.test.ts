@@ -6,6 +6,11 @@ import {
   deleteNodes,
   deleteSheet,
   insertTrackPointOnSegment,
+  addSegmentPolylinePoint,
+  makeSegmentOrthogonal,
+  makeSegmentPolyline,
+  makeSegmentStraight,
+  updateSegmentPolylinePoint,
 } from "@/features/railway-map-editor/lib/commands";
 
 function makeMap(): RailwayMap {
@@ -92,6 +97,46 @@ describe("railway-map commands", () => {
     expect(next.model.nodes.some((node) => node.id === insertedNode?.id)).toBe(true);
     expect(next.model.segments.some((segment) => segment.id === "sg1")).toBe(false);
     expect(next.model.segments.filter((segment) => segment.sheetId === "sheet-main")).toHaveLength(3);
+  });
+
+  it("can convert a segment between straight and orthogonal geometry", () => {
+    const map = makeMap();
+    const orthogonal = makeSegmentOrthogonal(map, "sg1");
+    const segmentAfterOrthogonal = orthogonal.model.segments.find((candidate) => candidate.id === "sg1");
+
+    expect(segmentAfterOrthogonal?.geometry.kind).toBe("orthogonal");
+    if (segmentAfterOrthogonal?.geometry.kind === "orthogonal") {
+      expect(segmentAfterOrthogonal.geometry.elbow).toEqual({ x: 100, y: 0 });
+    }
+
+    const straightAgain = makeSegmentStraight(orthogonal, "sg1");
+    const segmentAfterStraight = straightAgain.model.segments.find((candidate) => candidate.id === "sg1");
+    expect(segmentAfterStraight?.geometry.kind).toBe("straight");
+  });
+
+  it("can convert a segment to polyline and edit bend points", () => {
+    const map = makeMap();
+    const polyline = makeSegmentPolyline(map, "sg1");
+    const segmentAfterPolyline = polyline.model.segments.find((candidate) => candidate.id === "sg1");
+
+    expect(segmentAfterPolyline?.geometry.kind).toBe("polyline");
+    if (segmentAfterPolyline?.geometry.kind === "polyline") {
+      expect(segmentAfterPolyline.geometry.points).toEqual([{ x: 50, y: 0 }]);
+    }
+
+    const withExtraPoint = addSegmentPolylinePoint(polyline, "sg1");
+    const segmentAfterAdd = withExtraPoint.model.segments.find((candidate) => candidate.id === "sg1");
+    expect(segmentAfterAdd?.geometry.kind).toBe("polyline");
+    if (segmentAfterAdd?.geometry.kind === "polyline") {
+      expect(segmentAfterAdd.geometry.points).toHaveLength(2);
+    }
+
+    const movedPoint = updateSegmentPolylinePoint(withExtraPoint, "sg1", 0, { x: 50, y: 20 });
+    const segmentAfterMove = movedPoint.model.segments.find((candidate) => candidate.id === "sg1");
+    expect(segmentAfterMove?.geometry.kind).toBe("polyline");
+    if (segmentAfterMove?.geometry.kind === "polyline") {
+      expect(segmentAfterMove.geometry.points[0]).toEqual({ x: 50, y: 20 });
+    }
   });
 
   it("deleteNodes removes connected segments and line-run references", () => {
