@@ -494,54 +494,70 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
         <section className="space-y-3">
           <div className="text-sm font-semibold text-ink">Station Kinds</div>
           <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <Input value={newStationKindName} onChange={(event) => setNewStationKindName(event.target.value)} placeholder="New station kind" />
-            <Input
-              value={newStationKindFontFamily}
-              onChange={(event) => setNewStationKindFontFamily(event.target.value)}
-              placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
-            />
-            <div className="flex gap-2">
-              <select
-                value={newStationKindShape}
-                onChange={(event) => setNewStationKindShape(event.target.value as StationKind["shape"])}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-              >
-                <option value="circle">Circle</option>
-                <option value="interchange">Interchange</option>
-                <option value="terminal">Terminal</option>
-              </select>
-              <select
-                value={newStationKindFontWeight}
-                onChange={(event) => setNewStationKindFontWeight(event.target.value as StationLabelFontWeight)}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-              >
-                {STATION_FONT_WEIGHT_OPTIONS.map((weight) => (
-                  <option key={weight} value={weight}>
-                    {weight}
-                  </option>
-                ))}
-              </select>
+            <div className="grid gap-1">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Name</div>
+              <Input value={newStationKindName} onChange={(event) => setNewStationKindName(event.target.value)} placeholder="New station kind" />
+            </div>
+            <div className="grid gap-1">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Font Family</div>
               <Input
-                type="number"
-                min={8}
-                max={72}
-                step={1}
-                value={newStationKindFontSize}
-                onChange={(event) => setNewStationKindFontSize(Number(event.target.value) || DEFAULT_STATION_FONT_SIZE)}
-                className="w-24"
-                placeholder="Size"
+                value={newStationKindFontFamily}
+                onChange={(event) => setNewStationKindFontFamily(event.target.value)}
+                placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
               />
-              <Input
-                type="number"
-                min={0.6}
-                max={2.5}
-                step={0.1}
-                value={newStationKindSymbolSize}
-                onChange={(event) => setNewStationKindSymbolSize(Number(event.target.value) || DEFAULT_STATION_SYMBOL_SIZE)}
-                className="w-24"
-                placeholder="Symbol"
-              />
-              <Button onClick={addStationKind}>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="grid min-w-0 flex-1 basis-[120px] gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Shape</div>
+                <select
+                  value={newStationKindShape}
+                  onChange={(event) => setNewStationKindShape(event.target.value as StationKind["shape"])}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                >
+                  <option value="circle">Circle</option>
+                  <option value="interchange">Interchange</option>
+                  <option value="terminal">Terminal</option>
+                </select>
+              </div>
+              <div className="grid w-[88px] shrink-0 gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Weight</div>
+                <select
+                  value={newStationKindFontWeight}
+                  onChange={(event) => setNewStationKindFontWeight(event.target.value as StationLabelFontWeight)}
+                  className="rounded-xl border border-slate-300 bg-white px-2 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                >
+                  {STATION_FONT_WEIGHT_OPTIONS.map((weight) => (
+                    <option key={weight} value={weight}>
+                      {weight}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid w-[78px] shrink-0 gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Size</div>
+                <Input
+                  type="number"
+                  min={8}
+                  max={72}
+                  step={1}
+                  value={newStationKindFontSize}
+                  onChange={(event) => setNewStationKindFontSize(Number(event.target.value) || DEFAULT_STATION_FONT_SIZE)}
+                  className="px-2"
+                />
+              </div>
+              <div className="grid w-[88px] shrink-0 gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Symbol</div>
+                <Input
+                  type="number"
+                  min={0.6}
+                  max={2.5}
+                  step={0.1}
+                  value={newStationKindSymbolSize}
+                  onChange={(event) => setNewStationKindSymbolSize(Number(event.target.value) || DEFAULT_STATION_SYMBOL_SIZE)}
+                  className="px-2"
+                />
+              </div>
+              <Button onClick={addStationKind} className="shrink-0 self-end">
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -570,58 +586,78 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
           </div>
           {selectedStationKind ? (
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <Input value={selectedStationKind.name} onChange={(event) => updateStationKind(selectedStationKind.id, { name: event.target.value })} />
-              <Input
-                value={selectedStationKind.fontFamily}
-                onChange={(event) => updateStationKind(selectedStationKind.id, { fontFamily: event.target.value || DEFAULT_STATION_FONT_FAMILY })}
-                placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
-              />
-              <Input
-                type="number"
-                min={8}
-                max={72}
-                step={1}
-                value={selectedStationKind.fontSize}
-                onChange={(event) =>
-                  updateStationKind(selectedStationKind.id, {
-                    fontSize: Math.min(72, Math.max(8, Number(event.target.value) || DEFAULT_STATION_FONT_SIZE)),
-                  })
-                }
-                placeholder="Font size"
-              />
-              <Input
-                type="number"
-                min={0.6}
-                max={2.5}
-                step={0.1}
-                value={selectedStationKind.symbolSize}
-                onChange={(event) =>
-                  updateStationKind(selectedStationKind.id, {
-                    symbolSize: Math.min(2.5, Math.max(0.6, Number(event.target.value) || DEFAULT_STATION_SYMBOL_SIZE)),
-                  })
-                }
-                placeholder="Symbol size"
-              />
-              <select
-                value={selectedStationKind.shape}
-                onChange={(event) => updateStationKind(selectedStationKind.id, { shape: event.target.value as StationKind["shape"] })}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-              >
-                <option value="circle">Circle</option>
-                <option value="interchange">Interchange</option>
-                <option value="terminal">Terminal</option>
-              </select>
-              <select
-                value={selectedStationKind.fontWeight}
-                onChange={(event) => updateStationKind(selectedStationKind.id, { fontWeight: event.target.value as StationLabelFontWeight })}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-              >
-                {STATION_FONT_WEIGHT_OPTIONS.map((weight) => (
-                  <option key={weight} value={weight}>
-                    {weight}
-                  </option>
-                ))}
-              </select>
+              <div className="grid gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Name</div>
+                <Input value={selectedStationKind.name} onChange={(event) => updateStationKind(selectedStationKind.id, { name: event.target.value })} />
+              </div>
+              <div className="grid gap-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Font Family</div>
+                <Input
+                  value={selectedStationKind.fontFamily}
+                  onChange={(event) => updateStationKind(selectedStationKind.id, { fontFamily: event.target.value || DEFAULT_STATION_FONT_FAMILY })}
+                  placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
+                />
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="grid min-w-0 flex-1 basis-[120px] gap-1">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Shape</div>
+                  <select
+                    value={selectedStationKind.shape}
+                    onChange={(event) => updateStationKind(selectedStationKind.id, { shape: event.target.value as StationKind["shape"] })}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                  >
+                    <option value="circle">Circle</option>
+                    <option value="interchange">Interchange</option>
+                    <option value="terminal">Terminal</option>
+                  </select>
+                </div>
+                <div className="grid w-[88px] shrink-0 gap-1">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Weight</div>
+                  <select
+                    value={selectedStationKind.fontWeight}
+                    onChange={(event) => updateStationKind(selectedStationKind.id, { fontWeight: event.target.value as StationLabelFontWeight })}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-2 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                  >
+                    {STATION_FONT_WEIGHT_OPTIONS.map((weight) => (
+                      <option key={weight} value={weight}>
+                        {weight}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid w-[78px] shrink-0 gap-1">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Size</div>
+                  <Input
+                    type="number"
+                    min={8}
+                    max={72}
+                    step={1}
+                    value={selectedStationKind.fontSize}
+                    onChange={(event) =>
+                      updateStationKind(selectedStationKind.id, {
+                        fontSize: Math.min(72, Math.max(8, Number(event.target.value) || DEFAULT_STATION_FONT_SIZE)),
+                      })
+                    }
+                    className="px-2"
+                  />
+                </div>
+                <div className="grid w-[88px] shrink-0 gap-1">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Symbol</div>
+                  <Input
+                    type="number"
+                    min={0.6}
+                    max={2.5}
+                    step={0.1}
+                    value={selectedStationKind.symbolSize}
+                    onChange={(event) =>
+                      updateStationKind(selectedStationKind.id, {
+                        symbolSize: Math.min(2.5, Math.max(0.6, Number(event.target.value) || DEFAULT_STATION_SYMBOL_SIZE)),
+                      })
+                    }
+                    className="px-2"
+                  />
+                </div>
+              </div>
               <div
                 className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-ink"
                 style={{
