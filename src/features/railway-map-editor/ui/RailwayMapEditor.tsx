@@ -600,6 +600,7 @@ export default function RailwayMapEditor() {
   );
   const contextMenuStation = contextMenuStations[0] ?? null;
   const hasNodeOrStationSelection = Boolean(selectedNode || selectedStation);
+  const showCanvasOverview = !selectedNode && !selectedStation && !selectedSegment;
   const hasSegmentOrLineSelection = Boolean(selectedSegment || (!hasNodeOrStationSelection && selectedLine));
   const labelDiagnostics = useMemo(() => {
     const diagnostics = new Map<
@@ -940,8 +941,43 @@ export default function RailwayMapEditor() {
   const assignableLinesForContextSegment = useMemo(() => {
     if (!contextMenuSegment) return [];
 
-    return config.lines.filter((line) => line.id !== assignedLineForContextSegment?.id);
+    return config.lines
+      .filter((line) => line.id !== assignedLineForContextSegment?.id)
+      .sort((left, right) => {
+        const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+        if (byName !== 0) return byName;
+        return left.id.localeCompare(right.id);
+      });
   }, [assignedLineForContextSegment, config.lines, contextMenuSegment]);
+  const lineSummaries = useMemo(() => {
+    const currentSegmentIds = new Set(currentSegments.map((segment) => segment.id));
+
+    return [...config.lines]
+      .sort((left, right) => {
+        const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+        if (byName !== 0) return byName;
+        return left.id.localeCompare(right.id);
+      })
+      .map((line) => {
+        const lineRun = model.lineRuns.find((candidate) => candidate.lineId === line.id) ?? null;
+        const orderedSegments = (lineRun?.segmentIds ?? [])
+          .map((segmentId) => segmentsById.get(segmentId) ?? null)
+          .filter((segment): segment is Segment => segment !== null && currentSegmentIds.has(segment.id));
+        const firstSegment = orderedSegments[0] ?? null;
+        const lastSegment = orderedSegments[orderedSegments.length - 1] ?? null;
+        const fromStation = firstSegment ? (stationsByNodeId.get(firstSegment.fromNodeId) ?? [])[0] ?? null : null;
+        const toStation = lastSegment ? (stationsByNodeId.get(lastSegment.toNodeId) ?? [])[0] ?? null : null;
+
+        return {
+          id: line.id,
+          name: line.name,
+          color: line.color,
+          from: fromStation?.name ?? "Unassigned",
+          to: toStation?.name ?? "Unassigned",
+          segmentCount: orderedSegments.length,
+        };
+      });
+  }, [config.lines, currentSegments, model.lineRuns, segmentsById, stationsByNodeId]);
 
   const deleteCurrentSelection = useCallback(() => {
     if (selectedSegmentPolylinePoint) {
@@ -2072,12 +2108,15 @@ export default function RailwayMapEditor() {
                     <RailwayMapInspector
                       hasNodeOrStationSelection={hasNodeOrStationSelection}
                       hasSegmentOrLineSelection={hasSegmentOrLineSelection}
+                      showCanvasOverview={showCanvasOverview}
                       newStationName={newStationName}
                       newStationKindId={newStationKindId}
                       setNewStationName={setNewStationName}
                       setNewStationKindId={setNewStationKindId}
                       addStation={addStation}
                       visibleStations={visibleStations}
+                      lineSummaries={lineSummaries}
+                      focusStation={focusStation}
                       selectedStationId={selectedStationId}
                       stationKinds={config.stationKinds}
                       stationKindsById={stationKindsById}

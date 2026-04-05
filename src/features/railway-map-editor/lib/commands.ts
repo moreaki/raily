@@ -147,12 +147,23 @@ export function addNodeLane(map: RailwayMap, nodeId: string, axis: "horizontal" 
   }));
   const maxColumn = seededGrid.reduce((value, lane) => Math.max(value, lane.gridColumn ?? 1), 1);
   const maxRow = seededGrid.reduce((value, lane) => Math.max(value, lane.gridRow ?? 1), 1);
+  const nextColumns = Math.max(node.nodeGroupColumns ?? 1, axis === "horizontal" ? maxColumn + 1 : maxColumn);
+  const nextRows = Math.max(node.nodeGroupRows ?? 1, axis === "vertical" ? maxRow + 1 : maxRow);
 
   return {
     map: {
       ...map,
       model: {
         ...map.model,
+        nodes: map.model.nodes.map((candidate) =>
+          candidate.id === nodeId
+            ? {
+                ...candidate,
+                nodeGroupColumns: nextColumns,
+                nodeGroupRows: nextRows,
+              }
+            : candidate,
+        ),
         nodeLanes: [
           ...map.model.nodeLanes.map((lane) => seededGrid.find((candidate) => candidate.id === lane.id) ?? lane),
           {
@@ -224,6 +235,15 @@ export function updateNodeLaneGridPosition(
     ...map,
     model: {
       ...map.model,
+      nodes: map.model.nodes.map((candidate) =>
+        candidate.id === nodeId
+          ? {
+              ...candidate,
+              nodeGroupColumns: Math.max(candidate.nodeGroupColumns ?? 1, targetColumn ?? candidate.nodeGroupColumns ?? 1),
+              nodeGroupRows: Math.max(candidate.nodeGroupRows ?? 1, targetRow ?? candidate.nodeGroupRows ?? 1),
+            }
+          : candidate,
+      ),
       nodeLanes: map.model.nodeLanes.map((candidate) => {
         if (candidate.id === laneId) {
           return {
@@ -352,6 +372,11 @@ export function insertNodeGroupColumn(map: RailwayMap, nodeId: string, column: n
     ...map,
     model: {
       ...map.model,
+      nodes: map.model.nodes.map((candidate) =>
+        candidate.id === nodeId
+          ? { ...candidate, nodeGroupColumns: Math.max(candidate.nodeGroupColumns ?? 1, column - 1) + 1 }
+          : candidate,
+      ),
       nodeLanes: seeded.map((lane) => (
         lane.nodeId === nodeId && (lane.gridColumn ?? 1) >= column
           ? { ...lane, gridColumn: (lane.gridColumn ?? 1) + 1 }
@@ -367,6 +392,11 @@ export function insertNodeGroupRow(map: RailwayMap, nodeId: string, row: number,
     ...map,
     model: {
       ...map.model,
+      nodes: map.model.nodes.map((candidate) =>
+        candidate.id === nodeId
+          ? { ...candidate, nodeGroupRows: Math.max(candidate.nodeGroupRows ?? 1, row - 1) + 1 }
+          : candidate,
+      ),
       nodeLanes: seeded.map((lane) => (
         lane.nodeId === nodeId && (lane.gridRow ?? 1) >= row
           ? { ...lane, gridRow: (lane.gridRow ?? 1) + 1 }
@@ -384,6 +414,11 @@ export function removeNodeGroupColumn(map: RailwayMap, nodeId: string, column: n
     ...map,
     model: {
       ...map.model,
+      nodes: map.model.nodes.map((candidate) =>
+        candidate.id === nodeId
+          ? { ...candidate, nodeGroupColumns: Math.max(1, Math.max(candidate.nodeGroupColumns ?? 1, column) - 1) }
+          : candidate,
+      ),
       nodeLanes: seeded.map((lane) => (
         lane.nodeId === nodeId && (lane.gridColumn ?? 1) > column
           ? { ...lane, gridColumn: (lane.gridColumn ?? 1) - 1 }
@@ -401,6 +436,11 @@ export function removeNodeGroupRow(map: RailwayMap, nodeId: string, row: number,
     ...map,
     model: {
       ...map.model,
+      nodes: map.model.nodes.map((candidate) =>
+        candidate.id === nodeId
+          ? { ...candidate, nodeGroupRows: Math.max(1, Math.max(candidate.nodeGroupRows ?? 1, row) - 1) }
+          : candidate,
+      ),
       nodeLanes: seeded.map((lane) => (
         lane.nodeId === nodeId && (lane.gridRow ?? 1) > row
           ? { ...lane, gridRow: (lane.gridRow ?? 1) - 1 }

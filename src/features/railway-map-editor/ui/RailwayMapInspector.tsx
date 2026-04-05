@@ -30,12 +30,15 @@ type LabelDiagnostic = {
 type RailwayMapInspectorProps = {
   hasNodeOrStationSelection: boolean;
   hasSegmentOrLineSelection: boolean;
+  showCanvasOverview: boolean;
   newStationName: string;
   newStationKindId: string;
   setNewStationName: (value: string) => void;
   setNewStationKindId: (value: string) => void;
   addStation: () => void;
   visibleStations: Station[];
+  lineSummaries: Array<{ id: string; name: string; color: string; from: string; to: string; segmentCount: number }>;
+  focusStation: (stationId: string) => void;
   selectedStationId: string;
   stationKinds: StationKind[];
   stationKindsById: Map<string, StationKind>;
@@ -103,12 +106,15 @@ function toColumnLabel(value: number) {
 export function RailwayMapInspector({
   hasNodeOrStationSelection,
   hasSegmentOrLineSelection,
+  showCanvasOverview,
   newStationName,
   newStationKindId,
   setNewStationName,
   setNewStationKindId,
   addStation,
   visibleStations,
+  lineSummaries,
+  focusStation,
   selectedStationId,
   stationKinds,
   stationKindsById,
@@ -170,6 +176,7 @@ export function RailwayMapInspector({
   const [lastExpandedEdge, setLastExpandedEdge] = useState<string | null>(null);
   const [flashColumn, setFlashColumn] = useState<number | null>(null);
   const [flashRow, setFlashRow] = useState<number | null>(null);
+  const [overviewStationSearch, setOverviewStationSearch] = useState("");
   useEffect(() => {
     setLaneCellDrafts(Object.fromEntries(selectedNodeLanes.map((lane) => [lane.id, lane.cellLabel])));
   }, [selectedNodeLanes]);
@@ -211,13 +218,21 @@ export function RailwayMapInspector({
   const previewBounds = useMemo(() => {
     const columns = selectedNodeLanes.map((lane) => lane.effectiveGridColumn);
     const rows = selectedNodeLanes.map((lane) => lane.effectiveGridRow);
+    const occupiedMinColumn = columns.length > 0 ? Math.min(...columns) : 1;
+    const occupiedMaxColumn = columns.length > 0 ? Math.max(...columns) : Math.max(1, selectedNodeLanes.length);
+    const occupiedMinRow = rows.length > 0 ? Math.min(...rows) : 1;
+    const occupiedMaxRow = rows.length > 0 ? Math.max(...rows) : Math.max(1, selectedNodeLanes.length);
     return {
-      minColumn: columns.length > 0 ? Math.min(...columns) : 1,
-      maxColumn: columns.length > 0 ? Math.max(...columns) : Math.max(1, selectedNodeLanes.length),
-      minRow: rows.length > 0 ? Math.min(...rows) : 1,
-      maxRow: rows.length > 0 ? Math.max(...rows) : Math.max(1, selectedNodeLanes.length),
+      minColumn: 1,
+      maxColumn: Math.max(selectedNode?.nodeGroupColumns ?? 1, occupiedMaxColumn),
+      minRow: 1,
+      maxRow: Math.max(selectedNode?.nodeGroupRows ?? 1, occupiedMaxRow),
+      occupiedMinColumn,
+      occupiedMaxColumn,
+      occupiedMinRow,
+      occupiedMaxRow,
     };
-  }, [selectedNodeLanes]);
+  }, [selectedNode?.nodeGroupColumns, selectedNode?.nodeGroupRows, selectedNodeLanes]);
   const editorGrid = useMemo(() => {
     const minColumn = Math.max(1, previewBounds.minColumn);
     const maxColumn = Math.max(minColumn, previewBounds.maxColumn);
@@ -239,37 +254,44 @@ export function RailwayMapInspector({
     if (byName !== 0) return byName;
     return left.id.localeCompare(right.id);
   });
+  const overviewStations = useMemo(() => {
+    const query = overviewStationSearch.trim().toLowerCase();
+    const sorted = [...visibleStations].sort((left, right) => {
+      const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      if (byName !== 0) return byName;
+      return left.id.localeCompare(right.id);
+    });
+    if (!query) return sorted;
+    return sorted.filter((station) => station.name.toLowerCase().includes(query));
+  }, [overviewStationSearch, visibleStations]);
 
   return (
     <>
-      {!hasNodeOrStationSelection && !hasSegmentOrLineSelection ? (
+      {showCanvasOverview ? (
         <>
           <section className="space-y-3">
-            <div className="text-sm font-semibold text-ink">Quick Add</div>
-            <div className="flex gap-2">
-              <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
-              <select
-                value={newStationKindId}
-                onChange={(event) => setNewStationKindId(event.target.value)}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-              >
-                {stationKinds.map((kind) => (
-                  <option key={kind.id} value={kind.id}>
-                    {kind.name} {stationKindShapeGlyph(kind.shape)}
-                  </option>
-                ))}
-              </select>
-              <Button onClick={addStation}>
-                <Plus className="h-4 w-4" />
-              </Button>
+            <div className="text-sm font-semibold text-ink">Lines</div>
+            <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
+              {lineSummaries.map((line) => (
+                <div key={line.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink">
+                  <div className="font-medium" style={{ color: line.color }}>{line.name}</div>
+                  <div className="mt-1 text-xs text-muted">
+                    {line.from} to {line.to}
+                  </div>
+                  <div className="mt-2">
+                    <Badge>{line.segmentCount} segment{line.segmentCount === 1 ? "" : "s"}</Badge>
+                  </div>
+                </div>
+              ))}
+              {lineSummaries.length === 0 ? <p className="px-3 py-2 text-xs text-muted">No lines on this sheet yet.</p> : null}
             </div>
-            <p className="text-xs text-muted">Quick add creates an unassigned station object. Use the canvas to assign it to a track point later.</p>
           </section>
 
           <section className="space-y-3">
-            <div className="text-sm font-semibold text-ink">Stations</div>
+            <div className="text-sm font-semibold text-ink">Station Search</div>
+            <Input value={overviewStationSearch} onChange={(event) => setOverviewStationSearch(event.target.value)} placeholder="Search all stations" />
             <div className="max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
-              {visibleStations.map((station) => (
+              {overviewStations.map((station) => (
                 <div
                   key={station.id}
                   className={`relative flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
@@ -285,6 +307,7 @@ export function RailwayMapInspector({
                       setSelectedNodeId(station.nodeId ?? "");
                       setSelectedNodeIds(station.nodeId ? [station.nodeId] : []);
                       setSelectedStationId(station.id);
+                      focusStation(station.id);
                     }}
                     className="flex min-w-0 flex-1 items-center justify-between text-left"
                   >
@@ -306,6 +329,7 @@ export function RailwayMapInspector({
                   </button>
                 </div>
               ))}
+              {overviewStations.length === 0 ? <p className="px-3 py-2 text-xs text-muted">No stations match the current search.</p> : null}
             </div>
           </section>
         </>

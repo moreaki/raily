@@ -31,6 +31,8 @@ export interface MapNode extends MapPoint {
   groupOutlineStrokeWidth?: number;
   groupOutlineColor?: string;
   groupOutlineStrokeStyle?: LineStrokeStyle;
+  nodeGroupColumns?: number;
+  nodeGroupRows?: number;
 }
 
 export interface NodeLane {

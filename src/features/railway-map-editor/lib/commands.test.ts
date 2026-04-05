@@ -284,6 +284,19 @@ describe("railway-map commands", () => {
     expect(restoredRows.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.gridRow).toBe(2);
   });
 
+  it("persists appended empty node-group dimensions", () => {
+    const withLane = addNodeLane(makeMap(), "n2").map;
+    const expanded = insertNodeGroupColumn(insertNodeGroupRow(withLane, "n2", 3), "n2", 2);
+    const node = expanded.model.nodes.find((candidate) => candidate.id === "n2");
+
+    expect(node?.nodeGroupColumns).toBe(2);
+    expect(node?.nodeGroupRows).toBe(3);
+    expect(expanded.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")).toMatchObject({
+      gridColumn: 1,
+      gridRow: 2,
+    });
+  });
+
   it("can assign a line to a node-group port", () => {
     const withLane = addNodeLane(makeMap(), "n2").map;
     const connected = {

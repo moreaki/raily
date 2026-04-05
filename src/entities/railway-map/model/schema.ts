@@ -18,6 +18,8 @@ const nodeSchema = pointSchema.extend({
   groupOutlineStrokeWidth: z.number().min(1).max(12).optional(),
   groupOutlineColor: z.string().regex(/^#([0-9a-fA-F]{6})$/).optional(),
   groupOutlineStrokeStyle: z.enum(["solid", "dashed", "dotted"]).optional(),
+  nodeGroupColumns: z.number().int().min(1).optional(),
+  nodeGroupRows: z.number().int().min(1).optional(),
 });
 
 const nodeLaneSchema = z.object({
