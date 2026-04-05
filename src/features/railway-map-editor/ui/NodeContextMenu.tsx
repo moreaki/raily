@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import type { KeyboardEvent } from "react";
 import type { Station, StationKind } from "@/entities/railway-map/model/types";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -23,9 +24,9 @@ type NodeContextMenuProps = {
   pendingSegmentStart: { nodeId: string; laneId: string | null } | null;
   completeSegmentAtNode: (nodeId: string, laneId: string | null, markerKey: string | null) => void;
   cancelPendingSegment: () => void;
-  startSegmentFromNode: (nodeId: string, laneId: string | null, markerKey: string | null) => void;
   nodeAssignmentQuery: string;
   setNodeAssignmentQuery: (value: string) => void;
+  hasAssignableStations: boolean;
   stationAssignmentResults: Station[];
   assignStationToNode: (stationId: string, nodeId: string) => void;
   stationKindsById: Map<string, StationKind>;
@@ -55,9 +56,9 @@ export function NodeContextMenu(props: NodeContextMenuProps) {
     pendingSegmentStart,
     completeSegmentAtNode,
     cancelPendingSegment,
-    startSegmentFromNode,
     nodeAssignmentQuery,
     setNodeAssignmentQuery,
+    hasAssignableStations,
     stationAssignmentResults,
     assignStationToNode,
     stationKindsById,
@@ -73,6 +74,12 @@ export function NodeContextMenu(props: NodeContextMenuProps) {
     canRemoveTrackPoint,
     removeTrackPoint,
   } = props;
+
+  function handleAddStationKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentName, nodeAssignmentKindId);
+  }
 
   return (
     <div
@@ -134,37 +141,39 @@ export function NodeContextMenu(props: NodeContextMenuProps) {
               >
                 Cancel pending segment
               </button>
-            ) : (
-              <button
-                type="button"
-                className="mt-2 flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                onClick={() => startSegmentFromNode(nodeContextMenu.nodeIds[0], nodeContextMenu.laneId, nodeContextMenu.markerKey)}
-              >
-                Start segment here
-              </button>
-            )}
+            ) : null}
           </div>
 
           {!contextMenuStation ? (
             <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Station</div>
-              <Input value={nodeAssignmentQuery} onChange={(event) => setNodeAssignmentQuery(event.target.value)} placeholder="Search unassigned stations" className="h-9" />
-              <div className="max-h-40 space-y-1 overflow-auto">
-                {stationAssignmentResults.slice(0, 8).map((station) => (
-                  <button
-                    key={station.id}
-                    type="button"
-                    className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
-                    onClick={() => assignStationToNode(station.id, nodeContextMenu.nodeIds[0])}
-                  >
-                    <span className="truncate">{station.name}</span>
-                    <span className="ml-3 shrink-0 text-xs text-slate-500">{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</span>
-                  </button>
-                ))}
-                {stationAssignmentResults.length === 0 ? <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div> : null}
-              </div>
+              {hasAssignableStations ? (
+                <>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Assign Station</div>
+                  <Input value={nodeAssignmentQuery} onChange={(event) => setNodeAssignmentQuery(event.target.value)} placeholder="Search unassigned stations" className="h-9" />
+                  <div className="max-h-40 space-y-1 overflow-auto">
+                    {stationAssignmentResults.slice(0, 8).map((station) => (
+                      <button
+                        key={station.id}
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100"
+                        onClick={() => assignStationToNode(station.id, nodeContextMenu.nodeIds[0])}
+                      >
+                        <span className="truncate">{station.name}</span>
+                        <span className="ml-3 shrink-0 text-xs text-slate-500">{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</span>
+                      </button>
+                    ))}
+                    {stationAssignmentResults.length === 0 ? <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div> : null}
+                  </div>
+                </>
+              ) : null}
               <div className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Add New Station</div>
-              <Input value={nodeAssignmentName} onChange={(event) => setNodeAssignmentName(event.target.value)} placeholder="Optional station name" className="h-9" />
+              <Input
+                value={nodeAssignmentName}
+                onChange={(event) => setNodeAssignmentName(event.target.value)}
+                onKeyDown={handleAddStationKeyDown}
+                placeholder="Optional station name"
+                className="h-9"
+              />
               <select value={nodeAssignmentKindId} onChange={(event) => setNodeAssignmentKindId(event.target.value)} className="h-9 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200">
                 {configStationKinds.map((kind) => (
                   <option key={kind.id} value={kind.id}>

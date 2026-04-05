@@ -1,4 +1,5 @@
 import type { RailwayMap } from "./types";
+import { mergeAguablancaNordIntoBootstrap } from "./aguablancaNordImport";
 
 const DEFAULT_STATION_FONT_FAMILY = '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif';
 const DEFAULT_STATION_FONT_WEIGHT = "600" as const;
@@ -114,7 +115,7 @@ export const INITIAL_MAP: RailwayMap = {
   },
 };
 
-export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
+export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = mergeAguablancaNordIntoBootstrap({
   "config": {
     "stationKinds": [
       {
@@ -2961,4 +2962,4 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
       }
     ]
   }
-};
+});

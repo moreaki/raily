@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Line, MapNode, Segment, Sheet, Station, StationKind, StationLabelFontWeight } from "@/entities/railway-map/model/types";
 import { lineStrokeDasharray } from "@/entities/railway-map/model/utils";
 import { normalizeSearchValue } from "@/features/railway-map-editor/lib/geometry";
@@ -184,6 +184,12 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
       strokeStyle: newLineStrokeStyle,
     });
     setNewLineName("");
+  }
+
+  function handleNewStationNameKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    addStation();
   }
 
   return (
@@ -378,7 +384,12 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
           <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Add Station Object</div>
             <div className="flex gap-2">
-              <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
+              <Input
+                value={newStationName}
+                onChange={(event) => setNewStationName(event.target.value)}
+                onKeyDown={handleNewStationNameKeyDown}
+                placeholder="Station name"
+              />
               <select
                 value={newStationKindId}
                 onChange={(event) => setNewStationKindId(event.target.value)}

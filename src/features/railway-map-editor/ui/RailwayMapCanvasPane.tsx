@@ -187,6 +187,7 @@ type RailwayMapCanvasPaneProps = {
   stationKindShapeGlyph: (shape: StationKind["shape"]) => string;
   nodeAssignmentQuery: string;
   setNodeAssignmentQuery: (value: string) => void;
+  hasAssignableStations: boolean;
   stationAssignmentResults: Station[];
   assignStationToNode: (stationId: string, nodeId: string) => void;
   nodeAssignmentName: string;
@@ -202,7 +203,6 @@ type RailwayMapCanvasPaneProps = {
   removeTrackPoint: (nodeId: string) => void;
   completeSegmentAtNode: (nodeId: string, laneId: string | null, markerKey: string | null) => void;
   cancelPendingSegment: () => void;
-  startSegmentFromNode: (nodeId: string, laneId: string | null, markerKey: string | null) => void;
   segmentContextMenu: SegmentContextMenuState | null;
   contextMenuSegment: Segment | null;
   segmentContextMenuPosition: { left: number; top: number } | null;
@@ -330,6 +330,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     stationKindShapeGlyph,
     nodeAssignmentQuery,
     setNodeAssignmentQuery,
+    hasAssignableStations,
     stationAssignmentResults,
     assignStationToNode,
     nodeAssignmentName,
@@ -345,7 +346,6 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     removeTrackPoint,
     completeSegmentAtNode,
     cancelPendingSegment,
-    startSegmentFromNode,
     segmentContextMenu,
     contextMenuSegment,
     segmentContextMenuPosition,
@@ -976,9 +976,9 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               pendingSegmentStart={pendingSegmentStart}
               completeSegmentAtNode={completeSegmentAtNode}
               cancelPendingSegment={cancelPendingSegment}
-              startSegmentFromNode={startSegmentFromNode}
               nodeAssignmentQuery={nodeAssignmentQuery}
               setNodeAssignmentQuery={setNodeAssignmentQuery}
+              hasAssignableStations={hasAssignableStations}
               stationAssignmentResults={stationAssignmentResults}
               assignStationToNode={assignStationToNode}
               stationKindsById={stationKindsById}

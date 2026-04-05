@@ -7,6 +7,7 @@ import {
   assignStationToNode,
   deleteNodes,
   deleteSheet,
+  extendLineFromNode,
   makeSegmentOrthogonal,
   makeSegmentPolyline,
   makeSegmentStraight,
@@ -115,6 +116,50 @@ describe("railway-map commands", () => {
     expect(next.model.nodes.some((node) => node.id === insertedNode?.id)).toBe(true);
     expect(next.model.segments.some((segment) => segment.id === "sg1")).toBe(false);
     expect(next.model.segments.filter((segment) => segment.sheetId === "sheet-main")).toHaveLength(3);
+  });
+
+  it("can extend a line from a node to the right", () => {
+    const map = assignLineToSegment(makeMap(), "line-b", "sg2");
+    const { map: next, insertedNode, insertedSegment } = extendLineFromNode(map, "n3", { lineId: "line-b" });
+
+    expect(insertedNode).toMatchObject({
+      sheetId: "sheet-main",
+      x: 290,
+      y: 0,
+    });
+    expect(insertedSegment).toMatchObject({
+      sheetId: "sheet-main",
+      fromNodeId: "n3",
+      toNodeId: insertedNode?.id,
+    });
+    expect(next.model.lineRuns.find((candidate) => candidate.lineId === "line-b")?.segmentIds).toContain(insertedSegment?.id);
+  });
+
+  it("can extend a node without assigning a line", () => {
+    const { map: next, insertedSegment } = extendLineFromNode(makeMap(), "n1");
+
+    expect(insertedSegment).not.toBeNull();
+    expect(next.model.lineRuns.every((candidate) => !candidate.segmentIds.includes(insertedSegment!.id))).toBe(true);
+  });
+
+  it("can extend from an existing lane without widening the source node group", () => {
+    const withLane = addNodeLane(makeMap(), "n2").map;
+    const connected = {
+      ...withLane,
+      model: {
+        ...withLane.model,
+        segments: withLane.model.segments.map((segment) =>
+          segment.id === "sg2" ? { ...segment, fromLaneId: "nl-n2-manual-1" } : segment,
+        ),
+      },
+    };
+
+    const { insertedSegment } = extendLineFromNode(connected, "n2", {
+      lineId: "line-b",
+      fromLaneId: "nl-n2-manual-1",
+    });
+
+    expect(insertedSegment?.fromLaneId).toBe("nl-n2-manual-1");
   });
 
   it("can convert a segment between straight and orthogonal geometry", () => {

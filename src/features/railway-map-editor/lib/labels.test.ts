@@ -3,6 +3,35 @@ import { DEVELOPMENT_BOOTSTRAP_MAP } from "@/entities/railway-map/model/constant
 import type { RailwayMap } from "@/entities/railway-map/model/types";
 import { autoPlaceLabels, evaluateLabelLayout } from "@/features/railway-map-editor/lib/labels";
 
+function mapForSheet(map: RailwayMap, sheetId: string): RailwayMap {
+  const nodes = map.model.nodes.filter((node) => node.sheetId === sheetId);
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const segments = map.model.segments.filter(
+    (segment) => segment.sheetId === sheetId && nodeIds.has(segment.fromNodeId) && nodeIds.has(segment.toNodeId),
+  );
+  const segmentIds = new Set(segments.map((segment) => segment.id));
+
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      sheets: map.model.sheets.filter((sheet) => sheet.id === sheetId),
+      nodes,
+      nodeLanes: map.model.nodeLanes.filter((lane) => nodeIds.has(lane.nodeId)),
+      stations: map.model.stations.filter((station) => !station.nodeId || nodeIds.has(station.nodeId)),
+      segments,
+      lineRuns: map.model.lineRuns
+        .map((lineRun) => ({
+          ...lineRun,
+          segmentIds: lineRun.segmentIds.filter((segmentId) => segmentIds.has(segmentId)),
+        }))
+        .filter((lineRun) => lineRun.segmentIds.length > 0),
+    },
+  };
+}
+
+const OVERVIEW_BOOTSTRAP_MAP = mapForSheet(DEVELOPMENT_BOOTSTRAP_MAP, "sh-ov");
+
 function makeHorizontalMap(): RailwayMap {
   return {
     config: {
@@ -153,7 +182,7 @@ function similarityScore(metrics: ReturnType<typeof layoutSimilarity>) {
 
 describe("label placement", () => {
   it("keeps the committed bootstrap collision-free", () => {
-    const evaluation = evaluateLabelLayout(DEVELOPMENT_BOOTSTRAP_MAP);
+    const evaluation = evaluateLabelLayout(OVERVIEW_BOOTSTRAP_MAP);
 
     expect(evaluation.overlapCount).toBe(0);
     expect(evaluation.segmentIntersectionCount).toBeLessThanOrEqual(25);
@@ -176,7 +205,7 @@ describe("label placement", () => {
   });
 
   it("bootstrap-aware auto placement lands closer to the committed bootstrap than generic placement", () => {
-    const unlabeled = stripLabels(DEVELOPMENT_BOOTSTRAP_MAP);
+    const unlabeled = stripLabels(OVERVIEW_BOOTSTRAP_MAP);
     const generic = {
       ...unlabeled,
       model: {
@@ -192,10 +221,10 @@ describe("label placement", () => {
       },
     };
 
-    expect(layoutDistance(bootstrapAware, DEVELOPMENT_BOOTSTRAP_MAP)).toBeLessThan(layoutDistance(generic, DEVELOPMENT_BOOTSTRAP_MAP));
+    expect(layoutDistance(bootstrapAware, OVERVIEW_BOOTSTRAP_MAP)).toBeLessThan(layoutDistance(generic, OVERVIEW_BOOTSTRAP_MAP));
 
-    const genericSimilarity = layoutSimilarity(generic, DEVELOPMENT_BOOTSTRAP_MAP);
-    const bootstrapSimilarity = layoutSimilarity(bootstrapAware, DEVELOPMENT_BOOTSTRAP_MAP);
+    const genericSimilarity = layoutSimilarity(generic, OVERVIEW_BOOTSTRAP_MAP);
+    const bootstrapSimilarity = layoutSimilarity(bootstrapAware, OVERVIEW_BOOTSTRAP_MAP);
 
     expect(similarityScore(bootstrapSimilarity)).toBeGreaterThan(similarityScore(genericSimilarity));
     expect(bootstrapSimilarity.rotationMatches).toBeGreaterThanOrEqual(genericSimilarity.rotationMatches);

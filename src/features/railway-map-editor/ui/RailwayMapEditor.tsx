@@ -38,6 +38,7 @@ import {
   deleteSheet as deleteSheetCommand,
   deleteStation as deleteStationCommand,
   deleteStationKind as deleteStationKindCommand,
+  extendLineFromNode as extendLineFromNodeCommand,
   addSegmentPolylinePoint as addSegmentPolylinePointCommand,
   insertTrackPointOnSegment as insertTrackPointOnSegmentCommand,
   insertNodeGroupColumn as insertNodeGroupColumnCommand,
@@ -809,6 +810,42 @@ export default function RailwayMapEditor() {
     () => selectedNodeLanes.find((lane) => lane.id === selectedNodeMarkerLaneId) ?? null,
     [selectedNodeLanes, selectedNodeMarkerLaneId],
   );
+  const selectedNodeExtensionLineId = useMemo(() => {
+    if (!selectedNodeId) return selectedLineId || null;
+
+    const connectedSegments = currentSegments.filter(
+      (segment) => segment.fromNodeId === selectedNodeId || segment.toNodeId === selectedNodeId,
+    );
+    const connectedLineIds = new Set(
+      connectedSegments
+        .filter((segment) =>
+          selectedNodeMarkerLaneId
+            ? (segment.fromNodeId === selectedNodeId ? segment.fromLaneId : segment.toLaneId) === selectedNodeMarkerLaneId
+            : true,
+        )
+        .map((segment) => lineIdBySegmentId.get(segment.id))
+        .filter((lineId): lineId is string => Boolean(lineId)),
+    );
+
+    if (connectedLineIds.size === 1) {
+      return [...connectedLineIds][0];
+    }
+    if (selectedLineId && (connectedLineIds.size === 0 || connectedLineIds.has(selectedLineId))) {
+      return selectedLineId;
+    }
+    return connectedLineIds.size > 0 ? null : selectedLineId || null;
+  }, [currentSegments, lineIdBySegmentId, selectedLineId, selectedNodeId, selectedNodeMarkerLaneId]);
+  const selectedNodeExtensionLaneId = useMemo(() => {
+    if (selectedNodeMarkerLaneId) return selectedNodeMarkerLaneId;
+    if (!selectedNodeId || !selectedNodeExtensionLineId) return null;
+
+    const matchingLanes = selectedNodeLanes.filter((lane) => {
+      if (lane.lineId === selectedNodeExtensionLineId) return true;
+      return lane.segmentIds.some((segmentId) => lineIdBySegmentId.get(segmentId) === selectedNodeExtensionLineId);
+    });
+
+    return matchingLanes.length === 1 ? matchingLanes[0].id : null;
+  }, [lineIdBySegmentId, selectedNodeExtensionLineId, selectedNodeId, selectedNodeLanes, selectedNodeMarkerLaneId]);
   const segmentFromPortOptions = useMemo(() => {
     if (!selectedSegment) return [{ value: "", label: "Auto" }];
     return [
@@ -936,7 +973,9 @@ export default function RailwayMapEditor() {
     onUndo: undoEditorChange,
     onSelectAllNodes: selectAllNodesOnCurrentSheet,
     onDeleteSelection: deleteCurrentSelection,
+    onExtendSelectedNode: extendSelectedNodeToRight,
     hasDeletionTarget: !!selectedSegmentPolylinePoint || !!selectedStation || !!selectedSegment || selectedNodeIds.length > 0,
+    canExtendSelectedNode: selectedNodeIds.length === 1 && !!selectedNode,
   });
 
   useEffect(() => {
@@ -1341,6 +1380,30 @@ export default function RailwayMapEditor() {
     }
 
     setSelectedLineId(lineId);
+  }
+
+  function extendSelectedNodeToRight() {
+    if (!selectedNode) return;
+
+    const step = Math.max(90, nodeGroupCellWidth * 4);
+    const { map: nextMap, insertedNode, insertedSegment } = extendLineFromNodeCommand(map, selectedNode.id, {
+      delta: { x: step, y: 0 },
+      lineId: selectedNodeExtensionLineId ?? undefined,
+      fromLaneId: selectedNodeExtensionLaneId ?? undefined,
+    });
+    if (!insertedNode || !insertedSegment) return;
+
+    replaceMap(nextMap);
+    setSelectedNodeId(insertedNode.id);
+    setSelectedNodeIds([insertedNode.id]);
+    setSelectedNodeMarkerKey(null);
+    setSelectedStationId("");
+    setSelectedSegmentId(insertedSegment.id);
+    setSelectedSegmentPolylinePoint(null);
+    if (selectedNodeExtensionLineId) {
+      setSelectedLineId(selectedNodeExtensionLineId);
+    }
+    closeAllContextMenus();
   }
 
   function deleteNodes(nodeIds: string[]) {
@@ -1934,6 +1997,7 @@ export default function RailwayMapEditor() {
             stationKindShapeGlyph={stationKindShapeGlyph}
             nodeAssignmentQuery={nodeAssignmentQuery}
             setNodeAssignmentQuery={setNodeAssignmentQuery}
+            hasAssignableStations={unassignedStations.length > 0}
             stationAssignmentResults={stationAssignmentResults}
             assignStationToNode={assignStationToNode}
             nodeAssignmentName={nodeAssignmentName}
@@ -1949,7 +2013,6 @@ export default function RailwayMapEditor() {
             removeTrackPoint={removeTrackPoint}
             completeSegmentAtNode={completeSegmentAtNode}
             cancelPendingSegment={cancelPendingSegment}
-            startSegmentFromNode={startSegmentFromNode}
             segmentContextMenu={segmentContextMenu}
             contextMenuSegment={contextMenuSegment}
             segmentContextMenuPosition={segmentContextMenuPosition}

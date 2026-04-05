@@ -5,6 +5,7 @@ import {
   createDefaultLine,
   createDefaultNodeForSheet,
   createDefaultSheet,
+  createNodeId,
   createDefaultStation,
   createDefaultStationAtNode,
   createLineRunId,
@@ -806,6 +807,50 @@ export function insertTrackPointOnSegment(
       },
     },
     insertedNode,
+  };
+}
+
+export function extendLineFromNode(
+  map: RailwayMap,
+  nodeId: string,
+  options?: {
+    delta?: MapPoint;
+    lineId?: string;
+    fromLaneId?: string;
+  },
+) {
+  const sourceNode = map.model.nodes.find((candidate) => candidate.id === nodeId);
+  if (!sourceNode) return { map, insertedNode: null as MapNode | null, insertedSegment: null as Segment | null };
+
+  const delta = options?.delta ?? { x: 90, y: 0 };
+  const insertedNode: MapNode = {
+    id: createNodeId(),
+    sheetId: sourceNode.sheetId,
+    x: sourceNode.x + delta.x,
+    y: sourceNode.y + delta.y,
+  };
+  const insertedSegment: Segment = {
+    id: createSegmentId(),
+    sheetId: sourceNode.sheetId,
+    fromNodeId: sourceNode.id,
+    toNodeId: insertedNode.id,
+    fromLaneId: options?.fromLaneId,
+    geometry: { kind: "straight" },
+  };
+
+  const nextMap = {
+    ...map,
+    model: {
+      ...map.model,
+      nodes: [...map.model.nodes, insertedNode],
+      segments: [...map.model.segments, insertedSegment],
+    },
+  };
+
+  return {
+    map: options?.lineId ? assignLineToSegment(nextMap, options.lineId, insertedSegment.id) : nextMap,
+    insertedNode,
+    insertedSegment,
   };
 }
 

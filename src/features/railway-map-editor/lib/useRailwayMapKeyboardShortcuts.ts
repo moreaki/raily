@@ -9,11 +9,13 @@ type UseRailwayMapKeyboardShortcutsArgs = {
   onUndo: () => void;
   onSelectAllNodes: () => void;
   onDeleteSelection: () => void;
+  onExtendSelectedNode: () => void;
   hasDeletionTarget: boolean;
+  canExtendSelectedNode: boolean;
 };
 
 export function useRailwayMapKeyboardShortcuts(args: UseRailwayMapKeyboardShortcutsArgs) {
-  const { onUndo, onSelectAllNodes, onDeleteSelection, hasDeletionTarget } = args;
+  const { onUndo, onSelectAllNodes, onDeleteSelection, onExtendSelectedNode, hasDeletionTarget, canExtendSelectedNode } = args;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -34,6 +36,13 @@ export function useRailwayMapKeyboardShortcuts(args: UseRailwayMapKeyboardShortc
         return;
       }
 
+      if (key === "tab") {
+        if (!canExtendSelectedNode) return;
+        event.preventDefault();
+        onExtendSelectedNode();
+        return;
+      }
+
       if (key === "backspace" || key === "delete") {
         if (!hasDeletionTarget) return;
         event.preventDefault();
@@ -45,5 +54,5 @@ export function useRailwayMapKeyboardShortcuts(args: UseRailwayMapKeyboardShortc
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [hasDeletionTarget, onDeleteSelection, onSelectAllNodes, onUndo]);
+  }, [canExtendSelectedNode, hasDeletionTarget, onDeleteSelection, onExtendSelectedNode, onSelectAllNodes, onUndo]);
 }
