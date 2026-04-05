@@ -455,6 +455,7 @@ export function addStationKind(
   args: {
     name: string;
     shape: StationKind["shape"];
+    lineStop: boolean;
     symbolSize: number;
     fontFamily: string;
     fontWeight: StationKind["fontWeight"];
@@ -465,6 +466,7 @@ export function addStationKind(
     id: createStationKindId(),
     name: args.name.trim() || `Kind ${map.config.stationKinds.length + 1}`,
     shape: args.shape,
+    lineStop: args.lineStop,
     symbolSize: clamp(args.symbolSize, 0.6, 2.5),
     fontFamily: args.fontFamily.trim() || DEFAULT_STATION_FONT_FAMILY,
     fontWeight: args.fontWeight,
@@ -919,6 +921,12 @@ function ensureLineRun(map: RailwayMap, lineId: string) {
 export function assignLineToSegment(map: RailwayMap, lineId: string, segmentId: string) {
   const { map: ensuredMap, lineRun } = ensureLineRun(map, lineId);
   const segmentsByNodeId = new Map<string, Segment[]>();
+  const stationKindById = new Map(ensuredMap.config.stationKinds.map((kind) => [kind.id, kind]));
+  const lineStopNodeIds = new Set(
+    ensuredMap.model.stations
+      .filter((station) => station.nodeId && stationKindById.get(station.kindId)?.lineStop)
+      .map((station) => station.nodeId as string),
+  );
   for (const segment of ensuredMap.model.segments) {
     const fromSegments = segmentsByNodeId.get(segment.fromNodeId) ?? [];
     fromSegments.push(segment);
@@ -936,9 +944,13 @@ export function assignLineToSegment(map: RailwayMap, lineId: string, segmentId: 
     const currentSegment = ensuredMap.model.segments.find((segment) => segment.id === currentSegmentId);
     if (!currentSegment) continue;
     for (const nodeId of [currentSegment.fromNodeId, currentSegment.toNodeId]) {
+      if (lineStopNodeIds.has(nodeId)) continue;
       const connectedSegments = segmentsByNodeId.get(nodeId) ?? [];
       if (connectedSegments.length !== 2) continue;
+      const currentOtherNodeId = currentSegment.fromNodeId === nodeId ? currentSegment.toNodeId : currentSegment.fromNodeId;
       for (const connectedSegment of connectedSegments) {
+        const connectedOtherNodeId = connectedSegment.fromNodeId === nodeId ? connectedSegment.toNodeId : connectedSegment.fromNodeId;
+        if (connectedOtherNodeId === currentOtherNodeId) continue;
         if (!segmentIdsToAssign.has(connectedSegment.id)) {
           queue.push(connectedSegment.id);
         }

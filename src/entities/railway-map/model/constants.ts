@@ -32,9 +32,9 @@ export const LINE_PRESETS = [
 export const INITIAL_MAP: RailwayMap = {
   config: {
     stationKinds: [
-      { id: "sk1", name: "Stop", shape: "circle", symbolSize: DEFAULT_STATION_SYMBOL_SIZE, fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
-      { id: "sk2", name: "Hub", shape: "interchange", symbolSize: 0.8, fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700", fontSize: 15 },
-      { id: "sk3", name: "Terminal", shape: "terminal", symbolSize: DEFAULT_STATION_SYMBOL_SIZE, fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
+      { id: "sk1", name: "Stop", shape: "circle", lineStop: false, symbolSize: DEFAULT_STATION_SYMBOL_SIZE, fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
+      { id: "sk2", name: "Hub", shape: "interchange", lineStop: true, symbolSize: 0.8, fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: "700", fontSize: 15 },
+      { id: "sk3", name: "Terminal", shape: "terminal", lineStop: true, symbolSize: DEFAULT_STATION_SYMBOL_SIZE, fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
     ],
     lines: [
       { id: "l1", name: "C1", color: "#e11d48", strokeWidth: 10, strokeStyle: "solid" },
@@ -122,6 +122,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = mergeAguablancaNordIntoBoot
         "id": "sk-stop",
         "name": "Stop",
         "shape": "circle",
+        "lineStop": false,
         "symbolSize": 1,
         "fontFamily": "\"IBM Plex Sans Condensed\", \"Avenir Next Condensed\", \"Helvetica Neue\", Arial, sans-serif",
         "fontWeight": "400",
@@ -131,6 +132,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = mergeAguablancaNordIntoBoot
         "id": "sk-hub",
         "name": "Hub",
         "shape": "interchange",
+        "lineStop": true,
         "symbolSize": 1,
         "fontFamily": "\"IBM Plex Sans Condensed\", \"Avenir Next Condensed\", \"Helvetica Neue\", Arial, sans-serif",
         "fontWeight": "500",
@@ -140,6 +142,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = mergeAguablancaNordIntoBoot
         "id": "sk-terminal",
         "name": "Terminal",
         "shape": "terminal",
+        "lineStop": true,
         "symbolSize": 1,
         "fontFamily": "\"IBM Plex Sans Condensed\", \"Avenir Next Condensed\", \"Helvetica Neue\", Arial, sans-serif",
         "fontWeight": "600",

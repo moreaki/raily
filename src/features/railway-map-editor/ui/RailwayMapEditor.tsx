@@ -221,6 +221,7 @@ export default function RailwayMapEditor() {
   const [nodeAssignmentKindId, setNodeAssignmentKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
+  const [newStationKindLineStop, setNewStationKindLineStop] = useState(false);
   const [newStationKindFontFamily, setNewStationKindFontFamily] = useState(DEFAULT_STATION_FONT_FAMILY);
   const [newStationKindFontWeight, setNewStationKindFontWeight] = useState<StationLabelFontWeight>(DEFAULT_STATION_FONT_WEIGHT);
   const [newStationKindFontSize, setNewStationKindFontSize] = useState(DEFAULT_STATION_FONT_SIZE);
@@ -1013,47 +1014,17 @@ export default function RailwayMapEditor() {
         };
       });
   }, [config.lines, currentSegments, model.lineRuns, segmentsById, stationsByNodeId]);
-  const visibleLineIds = useMemo(() => {
-    const currentSegmentIds = new Set(currentSegments.map((segment) => segment.id));
-    const ids = new Set<string>();
-
-    for (const lineRun of model.lineRuns) {
-      if (lineRun.segmentIds.some((segmentId) => currentSegmentIds.has(segmentId))) {
-        ids.add(lineRun.lineId);
-      }
-    }
-
-    if (selectedLineId) {
-      ids.add(selectedLineId);
-    }
-    if (assignedLineForContextSegment?.id) {
-      ids.add(assignedLineForContextSegment.id);
-    }
-
-    return ids;
-  }, [assignedLineForContextSegment?.id, currentSegments, model.lineRuns, selectedLineId]);
-  const visibleLines = useMemo(
-    () =>
-      config.lines
-        .filter((line) => visibleLineIds.has(line.id))
-        .sort((left, right) => {
-          const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
-          if (byName !== 0) return byName;
-          return left.id.localeCompare(right.id);
-        }),
-    [config.lines, visibleLineIds],
-  );
   const assignableLinesForContextSegment = useMemo(() => {
     if (!contextMenuSegment) return [];
 
-    return visibleLines
+    return config.lines
       .filter((line) => line.id !== assignedLineForContextSegment?.id)
       .sort((left, right) => {
         const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
         if (byName !== 0) return byName;
         return left.id.localeCompare(right.id);
       });
-  }, [assignedLineForContextSegment, contextMenuSegment, visibleLines]);
+  }, [assignedLineForContextSegment, config.lines, contextMenuSegment]);
 
   const deleteCurrentSelection = useCallback(() => {
     if (selectedSegmentPolylinePoint) {
@@ -1252,6 +1223,7 @@ export default function RailwayMapEditor() {
     const { stationKind } = addStationKindCommand(map, {
       name: newStationKindName,
       shape: newStationKindShape,
+      lineStop: newStationKindLineStop,
       symbolSize: newStationKindSymbolSize,
       fontFamily: newStationKindFontFamily,
       fontWeight: newStationKindFontWeight,
@@ -1261,6 +1233,7 @@ export default function RailwayMapEditor() {
       addStationKindCommand(current, {
         name: newStationKindName,
         shape: newStationKindShape,
+        lineStop: newStationKindLineStop,
         symbolSize: newStationKindSymbolSize,
         fontFamily: newStationKindFontFamily,
         fontWeight: newStationKindFontWeight,
@@ -1270,6 +1243,7 @@ export default function RailwayMapEditor() {
     setSelectedStationKindId(stationKind.id);
     setNewStationKindName("");
     setNewStationKindShape("circle");
+    setNewStationKindLineStop(false);
     setNewStationKindSymbolSize(DEFAULT_STATION_SYMBOL_SIZE);
     setNewStationKindFontFamily(DEFAULT_STATION_FONT_FAMILY);
     setNewStationKindFontWeight(DEFAULT_STATION_FONT_WEIGHT);
@@ -2231,9 +2205,9 @@ export default function RailwayMapEditor() {
                       updateStation={updateStation}
                       labelDiagnostics={labelDiagnostics}
                       selectedSegment={selectedSegment}
-                      selectedLine={visibleLines.find((line) => line.id === selectedLineId) ?? null}
+                      selectedLine={selectedLine}
               selectedLineId={selectedLineId}
-              lines={visibleLines}
+              lines={config.lines}
               selectedLineRun={selectedLineRun}
               segmentsById={segmentsById}
               handleSelectedLineInspectorChange={handleSelectedLineInspectorChange}
@@ -2284,8 +2258,8 @@ export default function RailwayMapEditor() {
                       selectedLineId={selectedLineId}
                       setSelectedLineId={setSelectedLineId}
                       addLine={addLine}
-                      selectedLine={visibleLines.find((line) => line.id === selectedLineId) ?? null}
-                      lines={visibleLines}
+                      selectedLine={selectedLine}
+                      lines={config.lines}
                       currentSegments={currentSegments}
                       lineIdBySegmentId={lineIdBySegmentId}
                       linesById={linesById}
@@ -2314,6 +2288,8 @@ export default function RailwayMapEditor() {
                       setNewStationKindFontFamily={setNewStationKindFontFamily}
                       newStationKindShape={newStationKindShape}
                       setNewStationKindShape={setNewStationKindShape}
+                      newStationKindLineStop={newStationKindLineStop}
+                      setNewStationKindLineStop={setNewStationKindLineStop}
                       newStationKindFontWeight={newStationKindFontWeight}
                       setNewStationKindFontWeight={setNewStationKindFontWeight}
                       newStationKindFontSize={newStationKindFontSize}

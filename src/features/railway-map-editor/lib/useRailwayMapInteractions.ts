@@ -338,6 +338,19 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
       });
       return;
     }
+    if (event.shiftKey) {
+      if (!svgRef.current) return;
+      const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
+      if (!point) return;
+
+      selectSingleNode(nodeId);
+      setSelectedNodeMarkerKey(markerKey);
+      const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
+      setSelectedStationId(station?.id ?? "");
+      setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
+      beginSegmentDrawFromNode(nodeId, laneId, markerKey, point);
+      return;
+    }
     if (event.metaKey) {
       setSelectedNodeIds((current) => {
         if (current.includes(nodeId)) {

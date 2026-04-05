@@ -17,6 +17,7 @@ export interface StationKind {
   id: string;
   name: string;
   shape: StationKindShape;
+  lineStop: boolean;
   symbolSize: number;
   fontFamily: string;
   fontWeight: StationLabelFontWeight;

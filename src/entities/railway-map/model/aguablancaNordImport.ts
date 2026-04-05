@@ -423,9 +423,9 @@ function buildImportedSheet(): ImportedSheetData {
   const importedMap: RailwayMap = {
     config: {
       stationKinds: [
-        { id: "sk-stop", name: "Stop", shape: "circle", symbolSize: 1, fontFamily: '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif', fontWeight: "400", fontSize: 12 },
-        { id: "sk-hub", name: "Hub", shape: "interchange", symbolSize: 1, fontFamily: '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif', fontWeight: "500", fontSize: 14 },
-        { id: "sk-terminal", name: "Terminal", shape: "terminal", symbolSize: 1, fontFamily: '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif', fontWeight: "600", fontSize: 14 },
+        { id: "sk-stop", name: "Stop", shape: "circle", lineStop: false, symbolSize: 1, fontFamily: '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif', fontWeight: "400", fontSize: 12 },
+        { id: "sk-hub", name: "Hub", shape: "interchange", lineStop: true, symbolSize: 1, fontFamily: '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif', fontWeight: "500", fontSize: 14 },
+        { id: "sk-terminal", name: "Terminal", shape: "terminal", lineStop: true, symbolSize: 1, fontFamily: '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif', fontWeight: "600", fontSize: 14 },
       ],
       lines,
       parallelTrackSpacing: 22,

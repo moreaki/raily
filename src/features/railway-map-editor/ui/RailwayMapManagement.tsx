@@ -44,6 +44,8 @@ type RailwayMapManagementProps = {
   setNewStationKindFontFamily: (value: string) => void;
   newStationKindShape: StationKind["shape"];
   setNewStationKindShape: (value: StationKind["shape"]) => void;
+  newStationKindLineStop: boolean;
+  setNewStationKindLineStop: (value: boolean) => void;
   newStationKindFontWeight: StationLabelFontWeight;
   setNewStationKindFontWeight: (value: StationLabelFontWeight) => void;
   newStationKindFontSize: number;
@@ -98,6 +100,8 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
     setNewStationKindFontFamily,
     newStationKindShape,
     setNewStationKindShape,
+    newStationKindLineStop,
+    setNewStationKindLineStop,
     newStationKindFontWeight,
     setNewStationKindFontWeight,
     newStationKindFontSize,
@@ -532,6 +536,15 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
                   <option value="terminal">Terminal</option>
                 </select>
               </div>
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={newStationKindLineStop}
+                  onChange={(event) => setNewStationKindLineStop(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span>Line Stop</span>
+              </label>
               <div className="grid w-[88px] shrink-0 gap-1">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Weight</div>
                 <select
@@ -595,6 +608,7 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
                     <div className="mt-1 truncate text-sm opacity-90" style={{ fontFamily: kind.fontFamily, fontWeight: kind.fontWeight, fontSize: `${kind.fontSize}px` }}>
                       Sample label ({kind.fontWeight}, {kind.fontSize}px)
                     </div>
+                    <div className="mt-1 text-xs text-slate-500">{kind.lineStop ? "Stops line propagation" : "Allows line propagation"}</div>
                   </div>
                 </div>
               </button>
@@ -627,6 +641,15 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
                     <option value="terminal">Terminal</option>
                   </select>
                 </div>
+                <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={selectedStationKind.lineStop}
+                    onChange={(event) => updateStationKind(selectedStationKind.id, { lineStop: event.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  />
+                  <span>Line Stop</span>
+                </label>
                 <div className="grid w-[88px] shrink-0 gap-1">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Weight</div>
                   <select

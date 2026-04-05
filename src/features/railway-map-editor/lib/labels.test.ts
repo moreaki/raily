@@ -40,6 +40,7 @@ function makeHorizontalMap(): RailwayMap {
           id: "kind-stop",
           name: "Stop",
           shape: "circle",
+          lineStop: false,
           symbolSize: 1,
           fontFamily: "Arial",
           fontWeight: "600",

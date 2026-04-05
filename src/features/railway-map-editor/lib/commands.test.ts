@@ -32,6 +32,7 @@ function makeMap(): RailwayMap {
           id: "kind-stop",
           name: "Stop",
           shape: "circle",
+          lineStop: false,
           symbolSize: 1,
           fontFamily: "Arial",
           fontWeight: "600",
@@ -107,6 +108,65 @@ describe("railway-map commands", () => {
 
     expect(run?.segmentIds).toEqual(["sg1", "sg2"]);
     expect(next.model.lineRuns.find((candidate) => candidate.lineId === "line-a")?.segmentIds).toEqual([]);
+  });
+
+  it("assignLineToSegment stops propagating at a line-stop station", () => {
+    const map = {
+      ...makeMap(),
+      config: {
+        ...makeMap().config,
+        stationKinds: [
+          {
+            id: "kind-stop",
+            name: "Stop",
+            shape: "circle" as const,
+            lineStop: false,
+            symbolSize: 1,
+            fontFamily: "Arial",
+            fontWeight: "600" as const,
+            fontSize: 14,
+          },
+          {
+            id: "kind-hub",
+            name: "Hub",
+            shape: "interchange" as const,
+            lineStop: true,
+            symbolSize: 1,
+            fontFamily: "Arial",
+            fontWeight: "700" as const,
+            fontSize: 14,
+          },
+        ],
+      },
+      model: {
+        ...makeMap().model,
+        stations: [
+          { id: "s1", nodeId: null, name: "Loose", kindId: "kind-stop" },
+          { id: "s-mid", nodeId: "n2", name: "Mid", kindId: "kind-hub" },
+          { id: "s2", nodeId: "n4", name: "Other", kindId: "kind-stop", label: { x: 312, y: -10, align: "right" as const } },
+        ],
+      },
+    };
+    const next = assignLineToSegment(map, "line-b", "sg1");
+
+    expect(next.model.lineRuns.find((candidate) => candidate.lineId === "line-b")?.segmentIds).toEqual(["sg1"]);
+  });
+
+  it("assignLineToSegment does not jump across a parallel sibling between the same two nodes", () => {
+    const map = {
+      ...makeMap(),
+      model: {
+        ...makeMap().model,
+        segments: [
+          { id: "sg1", sheetId: "sheet-main", fromNodeId: "n1", toNodeId: "n2", geometry: { kind: "straight" as const } },
+          { id: "sg1b", sheetId: "sheet-main", fromNodeId: "n1", toNodeId: "n2", geometry: { kind: "straight" as const } },
+        ],
+      },
+    };
+
+    const next = assignLineToSegment(map, "line-b", "sg1");
+
+    expect(next.model.lineRuns.find((candidate) => candidate.lineId === "line-b")?.segmentIds).toEqual(["sg1"]);
   });
 
   it("insertTrackPointOnSegment replaces one segment with two and one inserted node", () => {
