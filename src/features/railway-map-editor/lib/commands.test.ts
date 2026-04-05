@@ -11,9 +11,13 @@ import {
   makeSegmentPolyline,
   makeSegmentStraight,
   insertTrackPointOnSegment,
+  insertNodeGroupColumn,
+  insertNodeGroupRow,
   removeTrackPoint,
   removeSegmentPolylinePoint,
   removeNodeLane,
+  removeNodeGroupColumn,
+  removeNodeGroupRow,
   updateSegmentPolylinePoint,
 } from "@/features/railway-map-editor/lib/commands";
 
@@ -212,6 +216,19 @@ describe("railway-map commands", () => {
     const withLane = addNodeLane(makeMap(), "n2").map;
     const next = removeNodeLane(withLane, "n2", "nl-n2-manual-1");
     expect(next.model.nodeLanes).toEqual([]);
+  });
+
+  it("can insert and remove empty node-group columns and rows", () => {
+    const withLane = addNodeLane(makeMap(), "n2").map;
+    const shiftedCols = insertNodeGroupColumn(withLane, "n2", 1);
+    expect(shiftedCols.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.gridColumn).toBe(2);
+    const restoredCols = removeNodeGroupColumn(shiftedCols, "n2", 1);
+    expect(restoredCols.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.gridColumn).toBe(1);
+
+    const shiftedRows = insertNodeGroupRow(withLane, "n2", 1);
+    expect(shiftedRows.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.gridRow).toBe(3);
+    const restoredRows = removeNodeGroupRow(shiftedRows, "n2", 1);
+    expect(restoredRows.model.nodeLanes.find((lane) => lane.id === "nl-n2-manual-1")?.gridRow).toBe(2);
   });
 
   it("deleteSheet removes sheet-owned nodes, stations, segments, and run references", () => {

@@ -261,6 +261,83 @@ export function updateSegmentEndpointLane(map: RailwayMap, segmentId: string, en
   };
 }
 
+function seedNodeLaneGrid(lanes: RailwayMap["model"]["nodeLanes"], nodeId: string, axis: "horizontal" | "vertical" = "vertical") {
+  return lanes.map((lane, indexForAll) => {
+    if (lane.nodeId !== nodeId) return lane;
+    const sameNodeIndex = lanes.filter((candidate) => candidate.nodeId === nodeId).sort((a, b) => a.order - b.order).findIndex((candidate) => candidate.id === lane.id);
+    const index = sameNodeIndex >= 0 ? sameNodeIndex : indexForAll;
+    return {
+      ...lane,
+      gridColumn: lane.gridColumn ?? (axis === "horizontal" ? index + 1 : 1),
+      gridRow: lane.gridRow ?? (axis === "vertical" ? index + 1 : 1),
+    };
+  });
+}
+
+export function insertNodeGroupColumn(map: RailwayMap, nodeId: string, column: number, axis: "horizontal" | "vertical" = "vertical") {
+  const seeded = seedNodeLaneGrid(map.model.nodeLanes, nodeId, axis);
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodeLanes: seeded.map((lane) => (
+        lane.nodeId === nodeId && (lane.gridColumn ?? 1) >= column
+          ? { ...lane, gridColumn: (lane.gridColumn ?? 1) + 1 }
+          : lane
+      )),
+    },
+  };
+}
+
+export function insertNodeGroupRow(map: RailwayMap, nodeId: string, row: number, axis: "horizontal" | "vertical" = "vertical") {
+  const seeded = seedNodeLaneGrid(map.model.nodeLanes, nodeId, axis);
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodeLanes: seeded.map((lane) => (
+        lane.nodeId === nodeId && (lane.gridRow ?? 1) >= row
+          ? { ...lane, gridRow: (lane.gridRow ?? 1) + 1 }
+          : lane
+      )),
+    },
+  };
+}
+
+export function removeNodeGroupColumn(map: RailwayMap, nodeId: string, column: number, axis: "horizontal" | "vertical" = "vertical") {
+  const seeded = seedNodeLaneGrid(map.model.nodeLanes, nodeId, axis);
+  const hasOccupant = seeded.some((lane) => lane.nodeId === nodeId && (lane.gridColumn ?? 1) === column);
+  if (hasOccupant) return map;
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodeLanes: seeded.map((lane) => (
+        lane.nodeId === nodeId && (lane.gridColumn ?? 1) > column
+          ? { ...lane, gridColumn: (lane.gridColumn ?? 1) - 1 }
+          : lane
+      )),
+    },
+  };
+}
+
+export function removeNodeGroupRow(map: RailwayMap, nodeId: string, row: number, axis: "horizontal" | "vertical" = "vertical") {
+  const seeded = seedNodeLaneGrid(map.model.nodeLanes, nodeId, axis);
+  const hasOccupant = seeded.some((lane) => lane.nodeId === nodeId && (lane.gridRow ?? 1) === row);
+  if (hasOccupant) return map;
+  return {
+    ...map,
+    model: {
+      ...map.model,
+      nodeLanes: seeded.map((lane) => (
+        lane.nodeId === nodeId && (lane.gridRow ?? 1) > row
+          ? { ...lane, gridRow: (lane.gridRow ?? 1) - 1 }
+          : lane
+      )),
+    },
+  };
+}
+
 export function addStationKind(
   map: RailwayMap,
   args: {

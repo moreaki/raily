@@ -40,12 +40,16 @@ import {
   deleteStationKind as deleteStationKindCommand,
   addSegmentPolylinePoint as addSegmentPolylinePointCommand,
   insertTrackPointOnSegment as insertTrackPointOnSegmentCommand,
+  insertNodeGroupColumn as insertNodeGroupColumnCommand,
+  insertNodeGroupRow as insertNodeGroupRowCommand,
   makeSegmentOrthogonal as makeSegmentOrthogonalCommand,
   makeSegmentPolyline as makeSegmentPolylineCommand,
   makeSegmentStraight as makeSegmentStraightCommand,
   moveLaneOrder as moveLaneOrderCommand,
   removeSegmentPolylinePoint as removeSegmentPolylinePointCommand,
   removeNodeLane as removeNodeLaneCommand,
+  removeNodeGroupColumn as removeNodeGroupColumnCommand,
+  removeNodeGroupRow as removeNodeGroupRowCommand,
   removeTrackPoint as removeTrackPointCommand,
   renameSheet,
   updateNodeLaneGridPosition as updateNodeLaneGridPositionCommand,
@@ -1483,6 +1487,26 @@ export default function RailwayMapEditor() {
     updateMap((current) => updateSegmentEndpointLaneCommand(current, selectedSegment.id, end, laneId || undefined));
   }
 
+  function insertSelectedNodeGroupColumn(column: number) {
+    if (!selectedNode) return;
+    updateMap((current) => insertNodeGroupColumnCommand(current, selectedNode.id, column, selectedNodeLaneAxis));
+  }
+
+  function insertSelectedNodeGroupRow(row: number) {
+    if (!selectedNode) return;
+    updateMap((current) => insertNodeGroupRowCommand(current, selectedNode.id, row, selectedNodeLaneAxis));
+  }
+
+  function removeSelectedNodeGroupColumn(column: number) {
+    if (!selectedNode) return;
+    updateMap((current) => removeNodeGroupColumnCommand(current, selectedNode.id, column, selectedNodeLaneAxis));
+  }
+
+  function removeSelectedNodeGroupRow(row: number) {
+    if (!selectedNode) return;
+    updateMap((current) => removeNodeGroupRowCommand(current, selectedNode.id, row, selectedNodeLaneAxis));
+  }
+
   function updateStation(stationId: string, patch: Partial<Station>) {
     updateMap((current) => updateStationCommand(current, stationId, patch));
   }
@@ -1917,11 +1941,15 @@ export default function RailwayMapEditor() {
                       selectedNodeMarkerLaneId={selectedNodeMarkerLaneId}
                       updateSelectedNodeLaneCell={updateSelectedNodeLaneCell}
                       selectNodeLane={selectNodeLane}
+                      insertNodeGroupColumn={insertSelectedNodeGroupColumn}
+                      insertNodeGroupRow={insertSelectedNodeGroupRow}
+                      removeNodeGroupColumn={removeSelectedNodeGroupColumn}
+                      removeNodeGroupRow={removeSelectedNodeGroupRow}
                       selectedNodeStations={selectedNodeStations}
                       attachStationToSelectedNode={attachStationToSelectedNode}
                       addNodeToGroup={addNodeToGroup}
-                      canRemoveSelectedNodeFromGroup={!!selectedNodeMarkerLane && selectedNodeMarkerLane.segmentIds.length === 0}
-                      removeSelectedNodeFromGroup={() => selectedNode && selectedNodeMarkerLane && removeNodeFromGroup(selectedNode.id, selectedNodeMarkerLane.id)}
+                      removableNodeLaneIds={new Set(selectedNodeLanes.filter((lane) => lane.segmentIds.length === 0).map((lane) => lane.id))}
+                      removeSelectedNodeFromGroup={(laneId) => selectedNode && removeNodeFromGroup(selectedNode.id, laneId)}
                       canRemoveSelectedTrackPoint={!!selectedNode && removableTrackPointNodeIds.has(selectedNode.id)}
                       removeSelectedTrackPoint={() => selectedNode && removeTrackPoint(selectedNode.id)}
                       unassignStation={unassignStation}

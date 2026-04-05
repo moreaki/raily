@@ -50,11 +50,15 @@ type RailwayMapInspectorProps = {
   selectedNodeMarkerLaneId: string | null;
   updateSelectedNodeLaneCell: (laneId: string, value: string) => void;
   selectNodeLane: (laneId: string) => void;
+  insertNodeGroupColumn: (column: number) => void;
+  insertNodeGroupRow: (row: number) => void;
+  removeNodeGroupColumn: (column: number) => void;
+  removeNodeGroupRow: (row: number) => void;
   selectedNodeStations: Station[];
   attachStationToSelectedNode: () => void;
   addNodeToGroup: (nodeId: string) => void;
-  canRemoveSelectedNodeFromGroup: boolean;
-  removeSelectedNodeFromGroup: () => void;
+  removableNodeLaneIds: Set<string>;
+  removeSelectedNodeFromGroup: (laneId: string) => void;
   canRemoveSelectedTrackPoint: boolean;
   removeSelectedTrackPoint: () => void;
   unassignStation: (stationId: string) => void;
@@ -118,10 +122,14 @@ export function RailwayMapInspector({
   selectedNodeMarkerLaneId,
   updateSelectedNodeLaneCell,
   selectNodeLane,
+  insertNodeGroupColumn,
+  insertNodeGroupRow,
+  removeNodeGroupColumn,
+  removeNodeGroupRow,
   selectedNodeStations,
   attachStationToSelectedNode,
   addNodeToGroup,
-  canRemoveSelectedNodeFromGroup,
+  removableNodeLaneIds,
   removeSelectedNodeFromGroup,
   canRemoveSelectedTrackPoint,
   removeSelectedTrackPoint,
@@ -149,14 +157,51 @@ export function RailwayMapInspector({
 }: RailwayMapInspectorProps) {
   const [laneCellDrafts, setLaneCellDrafts] = useState<Record<string, string>>({});
   const [activeLaneId, setActiveLaneId] = useState<string | null>(selectedNodeMarkerLaneId);
-  const [extraGridColumns, setExtraGridColumns] = useState(1);
-  const [extraGridRows, setExtraGridRows] = useState(1);
+  const [dragLaneId, setDragLaneId] = useState<string | null>(null);
+  const [dragOverCellKey, setDragOverCellKey] = useState<string | null>(null);
+  const [dragPointer, setDragPointer] = useState<{ x: number; y: number } | null>(null);
+  const [dragOverEdge, setDragOverEdge] = useState<"left" | "right" | "top" | "bottom" | null>(null);
+  const [lastExpandedEdge, setLastExpandedEdge] = useState<string | null>(null);
+  const [flashColumn, setFlashColumn] = useState<number | null>(null);
+  const [flashRow, setFlashRow] = useState<number | null>(null);
   useEffect(() => {
     setLaneCellDrafts(Object.fromEntries(selectedNodeLanes.map((lane) => [lane.id, lane.cellLabel])));
   }, [selectedNodeLanes]);
   useEffect(() => {
     setActiveLaneId(selectedNodeMarkerLaneId ?? selectedNodeLanes[0]?.id ?? null);
   }, [selectedNodeLanes, selectedNodeMarkerLaneId]);
+  useEffect(() => {
+    if (!dragLaneId) {
+      setLastExpandedEdge(null);
+      return;
+    }
+    function handleWindowDragOver(event: DragEvent) {
+      setDragPointer({ x: event.clientX, y: event.clientY });
+    }
+    function handleWindowDragEnd() {
+      setDragLaneId(null);
+      setDragOverCellKey(null);
+      setDragPointer(null);
+      setDragOverEdge(null);
+      setLastExpandedEdge(null);
+    }
+    window.addEventListener("dragover", handleWindowDragOver);
+    window.addEventListener("dragend", handleWindowDragEnd);
+    window.addEventListener("drop", handleWindowDragEnd);
+    return () => {
+      window.removeEventListener("dragover", handleWindowDragOver);
+      window.removeEventListener("dragend", handleWindowDragEnd);
+      window.removeEventListener("drop", handleWindowDragEnd);
+    };
+  }, [dragLaneId]);
+  useEffect(() => {
+    if (flashColumn == null && flashRow == null) return;
+    const timeout = window.setTimeout(() => {
+      setFlashColumn(null);
+      setFlashRow(null);
+    }, 650);
+    return () => window.clearTimeout(timeout);
+  }, [flashColumn, flashRow]);
   const previewBounds = useMemo(() => {
     const columns = selectedNodeLanes.map((lane) => lane.gridColumn).filter((value): value is number => !!value);
     const rows = selectedNodeLanes.map((lane) => lane.gridRow).filter((value): value is number => !!value);
@@ -168,10 +213,10 @@ export function RailwayMapInspector({
     };
   }, [selectedNodeLanes]);
   const editorGrid = useMemo(() => {
-    const minColumn = Math.max(1, previewBounds.minColumn - extraGridColumns);
-    const maxColumn = Math.max(minColumn, previewBounds.maxColumn + extraGridColumns);
-    const minRow = Math.max(1, previewBounds.minRow - extraGridRows);
-    const maxRow = Math.max(minRow, previewBounds.maxRow + extraGridRows);
+    const minColumn = Math.max(1, previewBounds.minColumn);
+    const maxColumn = Math.max(minColumn, previewBounds.maxColumn);
+    const minRow = Math.max(1, previewBounds.minRow);
+    const maxRow = Math.max(minRow, previewBounds.maxRow);
     return {
       columns: Array.from({ length: maxColumn - minColumn + 1 }, (_, index) => minColumn + index),
       rows: Array.from({ length: maxRow - minRow + 1 }, (_, index) => minRow + index),
@@ -181,7 +226,10 @@ export function RailwayMapInspector({
           .map((lane) => [`${lane.gridColumn}:${lane.gridRow}`, lane] as const),
         ),
     };
-  }, [extraGridColumns, extraGridRows, previewBounds, selectedNodeLanes]);
+  }, [previewBounds, selectedNodeLanes]);
+  const dragLane = selectedNodeLanes.find((lane) => lane.id === dragLaneId) ?? null;
+  const dragLaneColumn = dragLane?.gridColumn ?? previewBounds.minColumn;
+  const dragLaneRow = dragLane?.gridRow ?? previewBounds.minRow;
   const sortedLines = [...lines].sort((left, right) => {
     const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
     if (byName !== 0) return byName;
@@ -301,10 +349,16 @@ export function RailwayMapInspector({
                           className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
                             activeLaneId === lane.id ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200" : "bg-slate-50 text-ink"
                           }`}
+                          draggable
                           onClick={() => {
                             setActiveLaneId(lane.id);
                             selectNodeLane(lane.id);
                           }}
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData("text/plain", lane.id);
+                            setDragLaneId(lane.id);
+                          }}
+                          onDragEnd={() => setDragLaneId(null)}
                         >
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 font-medium">
@@ -349,22 +403,158 @@ export function RailwayMapInspector({
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Grid Editor</div>
                         <div className="flex items-center gap-2 text-xs text-muted">
-                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => setExtraGridColumns((value) => Math.max(0, value - 1))}>
+                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => removeNodeGroupColumn(previewBounds.maxColumn)} disabled={previewBounds.maxColumn <= 1}>
                             Col -
                           </Button>
-                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => setExtraGridColumns((value) => value + 1)}>
+                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => insertNodeGroupColumn(previewBounds.maxColumn + 1)}>
                             Col +
                           </Button>
-                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => setExtraGridRows((value) => Math.max(0, value - 1))}>
+                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => removeNodeGroupRow(previewBounds.maxRow)} disabled={previewBounds.maxRow <= 1}>
                             Row -
                           </Button>
-                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => setExtraGridRows((value) => value + 1)}>
+                          <Button type="button" variant="outline" className="h-7 px-2" onClick={() => insertNodeGroupRow(previewBounds.maxRow + 1)}>
                             Row +
                           </Button>
                         </div>
                       </div>
-                      <p className="text-xs text-muted">Select a port above, then click a cell to place it. Clicking an occupied cell with another active port swaps them.</p>
-                      <div className="overflow-auto rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="text-xs text-muted">Select or drag a port, then place it in a cell. Dropping on another occupied cell swaps them. Expand the grid by dragging across an outer edge.</p>
+                      <div className="relative overflow-auto rounded-xl border border-slate-200 bg-white p-3">
+                        {dragLane && dragPointer ? (
+                          <div
+                            className="pointer-events-none fixed z-50 rounded-md border border-sky-200 bg-white/95 px-2 py-1 text-xs font-medium text-sky-900 shadow-sm"
+                            style={{ left: dragPointer.x + 14, top: dragPointer.y + 14 }}
+                          >
+                            {dragLane.lineNames[0] || "Port"} {dragLane.cellLabel ? `· ${dragLane.cellLabel}` : ""}
+                          </div>
+                        ) : null}
+                        {dragLaneId ? (
+                          <>
+                            <div
+                              className={`absolute inset-y-8 left-1 z-10 flex w-6 items-center justify-center rounded-md border border-dashed text-slate-400 transition ${
+                                dragOverEdge === "left" ? "border-sky-400 bg-sky-50 text-sky-700" : "border-slate-200 bg-slate-50/90"
+                              }`}
+                              onDragEnter={(event) => {
+                                event.preventDefault();
+                                setDragOverEdge("left");
+                                if (lastExpandedEdge === "left") return;
+                                insertNodeGroupColumn(editorGrid.columns[0]);
+                                setFlashColumn(editorGrid.columns[0]);
+                                setLastExpandedEdge("left");
+                              }}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDragLeave={() => setDragOverEdge((current) => (current === "left" ? null : current))}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                const droppedLaneId = event.dataTransfer.getData("text/plain") || dragLaneId;
+                                if (!droppedLaneId) return;
+                                const newColumn = editorGrid.columns[0];
+                                insertNodeGroupColumn(newColumn);
+                                updateSelectedNodeLaneCell(droppedLaneId, `${toColumnLabel(newColumn)}${dragLaneRow}`);
+                                setFlashColumn(newColumn);
+                                setActiveLaneId(droppedLaneId);
+                                selectNodeLane(droppedLaneId);
+                                setDragLaneId(null);
+                                setDragOverEdge(null);
+                                setDragOverCellKey(null);
+                              }}
+                            >
+                              ←
+                            </div>
+                            <div
+                              className={`absolute inset-y-8 right-1 z-10 flex w-6 items-center justify-center rounded-md border border-dashed text-slate-400 transition ${
+                                dragOverEdge === "right" ? "border-sky-400 bg-sky-50 text-sky-700" : "border-slate-200 bg-slate-50/90"
+                              }`}
+                              onDragEnter={(event) => {
+                                event.preventDefault();
+                                setDragOverEdge("right");
+                                if (lastExpandedEdge === "right") return;
+                                insertNodeGroupColumn(editorGrid.columns[editorGrid.columns.length - 1] + 1);
+                                setFlashColumn(editorGrid.columns[editorGrid.columns.length - 1] + 1);
+                                setLastExpandedEdge("right");
+                              }}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDragLeave={() => setDragOverEdge((current) => (current === "right" ? null : current))}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                const droppedLaneId = event.dataTransfer.getData("text/plain") || dragLaneId;
+                                if (!droppedLaneId) return;
+                                const newColumn = editorGrid.columns[editorGrid.columns.length - 1] + 1;
+                                insertNodeGroupColumn(newColumn);
+                                updateSelectedNodeLaneCell(droppedLaneId, `${toColumnLabel(newColumn)}${dragLaneRow}`);
+                                setFlashColumn(newColumn);
+                                setActiveLaneId(droppedLaneId);
+                                selectNodeLane(droppedLaneId);
+                                setDragLaneId(null);
+                                setDragOverEdge(null);
+                                setDragOverCellKey(null);
+                              }}
+                            >
+                              →
+                            </div>
+                            <div
+                              className={`absolute inset-x-8 top-1 z-10 flex h-6 items-center justify-center rounded-md border border-dashed text-slate-400 transition ${
+                                dragOverEdge === "top" ? "border-sky-400 bg-sky-50 text-sky-700" : "border-slate-200 bg-slate-50/90"
+                              }`}
+                              onDragEnter={(event) => {
+                                event.preventDefault();
+                                setDragOverEdge("top");
+                                if (lastExpandedEdge === "top") return;
+                                insertNodeGroupRow(editorGrid.rows[0]);
+                                setFlashRow(editorGrid.rows[0]);
+                                setLastExpandedEdge("top");
+                              }}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDragLeave={() => setDragOverEdge((current) => (current === "top" ? null : current))}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                const droppedLaneId = event.dataTransfer.getData("text/plain") || dragLaneId;
+                                if (!droppedLaneId) return;
+                                const newRow = editorGrid.rows[0];
+                                insertNodeGroupRow(newRow);
+                                updateSelectedNodeLaneCell(droppedLaneId, `${toColumnLabel(dragLaneColumn)}${newRow}`);
+                                setFlashRow(newRow);
+                                setActiveLaneId(droppedLaneId);
+                                selectNodeLane(droppedLaneId);
+                                setDragLaneId(null);
+                                setDragOverEdge(null);
+                                setDragOverCellKey(null);
+                              }}
+                            >
+                              ↑
+                            </div>
+                            <div
+                              className={`absolute inset-x-8 bottom-1 z-10 flex h-6 items-center justify-center rounded-md border border-dashed text-slate-400 transition ${
+                                dragOverEdge === "bottom" ? "border-sky-400 bg-sky-50 text-sky-700" : "border-slate-200 bg-slate-50/90"
+                              }`}
+                              onDragEnter={(event) => {
+                                event.preventDefault();
+                                setDragOverEdge("bottom");
+                                if (lastExpandedEdge === "bottom") return;
+                                insertNodeGroupRow(editorGrid.rows[editorGrid.rows.length - 1] + 1);
+                                setFlashRow(editorGrid.rows[editorGrid.rows.length - 1] + 1);
+                                setLastExpandedEdge("bottom");
+                              }}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDragLeave={() => setDragOverEdge((current) => (current === "bottom" ? null : current))}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                const droppedLaneId = event.dataTransfer.getData("text/plain") || dragLaneId;
+                                if (!droppedLaneId) return;
+                                const newRow = editorGrid.rows[editorGrid.rows.length - 1] + 1;
+                                insertNodeGroupRow(newRow);
+                                updateSelectedNodeLaneCell(droppedLaneId, `${toColumnLabel(dragLaneColumn)}${newRow}`);
+                                setFlashRow(newRow);
+                                setActiveLaneId(droppedLaneId);
+                                selectNodeLane(droppedLaneId);
+                                setDragLaneId(null);
+                                setDragOverEdge(null);
+                                setDragOverCellKey(null);
+                              }}
+                            >
+                              ↓
+                            </div>
+                          </>
+                        ) : null}
                         <div
                           className="grid gap-2"
                           style={{
@@ -373,30 +563,47 @@ export function RailwayMapInspector({
                         >
                           <div />
                           {editorGrid.columns.map((column) => (
-                            <div key={`col:${column}`} className="text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            <div
+                              key={`col:${column}`}
+                              className={`text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition ${
+                                flashColumn === column ? "rounded bg-sky-100 text-sky-700" : ""
+                              }`}
+                            >
                               {toColumnLabel(column)}
                             </div>
                           ))}
                           {editorGrid.rows.map((row) => (
                             <Fragment key={`row:${row}`}>
-                              <div className="flex items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              <div className={`flex items-center justify-center text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition ${flashRow === row ? "rounded bg-sky-100 text-sky-700" : ""}`}>
                                 {row}
                               </div>
                               {editorGrid.columns.map((column) => {
                                 const cellLane = editorGrid.byCell.get(`${column}:${row}`) ?? null;
                                 const isActive = cellLane?.id === activeLaneId;
+                                const isDraggingSource = cellLane?.id === dragLaneId;
                                 const targetCellLabel = `${toColumnLabel(column)}${row}`;
+                                const cellKey = `${column}:${row}`;
+                                const isDropTarget = dragOverCellKey === cellKey;
                                 return (
                                   <button
                                     key={`${column}:${row}`}
                                     type="button"
+                                    draggable={!!cellLane}
                                     className={`relative h-12 rounded-lg border text-xs transition ${
+                                      flashColumn === column || flashRow === row
+                                        ? "ring-1 ring-sky-200"
+                                        : ""
+                                    } ${
                                       cellLane
                                         ? isActive
                                           ? "border-sky-400 bg-sky-50 shadow-sm"
-                                          : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                                          : isDraggingSource
+                                            ? "border-sky-300 bg-sky-50/60 opacity-70 ring-2 ring-sky-200"
+                                            : "border-slate-200 bg-slate-50 hover:bg-slate-100"
                                         : activeLaneId
-                                          ? "border-dashed border-slate-300 bg-white hover:border-sky-300 hover:bg-sky-50/40"
+                                          ? isDropTarget
+                                            ? "border-sky-400 bg-sky-50 ring-2 ring-sky-200"
+                                            : "border-dashed border-slate-300 bg-white hover:border-sky-300 hover:bg-sky-50/40"
                                           : "border-dashed border-slate-200 bg-white"
                                     }`}
                                     onClick={() => {
@@ -412,18 +619,58 @@ export function RailwayMapInspector({
                                       if (!activeLaneId) return;
                                       updateSelectedNodeLaneCell(activeLaneId, targetCellLabel);
                                     }}
+                                    onDragOver={(event) => event.preventDefault()}
+                                    onDragEnter={(event) => {
+                                      event.preventDefault();
+                                      setDragOverCellKey(cellKey);
+                                    }}
+                                    onDragLeave={() => {
+                                      setDragOverCellKey((current) => (current === cellKey ? null : current));
+                                    }}
+                                    onDragStart={(event) => {
+                                      if (!cellLane) return;
+                                      event.dataTransfer.setData("text/plain", cellLane.id);
+                                      setDragLaneId(cellLane.id);
+                                      setDragOverCellKey(null);
+                                      setActiveLaneId(cellLane.id);
+                                      selectNodeLane(cellLane.id);
+                                    }}
+                                    onDrop={(event) => {
+                                      event.preventDefault();
+                                      const droppedLaneId = event.dataTransfer.getData("text/plain") || dragLaneId;
+                                      if (!droppedLaneId) return;
+                                      if (cellLane && cellLane.id === droppedLaneId) return;
+                                      updateSelectedNodeLaneCell(droppedLaneId, targetCellLabel);
+                                      setActiveLaneId(droppedLaneId);
+                                      selectNodeLane(droppedLaneId);
+                                      setDragLaneId(null);
+                                      setDragOverCellKey(null);
+                                    }}
+                                    onDragEnd={() => {
+                                      setDragLaneId(null);
+                                      setDragOverCellKey(null);
+                                      setDragOverEdge(null);
+                                    }}
                                   >
                                   {cellLane ? (
                                       <div className="flex h-full flex-col items-center justify-center gap-1 px-1">
                                         <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cellLane.lineColors[0] ?? "#94a3b8" }} />
                                         <span className="truncate font-medium text-ink">{cellLane.lineNames[0] || "Port"}</span>
-                                        <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                                        <svg viewBox="0 0 28 28" className="h-4 w-4 overflow-visible">
                                           {cellLane.connections.map((connection, connectionIndex) => (
-                                            <span key={`${cellLane.id}:cell:${connectionIndex}`} style={{ color: connection.color ?? "#64748b" }}>
-                                              {connection.side === "left" ? "←" : connection.side === "right" ? "→" : connection.side === "up" ? "↑" : "↓"}
-                                            </span>
+                                            <line
+                                              key={`${cellLane.id}:cell:${connectionIndex}`}
+                                              x1="14"
+                                              y1="14"
+                                              x2={connection.side === "left" ? 2 : connection.side === "right" ? 26 : 14}
+                                              y2={connection.side === "up" ? 2 : connection.side === "down" ? 26 : 14}
+                                              stroke={connection.color ?? "#64748b"}
+                                              strokeWidth="2"
+                                              strokeLinecap="round"
+                                            />
                                           ))}
-                                        </div>
+                                          <circle cx="14" cy="14" r="2.5" fill={cellLane.lineColors[0] ?? "#64748b"} />
+                                        </svg>
                                       </div>
                                     ) : (
                                       <span className="text-slate-300">{activeLaneId ? "Place" : ""}</span>
@@ -462,8 +709,8 @@ export function RailwayMapInspector({
                   <Plus className="h-4 w-4" />
                   Add node to group
                 </Button>
-                {canRemoveSelectedNodeFromGroup ? (
-                  <Button type="button" variant="outline" onClick={removeSelectedNodeFromGroup}>
+                {activeLaneId && removableNodeLaneIds.has(activeLaneId) ? (
+                  <Button type="button" variant="outline" onClick={() => removeSelectedNodeFromGroup(activeLaneId)}>
                     Remove node from group
                   </Button>
                 ) : null}
