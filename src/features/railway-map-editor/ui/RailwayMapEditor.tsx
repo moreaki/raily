@@ -51,6 +51,8 @@ import {
   segmentIntersectsLabelBox,
   STATION_FONT_WEIGHT_OPTIONS,
 } from "@/features/railway-map-editor/lib/labels";
+import { useRailwayMapContextMenus } from "@/features/railway-map-editor/lib/useRailwayMapContextMenus";
+import { useRailwayMapHistory } from "@/features/railway-map-editor/lib/useRailwayMapHistory";
 import { useRailwayMapViewport } from "@/features/railway-map-editor/lib/useRailwayMapViewport";
 import { RailwayMapInspector } from "@/features/railway-map-editor/ui/RailwayMapInspector";
 import { RailwayMapManagement } from "@/features/railway-map-editor/ui/RailwayMapManagement";
@@ -167,17 +169,9 @@ function loadStoredMap() {
   }
 }
 
-function cloneMap(map: RailwayMap) {
-  return JSON.parse(JSON.stringify(map)) as RailwayMap;
-}
-
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
-
-function mapsEqual(left: RailwayMap, right: RailwayMap) {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export default function RailwayMapEditor() {
@@ -187,7 +181,18 @@ export default function RailwayMapEditor() {
   }
   const initialMap = initialMapRef.current;
 
-  const [map, setMap] = useState<RailwayMap>(initialMap);
+  const {
+    map,
+    mapRef,
+    updateMap,
+    replaceMap,
+    beginTransientMapChange,
+    completeTransientMapChange,
+    undoLastChange,
+  } = useRailwayMapHistory({
+    initialMap,
+    storageKey: STORAGE_KEY,
+  });
   const model = map.model;
   const config = map.config;
   const [selectedNodeId, setSelectedNodeId] = useState(initialMap.model.nodes[0]?.id ?? "");
@@ -201,7 +206,6 @@ export default function RailwayMapEditor() {
   const [newStationName, setNewStationName] = useState("");
   const [newStationKindId, setNewStationKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
   const [nodeAssignmentKindId, setNodeAssignmentKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
-  const [nodeAssignmentName, setNodeAssignmentName] = useState("");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
   const [newStationKindFontFamily, setNewStationKindFontFamily] = useState(DEFAULT_STATION_FONT_FAMILY);
@@ -229,27 +233,25 @@ export default function RailwayMapEditor() {
     markerKey: string;
     currentPoint: MapPoint;
   } | null>(null);
-  const [nodeContextMenu, setNodeContextMenu] = useState<{
-    nodeIds: string[];
-    x: number;
-    y: number;
-    markerKey: string | null;
-    laneId: string | null;
-    segmentId: string | null;
-  } | null>(null);
-  const [segmentContextMenu, setSegmentContextMenu] = useState<{ segmentId: string; x: number; y: number } | null>(null);
-  const [nodeAssignmentQuery, setNodeAssignmentQuery] = useState("");
+  const {
+    nodeContextMenu,
+    setNodeContextMenu,
+    segmentContextMenu,
+    setSegmentContextMenu,
+    closeAllContextMenus,
+    nodeAssignmentQuery,
+    setNodeAssignmentQuery,
+    nodeAssignmentName,
+    setNodeAssignmentName,
+    resetNodeAssignmentDrafts,
+  } = useRailwayMapContextMenus();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef(map);
   const nodeDragSnapshotRef = useRef<{
     startPoint: MapPoint;
     positionsByNodeId: Map<string, MapPoint>;
     labelOffsetsByStationId: Map<string, MapPoint>;
   } | null>(null);
-  const undoStackRef = useRef<RailwayMap[]>([]);
-  const redoStackRef = useRef<RailwayMap[]>([]);
-  const transientHistoryStartRef = useRef<RailwayMap | null>(null);
   const nodeLongPressTimeoutRef = useRef<number | null>(null);
   const nodeLongPressPressRef = useRef<{
     nodeId: string;
@@ -765,13 +767,6 @@ export default function RailwayMapEditor() {
   }, [selectedNodeIds, selectedSegment, selectedStation]);
 
   useEffect(() => {
-    mapRef.current = map;
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-    }
-  }, [map]);
-
-  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (isEditableTarget(event.target)) return;
 
@@ -780,7 +775,7 @@ export default function RailwayMapEditor() {
 
       if (hasPrimaryModifier && !event.shiftKey && key === "z") {
         event.preventDefault();
-        undoLastChange();
+        undoEditorChange();
         return;
       }
 
@@ -870,64 +865,10 @@ export default function RailwayMapEditor() {
     }
   }, [currentSheet, model.sheets]);
 
-  function pushUndoSnapshot(snapshot: RailwayMap) {
-    undoStackRef.current = [...undoStackRef.current.slice(-99), cloneMap(snapshot)];
-    redoStackRef.current = [];
-  }
-
-  function updateMap(updater: (current: RailwayMap) => RailwayMap, options?: { trackHistory?: boolean }) {
-    setMap((current) => {
-      const next = sanitizeRailwayMap(updater(current));
-      if (next === current || mapsEqual(next, current)) {
-        return current;
-      }
-
-      if (options?.trackHistory !== false && !transientHistoryStartRef.current) {
-        pushUndoSnapshot(current);
-      }
-
-      return next;
-    });
-  }
-
-  function replaceMap(nextMap: RailwayMap, options?: { trackHistory?: boolean }) {
-    setMap((current) => {
-      const sanitizedNextMap = sanitizeRailwayMap(nextMap);
-      if (mapsEqual(current, sanitizedNextMap)) {
-        return current;
-      }
-
-      if (options?.trackHistory !== false && !transientHistoryStartRef.current) {
-        pushUndoSnapshot(current);
-      }
-
-      return cloneMap(sanitizedNextMap);
-    });
-  }
-
-  function beginTransientMapChange() {
-    if (!transientHistoryStartRef.current) {
-      transientHistoryStartRef.current = cloneMap(mapRef.current);
+  function undoEditorChange() {
+    if (undoLastChange()) {
+      closeAllContextMenus();
     }
-  }
-
-  function completeTransientMapChange() {
-    const snapshot = transientHistoryStartRef.current;
-    transientHistoryStartRef.current = null;
-    if (!snapshot) return;
-    if (mapsEqual(snapshot, mapRef.current)) return;
-    pushUndoSnapshot(snapshot);
-  }
-
-  function undoLastChange() {
-    completeTransientMapChange();
-    const previous = undoStackRef.current[undoStackRef.current.length - 1];
-    if (!previous) return;
-
-    undoStackRef.current = undoStackRef.current.slice(0, -1);
-    redoStackRef.current = [...redoStackRef.current, cloneMap(mapRef.current)];
-    setMap(cloneMap(previous));
-    setNodeContextMenu(null);
   }
 
   function clearCanvasSelections() {
@@ -1025,8 +966,7 @@ export default function RailwayMapEditor() {
     setSelectedNodeIds([nodeId]);
     setSelectedNodeMarkerKey(null);
     setSelectedStationId(stationId);
-    setNodeAssignmentQuery("");
-    setNodeAssignmentName("");
+    resetNodeAssignmentDrafts();
     setNodeContextMenu(null);
   }
 
@@ -1051,8 +991,7 @@ export default function RailwayMapEditor() {
     setSelectedNodeIds([nodeId]);
     setSelectedNodeMarkerKey(null);
     setSelectedStationId(createdStation.id);
-    setNodeAssignmentQuery("");
-    setNodeAssignmentName("");
+    resetNodeAssignmentDrafts();
     setNodeAssignmentKindId(config.stationKinds[0]?.id ?? "");
     setNodeContextMenu(null);
   }
@@ -1120,7 +1059,7 @@ export default function RailwayMapEditor() {
   }
 
   function bootstrapDevelopmentModel() {
-    const seededMap = cloneMap(DEVELOPMENT_BOOTSTRAP_MAP);
+    const seededMap = JSON.parse(JSON.stringify(DEVELOPMENT_BOOTSTRAP_MAP)) as RailwayMap;
     const nextMap = {
       ...seededMap,
       model: {
@@ -1670,7 +1609,7 @@ export default function RailwayMapEditor() {
       nodeId: null,
       label: undefined,
     });
-    setNodeAssignmentQuery("");
+    resetNodeAssignmentDrafts();
     setNodeContextMenu(null);
   }
 
@@ -1979,8 +1918,7 @@ export default function RailwayMapEditor() {
     setSelectedNodeMarkerKey(null);
     setSelectedStationId(stationId);
     setSelectedSegmentId("");
-    setNodeAssignmentQuery("");
-    setNodeAssignmentName("");
+    resetNodeAssignmentDrafts();
     setNodeContextMenu({
       nodeIds: [nodeId],
       x: event.clientX,
@@ -2246,8 +2184,7 @@ export default function RailwayMapEditor() {
     setSelectedNodeMarkerKey(markerKey);
     setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
     const nodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
-    setNodeAssignmentQuery("");
-    setNodeAssignmentName("");
+    resetNodeAssignmentDrafts();
     setNodeContextMenu({
       nodeIds,
       x: event.clientX,
