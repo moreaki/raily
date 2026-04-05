@@ -324,12 +324,25 @@ export function RailwayMapInspector({
                 <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink">
                   <input
                     type="checkbox"
-                    checked={selectedNode.showGroupOutline ?? false}
+                    checked={selectedNode.showGroupOutline ?? selectedNodeLanes.length > 1}
                     onChange={(event) => updateNode({ showGroupOutline: event.target.checked })}
                     className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                   />
                   <span>Show nodegroup as hub outline</span>
                 </label>
+                {(selectedNode.showGroupOutline ?? selectedNodeLanes.length > 1) && selectedNodeLanes.length > 1 ? (
+                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink">
+                    <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Outline shape</span>
+                    <select
+                      value={selectedNode.groupOutlineMode ?? "box"}
+                      onChange={(event) => updateNode({ groupOutlineMode: event.target.value as "box" | "cells" })}
+                      className="h-9 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                    >
+                      <option value="box">Bounding box</option>
+                      <option value="cells">Follow cells</option>
+                    </select>
+                  </label>
+                ) : null}
                 {selectedNodeLanes.length > 0 ? (
                   <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Node Group</div>

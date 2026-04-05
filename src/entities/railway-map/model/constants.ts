@@ -7,6 +7,9 @@ const DEFAULT_STATION_SYMBOL_SIZE = 1;
 const DEFAULT_PARALLEL_TRACK_SPACING = 22;
 const DEFAULT_NODE_GROUP_CELL_WIDTH = 22;
 const DEFAULT_NODE_GROUP_CELL_HEIGHT = 22;
+const DEFAULT_HUB_OUTLINE_CORNER_RADIUS = 10;
+const DEFAULT_HUB_OUTLINE_STROKE_WIDTH = 3.25;
+const DEFAULT_HUB_OUTLINE_CONCAVE_FACTOR = 0.45;
 const DEFAULT_SEGMENT_INDICATOR_WIDTH = 16;
 const DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST = 4;
 const DEFAULT_GRID_LINE_OPACITY = 0.45;
@@ -36,6 +39,9 @@ export const INITIAL_MAP: RailwayMap = {
     parallelTrackSpacing: DEFAULT_PARALLEL_TRACK_SPACING,
     nodeGroupCellWidth: DEFAULT_NODE_GROUP_CELL_WIDTH,
     nodeGroupCellHeight: DEFAULT_NODE_GROUP_CELL_HEIGHT,
+    hubOutlineCornerRadius: DEFAULT_HUB_OUTLINE_CORNER_RADIUS,
+    hubOutlineStrokeWidth: DEFAULT_HUB_OUTLINE_STROKE_WIDTH,
+    hubOutlineConcaveFactor: DEFAULT_HUB_OUTLINE_CONCAVE_FACTOR,
     segmentIndicatorWidth: DEFAULT_SEGMENT_INDICATOR_WIDTH,
     selectedSegmentIndicatorBoost: DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST,
     gridLineOpacity: DEFAULT_GRID_LINE_OPACITY,
@@ -178,6 +184,9 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
     "parallelTrackSpacing": 22,
     "nodeGroupCellWidth": 22,
     "nodeGroupCellHeight": 22,
+    "hubOutlineCornerRadius": 10,
+    "hubOutlineStrokeWidth": 3.25,
+    "hubOutlineConcaveFactor": 0.45,
     "segmentIndicatorWidth": 16,
     "gridLineOpacity": 0.45,
     "selectedSegmentIndicatorBoost": 4,

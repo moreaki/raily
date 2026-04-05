@@ -14,6 +14,7 @@ const nodeSchema = pointSchema.extend({
   id: z.string().min(1),
   sheetId: z.string().min(1),
   showGroupOutline: z.boolean().optional(),
+  groupOutlineMode: z.enum(["box", "cells"]).optional(),
 });
 
 const nodeLaneSchema = z.object({
@@ -93,6 +94,9 @@ export const railwayMapSchema = z.object({
     parallelTrackSpacing: z.number().min(8).max(48).default(22),
     nodeGroupCellWidth: z.number().min(8).max(64).default(22),
     nodeGroupCellHeight: z.number().min(8).max(64).default(22),
+    hubOutlineCornerRadius: z.number().min(0).max(32).default(10),
+    hubOutlineStrokeWidth: z.number().min(1).max(12).default(3.25),
+    hubOutlineConcaveFactor: z.number().min(0).max(1).default(0.45),
     segmentIndicatorWidth: z.number().min(8).max(36).default(16),
     selectedSegmentIndicatorBoost: z.number().min(0).max(12).default(4),
     gridLineOpacity: z.number().min(0.1).max(0.8).default(0.45),

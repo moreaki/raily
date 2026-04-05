@@ -726,6 +726,29 @@ export default function RailwayMapEditor() {
 
     return width > height ? ("horizontal" as const) : ("vertical" as const);
   }, [nodeMarkerCentersById, selectedNodeId]);
+  const nodeLaneLayoutByNodeId = useMemo(() => {
+    const next = new Map<string, Array<{ laneId: string; column: number; row: number }>>();
+    for (const node of currentNodes) {
+      const markers = nodeMarkerCentersById.get(node.id) ?? [];
+      const axis: "horizontal" | "vertical" =
+        markers.length < 2
+          ? "vertical"
+          : Math.max(...markers.map((marker) => marker.center.x)) - Math.min(...markers.map((marker) => marker.center.x)) >
+              Math.max(...markers.map((marker) => marker.center.y)) - Math.min(...markers.map((marker) => marker.center.y))
+            ? "horizontal"
+            : "vertical";
+      const lanes = model.nodeLanes
+        .filter((lane) => lane.nodeId === node.id)
+        .sort((left, right) => left.order - right.order)
+        .map((lane) => ({
+          laneId: lane.id,
+          column: lane.gridColumn ?? (axis === "horizontal" ? lane.order + 1 : 1),
+          row: lane.gridRow ?? (axis === "vertical" ? lane.order + 1 : 1),
+        }));
+      next.set(node.id, lanes);
+    }
+    return next;
+  }, [currentNodes, model.nodeLanes, nodeMarkerCentersById]);
   const selectedNodeLanes = useMemo(() => {
     if (!selectedNodeId) return [];
 
@@ -1464,6 +1487,27 @@ export default function RailwayMapEditor() {
     }));
   }
 
+  function updateHubOutlineCornerRadius(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: { ...current.config, hubOutlineCornerRadius: Math.min(32, Math.max(0, value || 10)) },
+    }));
+  }
+
+  function updateHubOutlineStrokeWidth(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: { ...current.config, hubOutlineStrokeWidth: Math.min(12, Math.max(1, value || 3.25)) },
+    }));
+  }
+
+  function updateHubOutlineConcaveFactor(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: { ...current.config, hubOutlineConcaveFactor: Math.min(1, Math.max(0, value || 0.45)) },
+    }));
+  }
+
   function updateSelectedNodeLaneCell(laneId: string, value: string) {
     if (!selectedNode) return;
     const match = value.trim().toUpperCase().match(/^([A-Z]+)(\d+)$/);
@@ -1788,6 +1832,9 @@ export default function RailwayMapEditor() {
             setGridStepY={setGridStepY}
             nodeGroupCellWidth={config.nodeGroupCellWidth}
             nodeGroupCellHeight={config.nodeGroupCellHeight}
+            hubOutlineCornerRadius={config.hubOutlineCornerRadius}
+            hubOutlineStrokeWidth={config.hubOutlineStrokeWidth}
+            hubOutlineConcaveFactor={config.hubOutlineConcaveFactor}
             segmentIndicatorWidth={config.segmentIndicatorWidth}
             selectedSegmentIndicatorBoost={config.selectedSegmentIndicatorBoost}
             gridLineOpacity={config.gridLineOpacity}
@@ -1804,6 +1851,7 @@ export default function RailwayMapEditor() {
             gridLines={gridLines}
             currentSegments={currentSegments}
             nodesById={nodesById}
+            nodeLaneLayoutByNodeId={nodeLaneLayoutByNodeId}
             segmentOffsetById={segmentOffsetById}
             anchoredEndpointBySegmentNodeKey={anchoredEndpointBySegmentNodeKey}
             selectedSegmentId={selectedSegmentId}
@@ -1991,12 +2039,18 @@ export default function RailwayMapEditor() {
                     <RailwayMapSettings
                       nodeGroupCellWidth={nodeGroupCellWidth}
                       nodeGroupCellHeight={nodeGroupCellHeight}
+                      hubOutlineCornerRadius={config.hubOutlineCornerRadius}
+                      hubOutlineStrokeWidth={config.hubOutlineStrokeWidth}
+                      hubOutlineConcaveFactor={config.hubOutlineConcaveFactor}
                       segmentIndicatorWidth={config.segmentIndicatorWidth}
                       selectedSegmentIndicatorBoost={config.selectedSegmentIndicatorBoost}
                       gridLineOpacity={config.gridLineOpacity}
                       labelAxisSnapSensitivity={config.labelAxisSnapSensitivity}
                       updateNodeGroupCellWidth={updateNodeGroupCellWidth}
                       updateNodeGroupCellHeight={updateNodeGroupCellHeight}
+                      updateHubOutlineCornerRadius={updateHubOutlineCornerRadius}
+                      updateHubOutlineStrokeWidth={updateHubOutlineStrokeWidth}
+                      updateHubOutlineConcaveFactor={updateHubOutlineConcaveFactor}
                       updateSegmentIndicatorWidth={updateSegmentIndicatorWidth}
                       updateSelectedSegmentIndicatorBoost={updateSelectedSegmentIndicatorBoost}
                       updateGridLineOpacity={updateGridLineOpacity}

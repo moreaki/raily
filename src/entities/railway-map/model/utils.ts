@@ -4,6 +4,9 @@ let idCounter = 0;
 const DEFAULT_PARALLEL_TRACK_SPACING = 22;
 const DEFAULT_NODE_GROUP_CELL_WIDTH = 22;
 const DEFAULT_NODE_GROUP_CELL_HEIGHT = 22;
+const DEFAULT_HUB_OUTLINE_CORNER_RADIUS = 10;
+const DEFAULT_HUB_OUTLINE_STROKE_WIDTH = 3.25;
+const DEFAULT_HUB_OUTLINE_CONCAVE_FACTOR = 0.45;
 const DEFAULT_SEGMENT_INDICATOR_WIDTH = 16;
 const DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST = 4;
 const DEFAULT_GRID_LINE_OPACITY = 0.45;
@@ -409,6 +412,9 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
       parallelTrackSpacing: map.config.parallelTrackSpacing ?? DEFAULT_PARALLEL_TRACK_SPACING,
       nodeGroupCellWidth: map.config.nodeGroupCellWidth ?? DEFAULT_NODE_GROUP_CELL_WIDTH,
       nodeGroupCellHeight: map.config.nodeGroupCellHeight ?? DEFAULT_NODE_GROUP_CELL_HEIGHT,
+      hubOutlineCornerRadius: map.config.hubOutlineCornerRadius ?? DEFAULT_HUB_OUTLINE_CORNER_RADIUS,
+      hubOutlineStrokeWidth: map.config.hubOutlineStrokeWidth ?? DEFAULT_HUB_OUTLINE_STROKE_WIDTH,
+      hubOutlineConcaveFactor: map.config.hubOutlineConcaveFactor ?? DEFAULT_HUB_OUTLINE_CONCAVE_FACTOR,
       segmentIndicatorWidth: map.config.segmentIndicatorWidth ?? DEFAULT_SEGMENT_INDICATOR_WIDTH,
       selectedSegmentIndicatorBoost: map.config.selectedSegmentIndicatorBoost ?? DEFAULT_SELECTED_SEGMENT_INDICATOR_BOOST,
       gridLineOpacity: map.config.gridLineOpacity ?? DEFAULT_GRID_LINE_OPACITY,

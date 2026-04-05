@@ -3,12 +3,18 @@ import { Input } from "@/shared/ui/input";
 type RailwayMapSettingsProps = {
   nodeGroupCellWidth: number;
   nodeGroupCellHeight: number;
+  hubOutlineCornerRadius: number;
+  hubOutlineStrokeWidth: number;
+  hubOutlineConcaveFactor: number;
   segmentIndicatorWidth: number;
   selectedSegmentIndicatorBoost: number;
   gridLineOpacity: number;
   labelAxisSnapSensitivity: number;
   updateNodeGroupCellWidth: (value: number) => void;
   updateNodeGroupCellHeight: (value: number) => void;
+  updateHubOutlineCornerRadius: (value: number) => void;
+  updateHubOutlineStrokeWidth: (value: number) => void;
+  updateHubOutlineConcaveFactor: (value: number) => void;
   updateSegmentIndicatorWidth: (value: number) => void;
   updateSelectedSegmentIndicatorBoost: (value: number) => void;
   updateGridLineOpacity: (value: number) => void;
@@ -18,12 +24,18 @@ type RailwayMapSettingsProps = {
 export function RailwayMapSettings({
   nodeGroupCellWidth,
   nodeGroupCellHeight,
+  hubOutlineCornerRadius,
+  hubOutlineStrokeWidth,
+  hubOutlineConcaveFactor,
   segmentIndicatorWidth,
   selectedSegmentIndicatorBoost,
   gridLineOpacity,
   labelAxisSnapSensitivity,
   updateNodeGroupCellWidth,
   updateNodeGroupCellHeight,
+  updateHubOutlineCornerRadius,
+  updateHubOutlineStrokeWidth,
+  updateHubOutlineConcaveFactor,
   updateSegmentIndicatorWidth,
   updateSelectedSegmentIndicatorBoost,
   updateGridLineOpacity,
@@ -31,6 +43,9 @@ export function RailwayMapSettings({
 }: RailwayMapSettingsProps) {
   const safeNodeGroupCellWidth = nodeGroupCellWidth ?? 22;
   const safeNodeGroupCellHeight = nodeGroupCellHeight ?? 22;
+  const safeHubOutlineCornerRadius = hubOutlineCornerRadius ?? 10;
+  const safeHubOutlineStrokeWidth = hubOutlineStrokeWidth ?? 3.25;
+  const safeHubOutlineConcaveFactor = hubOutlineConcaveFactor ?? 0.45;
   const safeSegmentIndicatorWidth = segmentIndicatorWidth ?? 16;
   const safeSelectedSegmentIndicatorBoost = selectedSegmentIndicatorBoost ?? 4;
   const safeGridLineOpacity = gridLineOpacity ?? 0.45;
@@ -67,6 +82,48 @@ export function RailwayMapSettings({
             />
           </label>
           <p className="text-xs text-muted">Controls the cell spacing used to place ports inside a node group.</p>
+        </div>
+      </div>
+      <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Hub Outline</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Radius</span>
+            <Input
+              type="number"
+              min={0}
+              max={32}
+              step={1}
+              value={safeHubOutlineCornerRadius}
+              onChange={(event) => updateHubOutlineCornerRadius(Number(event.target.value) || safeHubOutlineCornerRadius)}
+              className="w-24"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Stroke</span>
+            <Input
+              type="number"
+              min={1}
+              max={12}
+              step={0.25}
+              value={safeHubOutlineStrokeWidth}
+              onChange={(event) => updateHubOutlineStrokeWidth(Number(event.target.value) || safeHubOutlineStrokeWidth)}
+              className="w-24"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Concave</span>
+            <Input
+              type="number"
+              min={0}
+              max={1}
+              step={0.05}
+              value={safeHubOutlineConcaveFactor}
+              onChange={(event) => updateHubOutlineConcaveFactor(Number(event.target.value) || safeHubOutlineConcaveFactor)}
+              className="w-24"
+            />
+          </label>
+          <p className="text-xs text-muted">Controls rounding, stroke width, and how softly inward hub corners are curved.</p>
         </div>
       </div>
       <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">

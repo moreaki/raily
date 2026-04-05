@@ -3,7 +3,7 @@ import { Plus } from "lucide-react";
 import type { Line, MapNode, MapPoint, Segment, Sheet, Station, StationKind } from "@/entities/railway-map/model/types";
 import { buildSegmentPoints, lineStrokeDasharray } from "@/entities/railway-map/model/utils";
 import { DEFAULT_STATION_FONT_FAMILY, DEFAULT_STATION_FONT_WEIGHT, DEFAULT_STATION_SYMBOL_SIZE, estimateLabelBox, getStationKindFontSize, getStationLabelPosition, normalizeRotation } from "@/features/railway-map-editor/lib/labels";
-import { normalizeRect, offsetPoints, pathFromPoints, withAnchoredSegmentEndpoints } from "@/features/railway-map-editor/lib/geometry";
+import { buildNodeGroupCellsOutlinePath, normalizeRect, offsetPoints, pathFromPoints, withAnchoredSegmentEndpoints } from "@/features/railway-map-editor/lib/geometry";
 import { NodeContextMenu } from "@/features/railway-map-editor/ui/NodeContextMenu";
 import { SegmentContextMenu } from "@/features/railway-map-editor/ui/SegmentContextMenu";
 import { Button } from "@/shared/ui/button";
@@ -107,6 +107,9 @@ type RailwayMapCanvasPaneProps = {
   setGridStepY: (value: number) => void;
   nodeGroupCellWidth: number;
   nodeGroupCellHeight: number;
+  hubOutlineCornerRadius: number;
+  hubOutlineStrokeWidth: number;
+  hubOutlineConcaveFactor: number;
   segmentIndicatorWidth: number;
   selectedSegmentIndicatorBoost: number;
   gridLineOpacity: number;
@@ -123,6 +126,7 @@ type RailwayMapCanvasPaneProps = {
   gridLines: { vertical: number[]; horizontal: number[] };
   currentSegments: Segment[];
   nodesById: Map<string, MapNode>;
+  nodeLaneLayoutByNodeId: Map<string, Array<{ laneId: string; column: number; row: number }>>;
   segmentOffsetById: Map<string, number>;
   anchoredEndpointBySegmentNodeKey: Map<string, MapPoint>;
   selectedSegmentId: string;
@@ -248,6 +252,9 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
   setGridStepY,
   nodeGroupCellWidth,
   nodeGroupCellHeight,
+  hubOutlineCornerRadius,
+  hubOutlineStrokeWidth,
+  hubOutlineConcaveFactor,
   segmentIndicatorWidth,
     selectedSegmentIndicatorBoost,
     gridLineOpacity,
@@ -263,7 +270,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     handleSvgMouseUp,
     gridLines,
     currentSegments,
-    nodesById,
+  nodesById,
+  nodeLaneLayoutByNodeId,
     segmentOffsetById,
     anchoredEndpointBySegmentNodeKey,
     selectedSegmentId,
@@ -622,48 +630,78 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                 const hasSelectedMarker = markers.some((marker) => marker.key === selectedNodeMarkerKey);
                 const shape = primaryStation ? stationKindsById.get(primaryStation.kindId)?.shape ?? "circle" : "circle";
                 const symbolSize = primaryStation ? stationKindsById.get(primaryStation.kindId)?.symbolSize ?? DEFAULT_STATION_SYMBOL_SIZE : DEFAULT_STATION_SYMBOL_SIZE;
-                const showGroupOutline = Boolean(node.showGroupOutline) && markers.length > 1;
+                const showGroupOutline = (node.showGroupOutline ?? (markers.length > 1)) && markers.length > 1;
+                const groupOutlineMode = node.groupOutlineMode ?? "box";
                 const xs = markers.map((marker) => marker.center.x);
                 const ys = markers.map((marker) => marker.center.y);
                 const outlinePaddingX = Math.max(nodeGroupCellWidth * 0.38, 12 * symbolSize);
                 const outlinePaddingY = Math.max(nodeGroupCellHeight * 0.38, 12 * symbolSize);
+                const nodeLaneLayout = nodeLaneLayoutByNodeId.get(node.id) ?? [];
+                const minColumn = nodeLaneLayout.length > 0 ? Math.min(...nodeLaneLayout.map((cell) => cell.column)) : 0;
+                const maxColumn = nodeLaneLayout.length > 0 ? Math.max(...nodeLaneLayout.map((cell) => cell.column)) : 0;
+                const minRow = nodeLaneLayout.length > 0 ? Math.min(...nodeLaneLayout.map((cell) => cell.row)) : 0;
+                const maxRow = nodeLaneLayout.length > 0 ? Math.max(...nodeLaneLayout.map((cell) => cell.row)) : 0;
+                const centerColumn = (minColumn + maxColumn) / 2;
+                const centerRow = (minRow + maxRow) / 2;
+                const outlinePath =
+                  showGroupOutline && groupOutlineMode === "cells" && nodeLaneLayout.length > 1
+                    ? buildNodeGroupCellsOutlinePath(
+                        nodeLaneLayout.map((cell) => ({
+                          column: cell.column - centerColumn,
+                          row: cell.row - centerRow,
+                        })),
+                        { x: node.x, y: node.y },
+                        nodeGroupCellWidth,
+                        nodeGroupCellHeight,
+                        hubOutlineCornerRadius,
+                        hubOutlineConcaveFactor,
+                      )
+                    : "";
                 const outlineRect = showGroupOutline
                   ? {
                       x: Math.min(...xs) - outlinePaddingX,
                       y: Math.min(...ys) - outlinePaddingY,
                       width: Math.max(...xs) - Math.min(...xs) + outlinePaddingX * 2,
                       height: Math.max(...ys) - Math.min(...ys) + outlinePaddingY * 2,
-                      rx: Math.max(8, Math.min(nodeGroupCellWidth, nodeGroupCellHeight) * 0.32),
+                      rx: hubOutlineCornerRadius,
                     }
                   : null;
 
                 return (
                   <g key={node.id} style={{ cursor: "grab" }}>
-                    {outlineRect ? (
+                    {showGroupOutline ? (
                       <>
                         {primaryStation?.id === highlightedStationId ? (
-                          <rect
-                            x={outlineRect.x - 4}
-                            y={outlineRect.y - 4}
-                            width={outlineRect.width + 8}
-                            height={outlineRect.height + 8}
-                            rx={outlineRect.rx + 4}
-                            fill="#fde68a"
-                            fillOpacity="0.35"
-                            stroke="#eab308"
-                            strokeWidth="2"
-                          />
+                          outlinePath ? (
+                            <path d={outlinePath} fill="#fde68a" fillOpacity="0.2" stroke="#eab308" strokeWidth={hubOutlineStrokeWidth + 2} />
+                          ) : (
+                            <rect
+                              x={outlineRect!.x - 4}
+                              y={outlineRect!.y - 4}
+                              width={outlineRect!.width + 8}
+                              height={outlineRect!.height + 8}
+                              rx={outlineRect!.rx + 4}
+                              fill="#fde68a"
+                              fillOpacity="0.35"
+                              stroke="#eab308"
+                              strokeWidth="2"
+                            />
+                          )
                         ) : null}
-                        <rect
-                          x={outlineRect.x}
-                          y={outlineRect.y}
-                          width={outlineRect.width}
-                          height={outlineRect.height}
-                          rx={outlineRect.rx}
-                          fill="white"
-                          stroke="#111827"
-                          strokeWidth="3.25"
-                        />
+                        {outlinePath ? (
+                          <path d={outlinePath} fill="white" stroke="#111827" strokeWidth={hubOutlineStrokeWidth} />
+                        ) : (
+                          <rect
+                            x={outlineRect!.x}
+                            y={outlineRect!.y}
+                            width={outlineRect!.width}
+                            height={outlineRect!.height}
+                            rx={outlineRect!.rx}
+                            fill="white"
+                            stroke="#111827"
+                            strokeWidth={hubOutlineStrokeWidth}
+                          />
+                        )}
                       </>
                     ) : null}
                     {markers.map((marker) => (
@@ -699,17 +737,21 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       </g>
                     ))}
                     {isSelected && !hasSelectedMarker ? (
-                      outlineRect ? (
+                      showGroupOutline ? (
+                        outlinePath ? (
+                          <path d={outlinePath} fill="none" stroke="#0f172a" strokeDasharray="4 3" />
+                        ) : (
                         <rect
-                          x={outlineRect.x - 3}
-                          y={outlineRect.y - 3}
-                          width={outlineRect.width + 6}
-                          height={outlineRect.height + 6}
-                          rx={outlineRect.rx + 3}
+                          x={outlineRect!.x - 3}
+                          y={outlineRect!.y - 3}
+                          width={outlineRect!.width + 6}
+                          height={outlineRect!.height + 6}
+                          rx={outlineRect!.rx + 3}
                           fill="none"
                           stroke="#0f172a"
                           strokeDasharray="4 3"
                         />
+                        )
                       ) : (
                         <circle cx={node.x} cy={node.y} r={isTrackPoint ? "14" : "16"} fill="none" stroke="#0f172a" strokeDasharray="4 3" />
                       )
