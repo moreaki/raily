@@ -305,13 +305,13 @@ export default function RailwayMapEditor() {
       const orderedGroup = [...group].sort((left, right) => left.id.localeCompare(right.id));
       const center = (orderedGroup.length - 1) / 2;
       for (let index = 0; index < orderedGroup.length; index += 1) {
-        const offset = (index - center) * 18;
+        const offset = (index - center) * config.parallelTrackSpacing;
         offsets.set(orderedGroup[index].id, offset);
       }
     }
 
     return offsets;
-  }, [currentSegments]);
+  }, [config.parallelTrackSpacing, currentSegments]);
   const { nodeMarkerCentersById, anchoredEndpointBySegmentNodeKey } = useMemo(() => {
     const nodeLanesByNodeId = new Map<string, { id: string; order: number }[]>();
     for (const lane of model.nodeLanes) {
@@ -375,7 +375,7 @@ export default function RailwayMapEditor() {
 
     const byNodeId = new Map<string, NodeMarker[]>();
     const endpointAnchors = new Map<string, MapPoint>();
-    const markerSpacing = 18;
+    const markerSpacing = config.parallelTrackSpacing;
 
     for (const node of currentNodes) {
       const groups = endpointsByNodeId.get(node.id);
@@ -455,7 +455,7 @@ export default function RailwayMapEditor() {
       nodeMarkerCentersById: byNodeId,
       anchoredEndpointBySegmentNodeKey: endpointAnchors,
     };
-  }, [currentNodes, currentSegments, model.nodeLanes, nodesById, segmentOffsetById]);
+  }, [config.parallelTrackSpacing, currentNodes, currentSegments, model.nodeLanes, nodesById, segmentOffsetById]);
   const linesById = useMemo(() => new Map(config.lines.map((line) => [line.id, line])), [config.lines]);
   const stationKindsById = useMemo(() => new Map(config.stationKinds.map((kind) => [kind.id, kind])), [config.stationKinds]);
   const nodeMarkerCenterByKey = useMemo(() => {
@@ -1160,6 +1160,16 @@ export default function RailwayMapEditor() {
     updateMap((current) => updateLineCommand(current, selectedLine.id, patch));
   }
 
+  function updateParallelTrackSpacing(value: number) {
+    updateMap((current) => ({
+      ...current,
+      config: {
+        ...current.config,
+        parallelTrackSpacing: Math.min(48, Math.max(8, value || 18)),
+      },
+    }));
+  }
+
   function updateStation(stationId: string, patch: Partial<Station>) {
     updateMap((current) => updateStationCommand(current, stationId, patch));
   }
@@ -1439,6 +1449,7 @@ export default function RailwayMapEditor() {
                       updateNode={updateNode}
                       selectedNodeLanes={selectedNodeLanes}
                       selectedNodeLaneAxis={selectedNodeLaneAxis}
+                      parallelTrackSpacing={config.parallelTrackSpacing}
                       selectedNodeMarkerLaneId={selectedNodeMarkerLaneId}
                       selectedNodeLaneMoveLabels={selectedNodeLaneMoveLabels}
                       moveLaneOrder={moveLaneOrder}
@@ -1473,6 +1484,8 @@ export default function RailwayMapEditor() {
                       updateLine={updateLine}
                       toggleSegmentOnSelectedLine={toggleSegmentOnSelectedLine}
                       deleteSelectedLine={deleteSelectedLine}
+                      parallelTrackSpacing={config.parallelTrackSpacing}
+                      updateParallelTrackSpacing={updateParallelTrackSpacing}
                       newStationName={newStationName}
                       setNewStationName={setNewStationName}
                       newStationKindId={newStationKindId}

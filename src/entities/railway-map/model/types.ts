@@ -93,6 +93,7 @@ export interface LineRun {
 export interface RailwayMapConfig {
   stationKinds: StationKind[];
   lines: Line[];
+  parallelTrackSpacing: number;
 }
 
 export interface RailwayMapModel {

@@ -40,6 +40,7 @@ type RailwayMapInspectorProps = {
   updateNode: (patch: Partial<MapNode>) => void;
   selectedNodeLanes: SelectedNodeLane[];
   selectedNodeLaneAxis: "horizontal" | "vertical";
+  parallelTrackSpacing: number;
   selectedNodeMarkerLaneId: string | null;
   selectedNodeLaneMoveLabels: { backward: string; forward: string; hint: string };
   moveLaneOrder: (nodeId: string, laneId: string, direction: -1 | 1) => void;
@@ -80,6 +81,7 @@ export function RailwayMapInspector({
   updateNode,
   selectedNodeLanes,
   selectedNodeLaneAxis,
+  parallelTrackSpacing,
   selectedNodeMarkerLaneId,
   selectedNodeLaneMoveLabels,
   moveLaneOrder,
@@ -181,7 +183,7 @@ export function RailwayMapInspector({
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                       <svg viewBox="0 0 180 56" className="h-14 w-full" aria-hidden="true">
                         {selectedNodeLanes.map((lane, index) => {
-                          const offset = (index - (selectedNodeLanes.length - 1) / 2) * 22;
+                          const offset = (index - (selectedNodeLanes.length - 1) / 2) * parallelTrackSpacing;
                           const cx = selectedNodeLaneAxis === "horizontal" ? 90 + offset : 90;
                           const cy = selectedNodeLaneAxis === "vertical" ? 28 + offset : 28;
                           const stroke = lane.lineColors[0] ?? "#64748b";

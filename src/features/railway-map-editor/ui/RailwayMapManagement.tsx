@@ -24,6 +24,8 @@ type RailwayMapManagementProps = {
   updateLine: (patch: Partial<Line>) => void;
   toggleSegmentOnSelectedLine: (segmentId: string) => void;
   deleteSelectedLine: () => void;
+  parallelTrackSpacing: number;
+  updateParallelTrackSpacing: (value: number) => void;
   newStationName: string;
   setNewStationName: (value: string) => void;
   newStationKindId: string;
@@ -80,6 +82,8 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
     updateLine,
     toggleSegmentOnSelectedLine,
     deleteSelectedLine,
+    parallelTrackSpacing,
+    updateParallelTrackSpacing,
     newStationName,
     setNewStationName,
     newStationKindId,
@@ -219,6 +223,21 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
           </div>
           {selectedLine ? (
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="grid gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Parallel Track Spacing</div>
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="number"
+                    min={8}
+                    max={48}
+                    step={1}
+                    value={parallelTrackSpacing}
+                    onChange={(event) => updateParallelTrackSpacing(Number(event.target.value) || 18)}
+                    className="w-28"
+                  />
+                  <p className="text-xs text-muted">Controls the distance between parallel segments and grouped station lanes.</p>
+                </div>
+              </div>
               <Input value={selectedLine.name} onChange={(event) => updateLine({ name: event.target.value })} />
               <div className="grid grid-cols-3 gap-2">
                 <Input type="color" value={selectedLine.color} onChange={(event) => updateLine({ color: event.target.value })} />

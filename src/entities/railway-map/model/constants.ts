@@ -4,6 +4,7 @@ const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, san
 const DEFAULT_STATION_FONT_WEIGHT = "600" as const;
 const DEFAULT_STATION_FONT_SIZE = 14;
 const DEFAULT_STATION_SYMBOL_SIZE = 1;
+const DEFAULT_PARALLEL_TRACK_SPACING = 30;
 
 function scaleMapLayout(map: RailwayMap, scaleX: number, scaleY: number, originX: number, originY: number): RailwayMap {
   return {
@@ -341,6 +342,7 @@ export const INITIAL_MAP: RailwayMap = {
       { id: "l2", name: "C2", color: "#2563eb", strokeWidth: 10, strokeStyle: "dashed" },
       { id: "l3", name: "C3", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" },
     ],
+    parallelTrackSpacing: DEFAULT_PARALLEL_TRACK_SPACING,
   },
   model: {
   sheets: [
@@ -415,6 +417,7 @@ const DEVELOPMENT_BOOTSTRAP_MAP_BASE: RailwayMap = {
       { id: "l-c5", name: "C5", color: "#65a30d", strokeWidth: 9, strokeStyle: "solid" },
       { id: "l-c6", name: "C6", color: "#1d4ed8", strokeWidth: 9, strokeStyle: "solid" },
     ],
+    parallelTrackSpacing: DEFAULT_PARALLEL_TRACK_SPACING,
   },
   model: {
     sheets: [{ id: "sh-ov", name: "Rodalia València Overview" }],
