@@ -2,6 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import type { Line, MapNode, Segment, Sheet, Station, StationKind, StationLabelFontWeight } from "@/entities/railway-map/model/types";
 import { lineStrokeDasharray } from "@/entities/railway-map/model/utils";
+import { normalizeSearchValue } from "@/features/railway-map-editor/lib/geometry";
 import { DEFAULT_STATION_FONT_FAMILY, DEFAULT_STATION_FONT_SIZE, DEFAULT_STATION_SYMBOL_SIZE, STATION_FONT_WEIGHT_OPTIONS } from "@/features/railway-map-editor/lib/labels";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -120,11 +121,11 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
   const [stationSearch, setStationSearch] = useState("");
   const sheetsById = useMemo(() => new Map(sheets.map((sheet) => [sheet.id, sheet])), [sheets]);
   const filteredStations = useMemo(() => {
-    const query = stationSearch.trim().toLowerCase();
+    const query = normalizeSearchValue(stationSearch);
     const filtered = !query
       ? visibleStations
       : visibleStations.filter((station) => {
-          return station.name.toLowerCase().includes(query);
+          return normalizeSearchValue(station.name).includes(query);
         });
 
     return [...filtered].sort((left, right) => {

@@ -197,7 +197,11 @@ export function normalizeRect(start: MapPoint, end: MapPoint) {
 }
 
 export function normalizeSearchValue(value: string) {
-  return value.trim().toLowerCase();
+  return value
+    .trim()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}+/gu, "")
+    .toLowerCase();
 }
 
 export function getSheetContentCenter(nodes: MapNode[], canvasWidth: number, canvasHeight: number) {
