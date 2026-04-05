@@ -178,6 +178,7 @@ function loadStoredMap() {
 
 export default function RailwayMapEditor() {
   const initialMapRef = useRef<RailwayMap | null>(null);
+  const focusHighlightTimeoutRef = useRef<number | null>(null);
   if (!initialMapRef.current) {
     initialMapRef.current = loadStoredMap();
   }
@@ -207,9 +208,10 @@ export default function RailwayMapEditor() {
   const [newStationKindFontSize, setNewStationKindFontSize] = useState(DEFAULT_STATION_FONT_SIZE);
   const [newStationKindSymbolSize, setNewStationKindSymbolSize] = useState(DEFAULT_STATION_SYMBOL_SIZE);
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage">("edit");
-  const [manageSection, setManageSection] = useState<"development" | "lines" | "stationKinds">("lines");
+  const [manageSection, setManageSection] = useState<"development" | "lines" | "stations" | "stationKinds">("lines");
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
   const [sheetNameDraft, setSheetNameDraft] = useState("");
+  const [highlightedStationId, setHighlightedStationId] = useState("");
   const {
     nodeContextMenu,
     setNodeContextMenu,
@@ -782,6 +784,14 @@ export default function RailwayMapEditor() {
     }
   }, [currentSheet, model.sheets]);
 
+  useEffect(() => {
+    return () => {
+      if (focusHighlightTimeoutRef.current !== null) {
+        window.clearTimeout(focusHighlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
   function undoEditorChange() {
     if (undoLastChange()) {
       closeAllContextMenus();
@@ -791,6 +801,36 @@ export default function RailwayMapEditor() {
     const nextKindId = newStationKindId || (config.stationKinds[0]?.id ?? "");
     updateMap((current) => addUnassignedStation(current, newStationName, nextKindId));
     setNewStationName("");
+  }
+
+  function focusStation(stationId: string) {
+    const station = model.stations.find((candidate) => candidate.id === stationId);
+    if (!station) return;
+    if (!station.nodeId) return;
+
+    const node = model.nodes.find((candidate) => candidate.id === station.nodeId) ?? null;
+    if (!node) return;
+
+    setSheetViews((current) => ({
+      ...current,
+      [node.sheetId]: {
+        zoom,
+        centerX: node.x,
+        centerY: node.y,
+      },
+    }));
+    if (node.sheetId !== currentSheetId) {
+      setCurrentSheetId(node.sheetId);
+    }
+    setViewportCenter({ x: node.x, y: node.y });
+    setHighlightedStationId(station.id);
+    if (focusHighlightTimeoutRef.current !== null) {
+      window.clearTimeout(focusHighlightTimeoutRef.current);
+    }
+    focusHighlightTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedStationId((current) => (current === station.id ? "" : current));
+      focusHighlightTimeoutRef.current = null;
+    }, 1800);
   }
 
   function addNode() {
@@ -1314,6 +1354,7 @@ export default function RailwayMapEditor() {
             nodeDragSnapshotRef={nodeDragSnapshotRef}
             rotatingLabelState={rotatingLabelState}
             selectedStationId={selectedStationId}
+            highlightedStationId={highlightedStationId}
             labelDiagnostics={labelDiagnostics}
             handleLabelMouseDown={handleLabelMouseDown}
             handleStationContextMenu={handleStationContextMenu}
@@ -1432,6 +1473,22 @@ export default function RailwayMapEditor() {
                       updateLine={updateLine}
                       toggleSegmentOnSelectedLine={toggleSegmentOnSelectedLine}
                       deleteSelectedLine={deleteSelectedLine}
+                      newStationName={newStationName}
+                      setNewStationName={setNewStationName}
+                      newStationKindId={newStationKindId}
+                      setNewStationKindId={setNewStationKindId}
+                      addStation={addStation}
+                      visibleStations={visibleStations}
+                      selectedStationId={selectedStationId}
+                      setSelectedStationId={setSelectedStationId}
+                      selectedStation={selectedStation}
+                      updateStation={updateStation}
+                      deleteStation={deleteStation}
+                      unassignStation={unassignStation}
+                      nodesById={nodesById}
+                      sheets={model.sheets}
+                      segments={model.segments}
+                      focusStation={focusStation}
                       newStationKindName={newStationKindName}
                       setNewStationKindName={setNewStationKindName}
                       newStationKindFontFamily={newStationKindFontFamily}

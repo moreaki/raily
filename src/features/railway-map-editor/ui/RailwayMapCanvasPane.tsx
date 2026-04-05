@@ -116,6 +116,7 @@ type RailwayMapCanvasPaneProps = {
   nodeDragSnapshotRef: RefObject<{ positionsByNodeId: Map<string, { x: number; y: number }> } | null>;
   rotatingLabelState: RotatingLabelState | null;
   selectedStationId: string;
+  highlightedStationId: string;
   labelDiagnostics: Map<string, LabelDiagnostic>;
   handleLabelMouseDown: (event: ReactMouseEvent<SVGGElement>, stationId: string, nodeId: string) => void;
   handleStationContextMenu: (event: ReactMouseEvent<SVGGElement>, stationId: string, nodeId: string) => void;
@@ -227,6 +228,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     nodeDragSnapshotRef,
     rotatingLabelState,
     selectedStationId,
+    highlightedStationId,
     labelDiagnostics,
     handleLabelMouseDown,
     handleStationContextMenu,
@@ -435,6 +437,17 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                         onMouseUp={(event) => handleNodeMouseUp(event, node.id, marker.key, marker.laneId)}
                         onContextMenu={(event) => handleNodeContextMenu(event, node.id, marker.key, marker.segmentIds, marker.laneId)}
                       >
+                        {primaryStation?.id === highlightedStationId ? (
+                          <circle
+                            cx={marker.center.x}
+                            cy={marker.center.y}
+                            r={isTrackPoint ? "18" : `${18 * symbolSize}`}
+                            fill="#fde68a"
+                            fillOpacity="0.45"
+                            stroke="#eab308"
+                            strokeWidth="2"
+                          />
+                        ) : null}
                         {renderNodeSymbol(shape, marker.center, isTrackPoint, symbolSize)}
                         {selectedNodeMarkerKey === marker.key ? <circle cx={marker.center.x} cy={marker.center.y} r={isTrackPoint ? "14" : "16"} fill="none" stroke="#0f172a" strokeDasharray="4 3" /> : null}
                       </g>
@@ -457,6 +470,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                 const isNodeDragging = !!draggingNodeId && !!station.nodeId && !!nodeDragSnapshotRef.current?.positionsByNodeId.has(station.nodeId);
                 const isRotating = rotatingLabelState?.stationId === station.id;
                 const isSelected = selectedStationId === station.id;
+                const isHighlighted = highlightedStationId === station.id;
                 const diagnostics = labelDiagnostics.get(station.id);
                 const box = diagnostics?.box ?? estimateLabelBox(station.name, labelX, labelY, getStationKindFontSize(stationKind), labelRotation);
                 const shouldShowLeader = (isDragging || isNodeDragging) && (diagnostics?.leaderLine ?? false);
@@ -470,6 +484,19 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                   <g key={station.id} onMouseDown={(event) => handleLabelMouseDown(event, station.id, node.id)} onContextMenu={(event) => handleStationContextMenu(event, station.id, node.id)} style={{ cursor: "grab" }}>
                     {shouldShowLeader ? <line x1={node.x} y1={node.y} x2={labelCenterX} y2={labelCenterY} stroke={diagnostics?.colliding ? "#dc2626" : "#94a3b8"} strokeWidth="1.5" strokeDasharray="3 3" /> : null}
                     <g transform={labelTransform}>
+                      {isHighlighted ? (
+                        <rect
+                          x={box.localMinX - 4}
+                          y={box.localMinY - 4}
+                          width={box.localMaxX - box.localMinX + 8}
+                          height={box.localMaxY - box.localMinY + 8}
+                          rx="8"
+                          fill="#fde68a"
+                          fillOpacity="0.35"
+                          stroke="#eab308"
+                          strokeWidth="2"
+                        />
+                      ) : null}
                       {diagnostics?.colliding || isDragging || isRotating || isSelected ? (
                         <rect
                           x={box.localMinX}

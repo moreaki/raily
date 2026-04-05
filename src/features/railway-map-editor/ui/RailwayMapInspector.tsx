@@ -255,7 +255,10 @@ export function RailwayMapInspector({
                       <div className="flex items-center justify-between gap-2">
                         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setSelectedStationId(station.id)}>
                           <div className="truncate font-medium">{station.name}</div>
-                          <div className="text-xs text-muted">{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</div>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            <Badge>{stationKindsById.get(station.kindId)?.name ?? "Unknown"}</Badge>
+                            <Badge>{station.nodeId ? "Assigned" : "Unassigned"}</Badge>
+                          </div>
                         </button>
                         <Button
                           variant="outline"
@@ -294,6 +297,10 @@ export function RailwayMapInspector({
                     </option>
                   ))}
                 </select>
+                <div className="flex flex-wrap gap-2">
+                  <Badge>{stationKindsById.get(selectedStation.kindId)?.name ?? "Unknown"}</Badge>
+                  <Badge>{selectedStation.nodeId ? "Assigned" : "Unassigned"}</Badge>
+                </div>
                 {selectedStationId === selectedStation.id && labelDiagnostics.get(selectedStation.id)?.colliding ? (
                   <p className="text-xs font-medium text-rose-700">
                     Label collision detected with
@@ -322,8 +329,10 @@ export function RailwayMapInspector({
             {selectedSegment ? (
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <div className="text-sm font-medium text-ink">{selectedSegment.id}</div>
-                <div className="text-xs text-muted">
-                  {selectedSegment.fromNodeId} to {selectedSegment.toNodeId}
+                <div className="flex flex-wrap gap-2">
+                  <Badge>{selectedSegment.fromNodeId}</Badge>
+                  <Badge>to</Badge>
+                  <Badge>{selectedSegment.toNodeId}</Badge>
                 </div>
               </div>
             ) : (
@@ -350,9 +359,13 @@ export function RailwayMapInspector({
                   <div className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: selectedLine.color }} />
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-ink">{selectedLine.name}</div>
-                    <div className="text-xs text-muted">
-                      {selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0} segment
-                      {(selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0) === 1 ? "" : "s"} on this sheet
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <Badge>{selectedLine.strokeStyle}</Badge>
+                      <Badge>{selectedLine.strokeWidth}px</Badge>
+                      <Badge>
+                        {selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0} segment
+                        {(selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0) === 1 ? "" : "s"} on this sheet
+                      </Badge>
                     </div>
                   </div>
                 </div>

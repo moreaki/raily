@@ -1,14 +1,15 @@
 import { Plus, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
-import type { Line, Segment, StationKind, StationLabelFontWeight } from "@/entities/railway-map/model/types";
+import { useMemo, useState, type ReactNode } from "react";
+import type { Line, MapNode, Segment, Sheet, Station, StationKind, StationLabelFontWeight } from "@/entities/railway-map/model/types";
 import { lineStrokeDasharray } from "@/entities/railway-map/model/utils";
 import { DEFAULT_STATION_FONT_FAMILY, DEFAULT_STATION_FONT_SIZE, DEFAULT_STATION_SYMBOL_SIZE, STATION_FONT_WEIGHT_OPTIONS } from "@/features/railway-map-editor/lib/labels";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 
 type RailwayMapManagementProps = {
-  manageSection: "development" | "lines" | "stationKinds";
-  setManageSection: (value: "development" | "lines" | "stationKinds") => void;
+  manageSection: "development" | "lines" | "stations" | "stationKinds";
+  setManageSection: (value: "development" | "lines" | "stations" | "stationKinds") => void;
   bootstrapDevelopmentModel: () => void;
   autoPlaceCurrentSheetLabels: () => void;
   selectedLineId: string;
@@ -22,6 +23,22 @@ type RailwayMapManagementProps = {
   updateLine: (patch: Partial<Line>) => void;
   toggleSegmentOnSelectedLine: (segmentId: string) => void;
   deleteSelectedLine: () => void;
+  newStationName: string;
+  setNewStationName: (value: string) => void;
+  newStationKindId: string;
+  setNewStationKindId: (value: string) => void;
+  addStation: () => void;
+  visibleStations: Station[];
+  selectedStationId: string;
+  setSelectedStationId: (value: string) => void;
+  selectedStation: Station | null;
+  updateStation: (stationId: string, patch: Partial<Station>) => void;
+  deleteStation: (stationId: string) => void;
+  unassignStation: (stationId: string) => void;
+  nodesById: Map<string, MapNode>;
+  sheets: Sheet[];
+  segments: Segment[];
+  focusStation: (stationId: string) => void;
   newStationKindName: string;
   setNewStationKindName: (value: string) => void;
   newStationKindFontFamily: string;
@@ -62,6 +79,22 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
     updateLine,
     toggleSegmentOnSelectedLine,
     deleteSelectedLine,
+    newStationName,
+    setNewStationName,
+    newStationKindId,
+    setNewStationKindId,
+    addStation,
+    visibleStations,
+    selectedStationId,
+    setSelectedStationId,
+    selectedStation,
+    updateStation,
+    deleteStation,
+    unassignStation,
+    nodesById,
+    sheets,
+    segments,
+    focusStation,
     newStationKindName,
     setNewStationKindName,
     newStationKindFontFamily,
@@ -84,19 +117,62 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
     deleteSelectedStationKind,
     stationKindsCount,
   } = props;
+  const [stationSearch, setStationSearch] = useState("");
+  const sheetsById = useMemo(() => new Map(sheets.map((sheet) => [sheet.id, sheet])), [sheets]);
+  const filteredStations = useMemo(() => {
+    const query = stationSearch.trim().toLowerCase();
+    const filtered = !query
+      ? visibleStations
+      : visibleStations.filter((station) => {
+          return station.name.toLowerCase().includes(query);
+        });
+
+    return [...filtered].sort((left, right) => {
+      const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      if (byName !== 0) return byName;
+      return left.id.localeCompare(right.id);
+    });
+  }, [nodesById, sheetsById, stationKinds, stationSearch, visibleStations]);
+  const assignedLinesByStationId = useMemo(() => {
+    const next = new Map<string, Array<{ id: string; name: string; color: string }>>();
+
+    for (const station of visibleStations) {
+      if (!station.nodeId) {
+        next.set(station.id, []);
+        continue;
+      }
+
+      const seenLineIds = new Set<string>();
+      const lines = segments
+        .filter((segment) => segment.fromNodeId === station.nodeId || segment.toNodeId === station.nodeId)
+        .map((segment) => lineIdBySegmentId.get(segment.id))
+        .filter((lineId): lineId is string => Boolean(lineId))
+        .flatMap((lineId) => {
+          if (seenLineIds.has(lineId)) return [];
+          seenLineIds.add(lineId);
+          const line = linesById.get(lineId);
+          return line ? [{ id: line.id, name: line.name, color: line.color }] : [];
+        });
+
+      next.set(station.id, lines);
+    }
+
+    return next;
+  }, [lineIdBySegmentId, linesById, segments, visibleStations]);
 
   return (
     <div className="space-y-4">
       <div className="flex gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
         {[
           { id: "lines", label: "Lines" },
+          { id: "stations", label: "Stations" },
           { id: "stationKinds", label: "Station Kinds" },
           { id: "development", label: "Development" },
         ].map((section) => (
           <button
             key={section.id}
             type="button"
-            onClick={() => setManageSection(section.id as "development" | "lines" | "stationKinds")}
+            onClick={() => setManageSection(section.id as "development" | "lines" | "stations" | "stationKinds")}
             className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition ${
               manageSection === section.id ? "bg-white text-ink shadow-sm" : "text-slate-600 hover:bg-white/70"
             }`}
@@ -202,6 +278,127 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
               <Button variant="destructive" className="w-full" onClick={deleteSelectedLine}>
                 <Trash2 className="h-4 w-4" />
                 Delete line
+              </Button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {manageSection === "stations" ? (
+        <section className="space-y-3">
+          <div className="text-sm font-semibold text-ink">Station Manager</div>
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Add Station Object</div>
+            <div className="flex gap-2">
+              <Input value={newStationName} onChange={(event) => setNewStationName(event.target.value)} placeholder="Station name" />
+              <select
+                value={newStationKindId}
+                onChange={(event) => setNewStationKindId(event.target.value)}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+              >
+                {stationKinds.map((kind) => (
+                  <option key={kind.id} value={kind.id}>
+                    {kind.name}
+                  </option>
+                ))}
+              </select>
+              <Button onClick={addStation}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted">Stations are created as standalone objects first and can later be assigned to track points on the canvas.</p>
+          </div>
+          <div className="space-y-2">
+            <Input value={stationSearch} onChange={(event) => setStationSearch(event.target.value)} placeholder="Search stations, kinds, or sheet names" />
+            <div className="max-h-[240px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
+              {filteredStations.map((station) => {
+                const node = station.nodeId ? nodesById.get(station.nodeId) ?? null : null;
+                const sheetName = node ? sheetsById.get(node.sheetId)?.name ?? "Unknown sheet" : null;
+                return (
+                  <button
+                    key={station.id}
+                    type="button"
+                    onClick={() => setSelectedStationId(station.id)}
+                    className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                      selectedStationId === station.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium">{station.name}</div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <Badge className={selectedStationId === station.id ? "bg-white/15 text-white" : ""}>
+                            {stationKinds.find((kind) => kind.id === station.kindId)?.name ?? "Unknown"}
+                          </Badge>
+                          {(assignedLinesByStationId.get(station.id) ?? []).map((line) => (
+                            <Badge
+                              key={line.id}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                selectedStationId === station.id ? "bg-white/15 text-white" : "bg-slate-100 text-slate-700"
+                              }`}
+                            >
+                              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: line.color }} />
+                              <span>{line.name}</span>
+                            </Badge>
+                          ))}
+                          {station.nodeId && (assignedLinesByStationId.get(station.id) ?? []).length === 0 ? (
+                            <Badge className={selectedStationId === station.id ? "bg-white/15 text-white" : ""}>No line assigned</Badge>
+                          ) : null}
+                        </div>
+                        <div className={`mt-2 truncate text-xs ${selectedStationId === station.id ? "text-white/80" : "text-muted"}`}>
+                          {station.nodeId ? `Assigned on ${sheetName}` : "Unassigned"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${station.name}`}
+                        className={`shrink-0 self-start rounded-lg p-1 ${
+                          selectedStationId === station.id ? "bg-white/15 text-white hover:bg-white/25" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          deleteStation(station.id);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </button>
+                );
+              })}
+              {filteredStations.length === 0 ? <p className="px-3 py-2 text-xs text-muted">No stations match the current search.</p> : null}
+            </div>
+          </div>
+          {selectedStation ? (
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Selected Station</div>
+              <Input value={selectedStation.name} onChange={(event) => updateStation(selectedStation.id, { name: event.target.value })} placeholder="Station name" />
+              <select
+                value={selectedStation.kindId}
+                onChange={(event) => updateStation(selectedStation.id, { kindId: event.target.value })}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+              >
+                {stationKinds.map((kind) => (
+                  <option key={kind.id} value={kind.id}>
+                    {kind.name}
+                  </option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => focusStation(selectedStation.id)} disabled={!selectedStation.nodeId}>
+                  Focus on canvas
+                </Button>
+                <Button variant="outline" className="flex-1" onClick={() => unassignStation(selectedStation.id)} disabled={!selectedStation.nodeId}>
+                  Unassign
+                </Button>
+              </div>
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={() => deleteStation(selectedStation.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete station
               </Button>
             </div>
           ) : null}
