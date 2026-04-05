@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, Trash2 } from "lucide-react";
 import { DEVELOPMENT_BOOTSTRAP_MAP, INITIAL_MAP, LINE_PRESETS } from "@/entities/railway-map/model/constants";
 import { railwayMapSchema } from "@/entities/railway-map/model/schema";
@@ -1549,6 +1549,26 @@ export default function RailwayMapEditor() {
     return { vertical, horizontal };
   }, [gridStepX, gridStepY, showGrid, viewBox.height, viewBox.width, viewBox.x, viewBox.y]);
 
+  const deleteCurrentSelection = useCallback(() => {
+    if (selectedStation) {
+      if (selectedStation.nodeId) {
+        deleteNode(selectedStation.nodeId);
+      } else {
+        deleteStation(selectedStation.id);
+      }
+      return;
+    }
+
+    if (selectedSegment) {
+      deleteSegment(selectedSegment.id);
+      return;
+    }
+
+    if (selectedNodeIds.length > 0) {
+      deleteNodes(selectedNodeIds);
+    }
+  }, [selectedNodeIds, selectedSegment, selectedStation]);
+
   useEffect(() => {
     mapRef.current = map;
     if (typeof window !== "undefined") {
@@ -1591,6 +1611,14 @@ export default function RailwayMapEditor() {
         setSelectedNodeMarkerKey(null);
         const firstStation = currentStations.find((station) => station.nodeId === nextSelectedNodeIds[0]);
         setSelectedStationId(firstStation?.id ?? "");
+        return;
+      }
+
+      if (key === "backspace" || key === "delete") {
+        const hasDeletionTarget = !!selectedStation || !!selectedSegment || selectedNodeIds.length > 0;
+        if (!hasDeletionTarget) return;
+        event.preventDefault();
+        deleteCurrentSelection();
       }
     }
 
@@ -1598,7 +1626,7 @@ export default function RailwayMapEditor() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [currentNodes, currentStations]);
+  }, [currentNodes, currentStations, deleteCurrentSelection, selectedNodeIds.length, selectedSegment, selectedStation]);
 
   useEffect(() => {
     const currentNodeIdSet = new Set(currentNodes.map((node) => node.id));

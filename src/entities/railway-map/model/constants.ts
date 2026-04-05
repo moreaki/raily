@@ -150,6 +150,12 @@ function octilinearizeMapLayout(
 
 type BootstrapLabelSide = "left" | "right" | "top" | "bottom";
 
+type BootstrapLabelOverride = {
+  side?: BootstrapLabelSide;
+  extraX?: number;
+  extraY?: number;
+};
+
 function estimateBootstrapLabelWidth(label: string, fontSize: number) {
   return Math.max(38, label.length * (fontSize * 0.54));
 }
@@ -175,8 +181,37 @@ function resolveValenciaBootstrapLabelSide(stationId: string): BootstrapLabelSid
   }
   if (stationId.startsWith("s-c1-")) return "right";
   if (stationId.startsWith("s-c2-")) return "left";
+  if (stationId.startsWith("s-ero2-")) return "right";
   return "right";
 }
+
+const VALENCIA_BOOTSTRAP_LABEL_OVERRIDES: Record<string, BootstrapLabelOverride> = {
+  "s-c6-2a": { extraX: 20, extraY: -8 },
+  "s-c5-7": { extraX: -12 },
+  "s-sagunt": { extraX: 24, extraY: -10 },
+  "s-cabanyal": { extraX: 24, extraY: -8 },
+  "s-font": { extraX: 28, extraY: 2 },
+  "s-nord": { extraX: 30, extraY: 20 },
+  "s-c3-8a": { extraX: 10, extraY: 8 },
+  "s-c3-9": { extraX: -8, extraY: -8 },
+  "s-alfafar": { extraX: 18, extraY: -2 },
+  "s-massanassa": { extraX: 18 },
+  "s-catarroja": { extraX: 18 },
+  "s-albal": { extraX: 18 },
+  "s-silla": { extraX: 16, extraY: 4 },
+  "s-c2-0": { extraX: -16, extraY: 4 },
+  "s-c2-1": { extraX: -16, extraY: 4 },
+  "s-c2-2": { extraX: -16, extraY: 4 },
+  "s-c2-3": { extraX: -16, extraY: 4 },
+  "s-c2-3a": { extraX: -16, extraY: 2 },
+  "s-c2-4": { extraX: -16, extraY: 2 },
+  "s-c2-5": { extraX: -16, extraY: 4 },
+  "s-c2-6": { extraX: -16, extraY: 4 },
+  "s-c2-7": { extraX: -16, extraY: 4 },
+  "s-c2-8": { extraX: -16, extraY: 4 },
+  "s-c2-9": { extraX: -16, extraY: 4 },
+  "s-ero2-0": { extraX: 22, extraY: -8 },
+};
 
 function applyValenciaBootstrapLabelLayout(map: RailwayMap): RailwayMap {
   const nodesById = new Map(map.model.nodes.map((node) => [node.id, node]));
@@ -193,7 +228,8 @@ function applyValenciaBootstrapLabelLayout(map: RailwayMap): RailwayMap {
 
         const fontSize = stationKindsById.get(station.kindId)?.fontSize ?? DEFAULT_STATION_FONT_SIZE;
         const width = estimateBootstrapLabelWidth(station.name, fontSize);
-        const side = resolveValenciaBootstrapLabelSide(station.id);
+        const override = VALENCIA_BOOTSTRAP_LABEL_OVERRIDES[station.id];
+        const side = override?.side ?? resolveValenciaBootstrapLabelSide(station.id);
 
         const label =
           side === "left"
@@ -204,24 +240,12 @@ function applyValenciaBootstrapLabelLayout(map: RailwayMap): RailwayMap {
                 ? { x: node.x - width / 2, y: node.y + fontSize + 14, align: "bottom" as const }
                 : { x: node.x + 18, y: node.y - 8, align: "right" as const };
 
-        const extraX =
-          station.id === "s-c6-2a" ? 12 :
-          station.id === "s-c5-7" ? -12 :
-          station.id === "s-nord" ? 18 :
-          station.id === "s-font" ? 12 :
-          0;
-        const extraY =
-          station.id === "s-nord" ? 10 :
-          station.id === "s-font" ? 4 :
-          station.id === "s-sagunt" ? -4 :
-          0;
-
         return {
           ...station,
           label: {
             ...label,
-            x: label.x + extraX,
-            y: label.y + extraY,
+            x: label.x + (override?.extraX ?? 0),
+            y: label.y + (override?.extraY ?? 0),
             rotation: 0,
           },
         };
@@ -250,6 +274,7 @@ const VALENCIA_BOOTSTRAP_EDGE_DIRECTIONS: Record<string, { x: number; y: number 
   "n-c6-6::n-c6-7": { x: -1, y: 1 },
   "n-c6-7::n-c6-8": { x: -1, y: 1 },
   "n-c6-8::n-sagunt": { x: -1, y: 1 },
+  "n-c6-0::n-ero2-0": { x: 0, y: -1 },
   "n-sagunt::n-pucol": { x: 0, y: 1 },
   "n-pucol::n-puig": { x: 0, y: 1 },
   "n-puig::n-massalfassar": { x: 0, y: 1 },
@@ -302,9 +327,10 @@ export const LINE_PRESETS = [
   { id: "C1", color: "#e11d48", strokeWidth: 10, strokeStyle: "solid" as const },
   { id: "C2", color: "#2563eb", strokeWidth: 10, strokeStyle: "dashed" as const },
   { id: "C3", color: "#16a34a", strokeWidth: 10, strokeStyle: "solid" as const },
-  { id: "C4", color: "#f59e0b", strokeWidth: 10, strokeStyle: "dotted" as const },
+  { id: "C4", color: "#dc2626", strokeWidth: 10, strokeStyle: "solid" as const },
   { id: "C5", color: "#7c3aed", strokeWidth: 10, strokeStyle: "solid" as const },
   { id: "C6", color: "#0891b2", strokeWidth: 10, strokeStyle: "dashed" as const },
+  { id: "ERO2", color: "#b91c1c", strokeWidth: 10, strokeStyle: "solid" as const },
 ];
 
 export const INITIAL_MAP: RailwayMap = {
@@ -390,8 +416,10 @@ const DEVELOPMENT_BOOTSTRAP_MAP_BASE: RailwayMap = {
       { id: "l-c1", name: "C1", color: "#74b6f2", strokeWidth: 9, strokeStyle: "solid" },
       { id: "l-c2", name: "C2", color: "#facc15", strokeWidth: 9, strokeStyle: "solid" },
       { id: "l-c3", name: "C3", color: "#8b1fa9", strokeWidth: 9, strokeStyle: "solid" },
+      { id: "l-c4", name: "C4", color: "#dc2626", strokeWidth: 9, strokeStyle: "solid" },
       { id: "l-c5", name: "C5", color: "#65a30d", strokeWidth: 9, strokeStyle: "solid" },
       { id: "l-c6", name: "C6", color: "#1d4ed8", strokeWidth: 9, strokeStyle: "solid" },
+      { id: "l-ero2", name: "ERO2", color: "#b91c1c", strokeWidth: 9, strokeStyle: "solid" },
     ],
   },
   model: {
@@ -408,6 +436,7 @@ const DEVELOPMENT_BOOTSTRAP_MAP_BASE: RailwayMap = {
       { id: "n-c5-8", sheetId: "sh-ov", x: 620, y: 400 },
       { id: "n-sagunt", sheetId: "sh-ov", x: 660, y: 440 },
       { id: "n-c6-0", sheetId: "sh-ov", x: 1010, y: 60 },
+      { id: "n-ero2-0", sheetId: "sh-ov", x: 1010, y: 0 },
       { id: "n-c6-1", sheetId: "sh-ov", x: 970, y: 100 },
       { id: "n-c6-2", sheetId: "sh-ov", x: 930, y: 140 },
       { id: "n-c6-2a", sheetId: "sh-ov", x: 910, y: 160 },
@@ -477,6 +506,7 @@ const DEVELOPMENT_BOOTSTRAP_MAP_BASE: RailwayMap = {
       { id: "s-c5-8", nodeId: "n-c5-8", name: "Gilet", kindId: "sk-stop", label: { x: 596, y: 388, align: "left" } },
       { id: "s-sagunt", nodeId: "n-sagunt", name: "Sagunt/Sagunto", kindId: "sk-hub", label: { x: 684, y: 430, align: "right" } },
       { id: "s-c6-0", nodeId: "n-c6-0", name: "Castelló de la Plana", kindId: "sk-terminal", label: { x: 1034, y: 48, align: "right" } },
+      { id: "s-ero2-0", nodeId: "n-ero2-0", name: "Benicàssim", kindId: "sk-terminal", label: { x: 1034, y: -12, align: "right" } },
       { id: "s-c6-1", nodeId: "n-c6-1", name: "Almassora", kindId: "sk-stop", label: { x: 994, y: 88, align: "right" } },
       { id: "s-c6-2", nodeId: "n-c6-2", name: "Vila-real", kindId: "sk-stop", label: { x: 954, y: 128, align: "right" } },
       { id: "s-c6-2a", nodeId: "n-c6-2a", name: "Borriana/Burriana-les Alqueries/Alquerías del Niño Perdido", kindId: "sk-stop", label: { x: 934, y: 148, align: "right" } },
@@ -543,6 +573,7 @@ const DEVELOPMENT_BOOTSTRAP_MAP_BASE: RailwayMap = {
       { id: "sg-c5-6", sheetId: "sh-ov", fromNodeId: "n-c5-6", toNodeId: "n-c5-7", geometry: { kind: "straight" } },
       { id: "sg-c5-7", sheetId: "sh-ov", fromNodeId: "n-c5-7", toNodeId: "n-c5-8", geometry: { kind: "straight" } },
       { id: "sg-c5-8", sheetId: "sh-ov", fromNodeId: "n-c5-8", toNodeId: "n-sagunt", geometry: { kind: "straight" } },
+      { id: "sg-ero2-0", sheetId: "sh-ov", fromNodeId: "n-ero2-0", toNodeId: "n-c6-0", geometry: { kind: "straight" } },
       { id: "sg-c6-0", sheetId: "sh-ov", fromNodeId: "n-c6-0", toNodeId: "n-c6-1", geometry: { kind: "straight" } },
       { id: "sg-c6-1", sheetId: "sh-ov", fromNodeId: "n-c6-1", toNodeId: "n-c6-2", geometry: { kind: "straight" } },
       { id: "sg-c6-2", sheetId: "sh-ov", fromNodeId: "n-c6-2", toNodeId: "n-c6-2a", geometry: { kind: "straight" } },
@@ -584,6 +615,9 @@ const DEVELOPMENT_BOOTSTRAP_MAP_BASE: RailwayMap = {
       { id: "sg-c3-8a", sheetId: "sh-ov", fromNodeId: "n-c3-8a", toNodeId: "n-c3-9", geometry: { kind: "straight" } },
       { id: "sg-c3-9", sheetId: "sh-ov", fromNodeId: "n-c3-9", toNodeId: "n-font", geometry: { kind: "straight" } },
       { id: "sg-c3-10", sheetId: "sh-ov", fromNodeId: "n-font", toNodeId: "n-nord", geometry: { kind: "straight" } },
+      { id: "sg-c4-0", sheetId: "sh-ov", fromNodeId: "n-c3-8a", toNodeId: "n-c3-9", geometry: { kind: "straight" } },
+      { id: "sg-c4-1", sheetId: "sh-ov", fromNodeId: "n-c3-9", toNodeId: "n-font", geometry: { kind: "straight" } },
+      { id: "sg-c4-2", sheetId: "sh-ov", fromNodeId: "n-font", toNodeId: "n-nord", geometry: { kind: "straight" } },
       { id: "sg-c1s-0", sheetId: "sh-ov", fromNodeId: "n-nord", toNodeId: "n-alfafar", geometry: { kind: "straight" } },
       { id: "sg-c1s-1", sheetId: "sh-ov", fromNodeId: "n-alfafar", toNodeId: "n-massanassa", geometry: { kind: "straight" } },
       { id: "sg-c1s-2", sheetId: "sh-ov", fromNodeId: "n-massanassa", toNodeId: "n-catarroja", geometry: { kind: "straight" } },
@@ -618,8 +652,10 @@ const DEVELOPMENT_BOOTSTRAP_MAP_BASE: RailwayMap = {
       { id: "lr-c1", lineId: "l-c1", segmentIds: ["sg-c1s-0", "sg-c1s-1", "sg-c1s-2", "sg-c1s-3", "sg-c1s-4", "sg-c1-0", "sg-c1-0a", "sg-c1-1", "sg-c1-2", "sg-c1-3", "sg-c1-4", "sg-c1-5", "sg-c1-6"] },
       { id: "lr-c2", lineId: "l-c2", segmentIds: ["sg-c2s-0", "sg-c2s-1", "sg-c2s-2", "sg-c2s-3", "sg-c2s-4", "sg-c2-0", "sg-c2-1", "sg-c2-2", "sg-c2-3", "sg-c2-4", "sg-c2-4a", "sg-c2-5", "sg-c2-6", "sg-c2-7", "sg-c2-8", "sg-c2-9"] },
       { id: "lr-c3", lineId: "l-c3", segmentIds: ["sg-c3-0", "sg-c3-0a", "sg-c3-1", "sg-c3-2", "sg-c3-2a", "sg-c3-3", "sg-c3-4", "sg-c3-5", "sg-c3-6", "sg-c3-6a", "sg-c3-7", "sg-c3-8", "sg-c3-8a", "sg-c3-9", "sg-c3-10"] },
+      { id: "lr-c4", lineId: "l-c4", segmentIds: ["sg-c4-0", "sg-c4-1", "sg-c4-2"] },
       { id: "lr-c5", lineId: "l-c5", segmentIds: ["sg-c5-0", "sg-c5-1", "sg-c5-2", "sg-c5-3", "sg-c5-4", "sg-c5-5", "sg-c5-6", "sg-c5-7", "sg-c5-8", "sg-c5t-0", "sg-c5t-1", "sg-c5t-2", "sg-c5t-3", "sg-c5t-4", "sg-c5t-5", "sg-c5t-6", "sg-c5t-7"] },
       { id: "lr-c6", lineId: "l-c6", segmentIds: ["sg-c6-0", "sg-c6-1", "sg-c6-2", "sg-c6-2a", "sg-c6-3", "sg-c6-4", "sg-c6-5", "sg-c6-6", "sg-c6-7", "sg-c6-8", "sg-c6t-0", "sg-c6t-1", "sg-c6t-2", "sg-c6t-3", "sg-c6t-4", "sg-c6t-5", "sg-c6t-6", "sg-c6t-7"] },
+      { id: "lr-ero2", lineId: "l-ero2", segmentIds: ["sg-ero2-0"] },
     ],
   },
 };
