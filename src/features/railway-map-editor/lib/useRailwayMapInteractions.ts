@@ -59,6 +59,7 @@ type LabelAxisBreakoutState = {
 
 const LABEL_AXIS_BREAKOUT_MS = 90;
 const LABEL_AXIS_BREAKOUT_DISTANCE = 12;
+const LABEL_DIAGONAL_AXIS_SNAP_THRESHOLD = 18;
 const ROTATION_SNAP_INCREMENT = 45;
 const ROTATION_SOFT_SNAP_THRESHOLD = 6;
 
@@ -184,6 +185,17 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
       return normalizeRotation(nearest);
     }
     return normalizeRotation(rotation);
+  }
+
+  function resolveRotationAxisFamily(rotation: number, force: boolean) {
+    const normalized = normalizeRotation(rotation);
+    const snapped = snapRotationToIncrement(normalized, force);
+    const effective = force || Math.abs(normalized - snapped) <= ROTATION_SOFT_SNAP_THRESHOLD ? snapped : normalized;
+    const modulo = ((effective % 180) + 180) % 180;
+
+    if (modulo === 45) return "diag-pos" as const;
+    if (modulo === 135) return "diag-neg" as const;
+    return "cardinal" as const;
   }
 
   function beginSegmentDrawFromNode(nodeId: string, laneId: string | null, markerKey: string, startPoint: MapPoint) {
@@ -651,12 +663,25 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
             const nearAxisY = Math.abs(centerDeltaY) <= LABEL_AXIS_SNAP_THRESHOLD;
             const diagPosDelta = centerDeltaY - centerDeltaX;
             const diagNegDelta = centerDeltaY + centerDeltaX;
-            const nearDiagPos = Math.abs(diagPosDelta) <= LABEL_AXIS_SNAP_THRESHOLD;
-            const nearDiagNeg = Math.abs(diagNegDelta) <= LABEL_AXIS_SNAP_THRESHOLD;
+            const nearDiagPos = Math.abs(diagPosDelta) <= LABEL_DIAGONAL_AXIS_SNAP_THRESHOLD;
+            const nearDiagNeg = Math.abs(diagNegDelta) <= LABEL_DIAGONAL_AXIS_SNAP_THRESHOLD;
             const beyondBreakoutX = Math.abs(centerDeltaX) >= LABEL_AXIS_BREAKOUT_DISTANCE;
             const beyondBreakoutY = Math.abs(centerDeltaY) >= LABEL_AXIS_BREAKOUT_DISTANCE;
-            const normalizedRotation = normalizeRotation(nextLabel.rotation ?? 0);
-            const usesDiagonalAxis = Math.abs(normalizedRotation) % 90 === 45;
+            const axisFamily = resolveRotationAxisFamily(nextLabel.rotation ?? 0, enforceAxisSnap);
+            const nearPrimaryAxis = axisFamily === "diag-pos" ? nearDiagPos : axisFamily === "diag-neg" ? nearDiagNeg : nearAxisX;
+            const nearSecondaryAxis = axisFamily === "diag-pos" ? nearDiagPos : axisFamily === "diag-neg" ? nearDiagNeg : nearAxisY;
+            const beyondPrimaryBreakout =
+              axisFamily === "diag-pos"
+                ? Math.abs(diagPosDelta) >= LABEL_AXIS_BREAKOUT_DISTANCE
+                : axisFamily === "diag-neg"
+                  ? Math.abs(diagNegDelta) >= LABEL_AXIS_BREAKOUT_DISTANCE
+                  : beyondBreakoutX;
+            const beyondSecondaryBreakout =
+              axisFamily === "diag-pos"
+                ? Math.abs(diagPosDelta) >= LABEL_AXIS_BREAKOUT_DISTANCE
+                : axisFamily === "diag-neg"
+                  ? Math.abs(diagNegDelta) >= LABEL_AXIS_BREAKOUT_DISTANCE
+                  : beyondBreakoutY;
 
             if (enforceAxisSnap) {
               breakout.releaseX = false;
@@ -664,24 +689,24 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
               breakout.breakXStartedAt = null;
               breakout.breakYStartedAt = null;
             } else {
-              if (!breakout.releaseX && !nearAxisX && beyondBreakoutX) {
+              if (!breakout.releaseX && !nearPrimaryAxis && beyondPrimaryBreakout) {
                 breakout.breakXStartedAt ??= event.timeStamp;
                 if (event.timeStamp - breakout.breakXStartedAt >= LABEL_AXIS_BREAKOUT_MS) {
                   breakout.releaseX = true;
                 }
-              } else if (nearAxisX) {
+              } else if (nearPrimaryAxis) {
                 breakout.breakXStartedAt = null;
                 breakout.releaseX = false;
               } else {
                 breakout.breakXStartedAt = null;
               }
 
-              if (!breakout.releaseY && !nearAxisY && beyondBreakoutY) {
+              if (!breakout.releaseY && !nearSecondaryAxis && beyondSecondaryBreakout) {
                 breakout.breakYStartedAt ??= event.timeStamp;
                 if (event.timeStamp - breakout.breakYStartedAt >= LABEL_AXIS_BREAKOUT_MS) {
                   breakout.releaseY = true;
                 }
-              } else if (nearAxisY) {
+              } else if (nearSecondaryAxis) {
                 breakout.breakYStartedAt = null;
                 breakout.releaseY = false;
               } else {
@@ -694,15 +719,16 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
             let snapDiagPos = false;
             let snapDiagNeg = false;
 
-            if (usesDiagonalAxis) {
-              if (enforceAxisSnap || (!breakout.releaseX && nearDiagPos)) {
-                const shift = (stationNode.x - box.center.x + (stationNode.y - box.center.y)) / 2;
-                snappedX += shift;
-                snappedY += shift;
+            if (axisFamily === "diag-pos" || axisFamily === "diag-neg") {
+              if (axisFamily === "diag-pos" && (enforceAxisSnap || (!breakout.releaseX && nearDiagPos))) {
+                const shiftX = (centerDeltaY - centerDeltaX) / 2;
+                const shiftY = (centerDeltaX - centerDeltaY) / 2;
+                snappedX += shiftX;
+                snappedY += shiftY;
                 snapDiagPos = true;
-              } else if (enforceAxisSnap || (!breakout.releaseY && nearDiagNeg)) {
-                const shift = (stationNode.y - box.center.y - (stationNode.x - box.center.x)) / 2;
-                snappedX -= shift;
+              } else if (axisFamily === "diag-neg" && (enforceAxisSnap || (!breakout.releaseY && nearDiagNeg))) {
+                const shift = -(centerDeltaX + centerDeltaY) / 2;
+                snappedX += shift;
                 snappedY += shift;
                 snapDiagNeg = true;
               }
