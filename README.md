@@ -92,6 +92,30 @@ yarn dlx @yarnpkg/sdks base
 
 These generated files live under `.yarn/sdks/` and are local editor helpers. They are not required in Git for this repository and should stay untracked.
 
+## Fonts
+
+Raily is tuned for transport-map typography rather than generic app UI typography.
+
+Current defaults:
+
+- UI chrome prefers `IBM Plex Sans`
+- station-label defaults prefer `IBM Plex Sans Condensed`
+- the fallback chain still includes `Avenir Next Condensed` and `Helvetica Neue`
+
+On macOS, install the recommended open fonts with Homebrew:
+
+```bash
+brew tap homebrew/cask-fonts
+brew install --cask font-ibm-plex-sans font-ibm-plex-sans-condensed font-source-sans-3
+```
+
+Notes:
+
+- `IBM Plex Sans` is the preferred UI family
+- `IBM Plex Sans Condensed` is the preferred network-map label family
+- `Source Sans 3` is installed as an extra open alternative for label experiments
+- commercial classics such as `Frutiger` and `Univers` are not installed through Homebrew
+
 ## Source layout
 
 ```text

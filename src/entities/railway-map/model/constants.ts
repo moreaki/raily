@@ -1,6 +1,6 @@
 import type { RailwayMap } from "./types";
 
-const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, sans-serif';
+const DEFAULT_STATION_FONT_FAMILY = '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif';
 const DEFAULT_STATION_FONT_WEIGHT = "600" as const;
 const DEFAULT_STATION_FONT_SIZE = 14;
 const DEFAULT_STATION_SYMBOL_SIZE = 1;
@@ -122,7 +122,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Stop",
         "shape": "circle",
         "symbolSize": 1,
-        "fontFamily": "\"Helvetica Neue\", Arial, sans-serif",
+        "fontFamily": "\"IBM Plex Sans Condensed\", \"Avenir Next Condensed\", \"Helvetica Neue\", Arial, sans-serif",
         "fontWeight": "400",
         "fontSize": 12
       },
@@ -131,7 +131,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Hub",
         "shape": "interchange",
         "symbolSize": 1,
-        "fontFamily": "\"Helvetica Neue\", Arial, sans-serif",
+        "fontFamily": "\"IBM Plex Sans Condensed\", \"Avenir Next Condensed\", \"Helvetica Neue\", Arial, sans-serif",
         "fontWeight": "500",
         "fontSize": 14
       },
@@ -140,7 +140,7 @@ export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = {
         "name": "Terminal",
         "shape": "terminal",
         "symbolSize": 1,
-        "fontFamily": "\"Helvetica Neue\", Arial, sans-serif",
+        "fontFamily": "\"IBM Plex Sans Condensed\", \"Avenir Next Condensed\", \"Helvetica Neue\", Arial, sans-serif",
         "fontWeight": "600",
         "fontSize": 14
       }

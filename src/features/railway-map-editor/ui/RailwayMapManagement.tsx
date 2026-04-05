@@ -505,7 +505,7 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
               <Input
                 value={newStationKindFontFamily}
                 onChange={(event) => setNewStationKindFontFamily(event.target.value)}
-                placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
+                placeholder='Font family, e.g. "IBM Plex Sans Condensed", "Avenir Next Condensed", sans-serif'
               />
             </div>
             <div className="flex flex-wrap items-end gap-2">
@@ -600,7 +600,7 @@ export function RailwayMapManagement(props: RailwayMapManagementProps) {
                 <Input
                   value={selectedStationKind.fontFamily}
                   onChange={(event) => updateStationKind(selectedStationKind.id, { fontFamily: event.target.value || DEFAULT_STATION_FONT_FAMILY })}
-                  placeholder='Font family, e.g. "Avenir Next", Arial, sans-serif'
+                  placeholder='Font family, e.g. "IBM Plex Sans Condensed", "Avenir Next Condensed", sans-serif'
                 />
               </div>
               <div className="flex flex-wrap items-end gap-2">

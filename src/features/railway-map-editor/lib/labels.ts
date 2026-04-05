@@ -5,7 +5,7 @@ import { clamp } from "@/features/railway-map-editor/lib/geometry";
 export const LABEL_FONT_SIZE = 14;
 const LABEL_PADDING_X = 6;
 const LABEL_PADDING_Y = 8;
-export const DEFAULT_STATION_FONT_FAMILY = '"Avenir Next", "Helvetica Neue", Arial, sans-serif';
+export const DEFAULT_STATION_FONT_FAMILY = '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif';
 export const DEFAULT_STATION_FONT_WEIGHT: StationLabelFontWeight = "600";
 export const DEFAULT_STATION_FONT_SIZE = 14;
 export const DEFAULT_STATION_SYMBOL_SIZE = 1;
