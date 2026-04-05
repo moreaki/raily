@@ -321,6 +321,15 @@ export function RailwayMapInspector({
                   <Input type="number" value={selectedNode.x} onChange={(event) => updateNode({ x: Number(event.target.value) })} />
                   <Input type="number" value={selectedNode.y} onChange={(event) => updateNode({ y: Number(event.target.value) })} />
                 </div>
+                <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={selectedNode.showGroupOutline ?? false}
+                    onChange={(event) => updateNode({ showGroupOutline: event.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  />
+                  <span>Show nodegroup as hub outline</span>
+                </label>
                 {selectedNodeLanes.length > 0 ? (
                   <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Node Group</div>

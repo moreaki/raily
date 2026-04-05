@@ -13,6 +13,7 @@ const sheetSchema = z.object({
 const nodeSchema = pointSchema.extend({
   id: z.string().min(1),
   sheetId: z.string().min(1),
+  showGroupOutline: z.boolean().optional(),
 });
 
 const nodeLaneSchema = z.object({

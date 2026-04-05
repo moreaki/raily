@@ -26,6 +26,7 @@ export interface StationKind {
 export interface MapNode extends MapPoint {
   id: string;
   sheetId: string;
+  showGroupOutline?: boolean;
 }
 
 export interface NodeLane {

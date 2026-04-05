@@ -1786,6 +1786,8 @@ export default function RailwayMapEditor() {
             minGridStep={MIN_GRID_STEP}
             setGridStepX={setGridStepX}
             setGridStepY={setGridStepY}
+            nodeGroupCellWidth={config.nodeGroupCellWidth}
+            nodeGroupCellHeight={config.nodeGroupCellHeight}
             segmentIndicatorWidth={config.segmentIndicatorWidth}
             selectedSegmentIndicatorBoost={config.selectedSegmentIndicatorBoost}
             gridLineOpacity={config.gridLineOpacity}
