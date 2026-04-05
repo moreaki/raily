@@ -6,8 +6,6 @@ import { railwayMapSchema } from "@/entities/railway-map/model/schema";
 import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape, StationLabelFontWeight } from "@/entities/railway-map/model/types";
 import {
   buildSegmentPoints,
-  buildLineRunPath,
-  buildSegmentPath,
   createDefaultLine,
   createDefaultNodeForSheet,
   createDefaultSheet,
@@ -904,6 +902,7 @@ export default function RailwayMapEditor() {
   const [newStationName, setNewStationName] = useState("");
   const [newStationKindId, setNewStationKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
   const [nodeAssignmentKindId, setNodeAssignmentKindId] = useState(initialMap.config.stationKinds[0]?.id ?? "");
+  const [nodeAssignmentName, setNodeAssignmentName] = useState("");
   const [newStationKindName, setNewStationKindName] = useState("");
   const [newStationKindShape, setNewStationKindShape] = useState<StationKindShape>("circle");
   const [newStationKindFontFamily, setNewStationKindFontFamily] = useState(DEFAULT_STATION_FONT_FAMILY);
@@ -1743,6 +1742,7 @@ export default function RailwayMapEditor() {
     setSelectedNodeMarkerKey(null);
     setSelectedStationId(stationId);
     setNodeAssignmentQuery("");
+    setNodeAssignmentName("");
     setNodeContextMenu(null);
   }
 
@@ -1768,6 +1768,7 @@ export default function RailwayMapEditor() {
     setSelectedNodeMarkerKey(null);
     setSelectedStationId(createdStation.id);
     setNodeAssignmentQuery("");
+    setNodeAssignmentName("");
     setNodeAssignmentKindId(config.stationKinds[0]?.id ?? "");
     setNodeContextMenu(null);
   }
@@ -1933,11 +1934,6 @@ export default function RailwayMapEditor() {
         rotation: bestCandidate.position.rotation ?? 0,
       },
     });
-  }
-
-  function fixSelectedLabel() {
-    if (!selectedStation) return;
-    fixLabelForStation(selectedStation.id);
   }
 
   function updateCurrentSheetName(name: string) {
@@ -2617,6 +2613,7 @@ export default function RailwayMapEditor() {
     setSelectedStationId(stationId);
     setSelectedSegmentId("");
     setNodeAssignmentQuery("");
+    setNodeAssignmentName("");
     setNodeContextMenu({
       nodeIds: [nodeId],
       x: event.clientX,
@@ -2856,6 +2853,7 @@ export default function RailwayMapEditor() {
     setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
     const nodeIds = selectedNodeIdsSet.has(nodeId) && selectedNodeIds.length > 1 ? selectedNodeIds : [nodeId];
     setNodeAssignmentQuery("");
+    setNodeAssignmentName("");
     setNodeContextMenu({
       nodeIds,
       x: event.clientX,
@@ -3432,7 +3430,7 @@ export default function RailwayMapEditor() {
                             <Input
                               value={nodeAssignmentQuery}
                               onChange={(event) => setNodeAssignmentQuery(event.target.value)}
-                              placeholder="Search stations"
+                              placeholder="Search unassigned stations"
                               className="h-9"
                             />
                             <div className="max-h-40 space-y-1 overflow-auto">
@@ -3453,6 +3451,13 @@ export default function RailwayMapEditor() {
                                 <div className="px-2 py-2 text-xs text-slate-500">No stations match that search.</div>
                               ) : null}
                             </div>
+                            <div className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Add New Station</div>
+                            <Input
+                              value={nodeAssignmentName}
+                              onChange={(event) => setNodeAssignmentName(event.target.value)}
+                              placeholder="Optional station name"
+                              className="h-9"
+                            />
                             <select
                               value={nodeAssignmentKindId}
                               onChange={(event) => setNodeAssignmentKindId(event.target.value)}
@@ -3467,7 +3472,7 @@ export default function RailwayMapEditor() {
                             <Button
                               variant="outline"
                               className="w-full"
-                              onClick={() => createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentQuery, nodeAssignmentKindId)}
+                              onClick={() => createStationAtNode(nodeContextMenu.nodeIds[0], nodeAssignmentName, nodeAssignmentKindId)}
                             >
                               <Plus className="h-4 w-4" />
                               Add new station
@@ -3723,17 +3728,6 @@ export default function RailwayMapEditor() {
                                 </option>
                               ))}
                             </select>
-                            {selectedStation.nodeId ? (
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedStationId(selectedStation.id);
-                                  fixLabelForStation(selectedStation.id);
-                                }}
-                              >
-                                Fix label
-                              </Button>
-                            ) : null}
                             {selectedStationId === selectedStation.id && labelDiagnostics.get(selectedStation.id)?.colliding ? (
                               <p className="text-xs font-medium text-rose-700">
                                 Label collision detected with
