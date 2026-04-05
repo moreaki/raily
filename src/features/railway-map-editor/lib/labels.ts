@@ -52,6 +52,34 @@ type StationSequenceHint = {
   order: number;
 };
 
+type AutoPlaceOptions = {
+  preserveExisting?: boolean;
+  bootstrapMode?: boolean;
+  sheetId?: string;
+};
+
+type SegmentSpatialEntry = {
+  id: string;
+  points: MapPoint[];
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
+
+type LabelPlacementContext = {
+  workingMap: RailwayMap;
+  nodesById: Map<string, MapNode>;
+  stationKindsById: Map<string, StationKind>;
+  stationLineIdsByStationId: Map<string, Set<string>>;
+  stationCorridorHintsByStationId: Map<string, StationCorridorHint>;
+  stationSequenceHintsByStationId: Map<string, StationSequenceHint>;
+  sheetSegmentEntriesBySheetId: Map<string, SegmentSpatialEntry[]>;
+  sheetSegmentBucketsBySheetId: Map<string, Map<string, SegmentSpatialEntry[]>>;
+};
+
+const SEGMENT_BUCKET_SIZE = 180;
+
 export function rotatePoint(point: MapPoint, center: MapPoint, rotation: number) {
   if (rotation === 0) return point;
   const angle = (rotation * Math.PI) / 180;
@@ -180,6 +208,54 @@ export function pointInBox(point: MapPoint, box: LabelBox, padding = 0) {
     point.y >= box.minY - padding &&
     point.y <= box.maxY + padding
   );
+}
+
+function getBucketKey(x: number, y: number, bucketSize = SEGMENT_BUCKET_SIZE) {
+  return `${Math.floor(x / bucketSize)}:${Math.floor(y / bucketSize)}`;
+}
+
+function addSegmentToBuckets(
+  buckets: Map<string, SegmentSpatialEntry[]>,
+  entry: SegmentSpatialEntry,
+  bucketSize = SEGMENT_BUCKET_SIZE,
+) {
+  const minBucketX = Math.floor(entry.minX / bucketSize);
+  const maxBucketX = Math.floor(entry.maxX / bucketSize);
+  const minBucketY = Math.floor(entry.minY / bucketSize);
+  const maxBucketY = Math.floor(entry.maxY / bucketSize);
+
+  for (let bucketX = minBucketX; bucketX <= maxBucketX; bucketX += 1) {
+    for (let bucketY = minBucketY; bucketY <= maxBucketY; bucketY += 1) {
+      const key = `${bucketX}:${bucketY}`;
+      const list = buckets.get(key) ?? [];
+      list.push(entry);
+      buckets.set(key, list);
+    }
+  }
+}
+
+function getNearbySegmentEntries(
+  box: LabelBox,
+  buckets: Map<string, SegmentSpatialEntry[]>,
+  padding = 24,
+  bucketSize = SEGMENT_BUCKET_SIZE,
+) {
+  const minBucketX = Math.floor((box.minX - padding) / bucketSize);
+  const maxBucketX = Math.floor((box.maxX + padding) / bucketSize);
+  const minBucketY = Math.floor((box.minY - padding) / bucketSize);
+  const maxBucketY = Math.floor((box.maxY + padding) / bucketSize);
+  const entries = new Map<string, SegmentSpatialEntry>();
+
+  for (let bucketX = minBucketX; bucketX <= maxBucketX; bucketX += 1) {
+    for (let bucketY = minBucketY; bucketY <= maxBucketY; bucketY += 1) {
+      const key = `${bucketX}:${bucketY}`;
+      for (const entry of buckets.get(key) ?? []) {
+        entries.set(entry.id, entry);
+      }
+    }
+  }
+
+  return [...entries.values()];
 }
 
 function pointInPolygon(point: MapPoint, polygon: MapPoint[]) {
@@ -594,6 +670,81 @@ export function buildStationLineIdsByStationId(map: RailwayMap) {
   return stationLineIdsByStationId;
 }
 
+function buildWorkingMapForSheet(current: RailwayMap, sheetId?: string) {
+  if (!sheetId) return current;
+
+  const nodes = current.model.nodes.filter((node) => node.sheetId === sheetId);
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const segments = current.model.segments.filter(
+    (segment) => segment.sheetId === sheetId && nodeIds.has(segment.fromNodeId) && nodeIds.has(segment.toNodeId),
+  );
+  const segmentIds = new Set(segments.map((segment) => segment.id));
+  const stations = current.model.stations.filter((station) => !station.nodeId || nodeIds.has(station.nodeId));
+  const lineRuns = current.model.lineRuns
+    .map((lineRun) => ({
+      ...lineRun,
+      segmentIds: lineRun.segmentIds.filter((segmentId) => segmentIds.has(segmentId)),
+    }))
+    .filter((lineRun) => lineRun.segmentIds.length > 0);
+  const nodeLanes = current.model.nodeLanes.filter((lane) => nodeIds.has(lane.nodeId));
+  const sheets = current.model.sheets.filter((sheet) => sheet.id === sheetId);
+
+  return {
+    ...current,
+    model: {
+      ...current.model,
+      sheets,
+      nodes,
+      nodeLanes,
+      stations,
+      segments,
+      lineRuns,
+    },
+  };
+}
+
+function buildLabelPlacementContext(current: RailwayMap, options?: AutoPlaceOptions): LabelPlacementContext {
+  const workingMap = buildWorkingMapForSheet(current, options?.sheetId);
+  const nodesById = new Map(workingMap.model.nodes.map((node) => [node.id, node]));
+  const stationKindsById = new Map(workingMap.config.stationKinds.map((kind) => [kind.id, kind]));
+  const stationLineIdsByStationId = buildStationLineIdsByStationId(workingMap);
+  const stationCorridorHintsByStationId = buildStationCorridorHints(workingMap, stationLineIdsByStationId, nodesById);
+  const stationSequenceHintsByStationId = buildStationSequenceHints(workingMap);
+  const sheetSegmentEntriesBySheetId = new Map<string, SegmentSpatialEntry[]>();
+  const sheetSegmentBucketsBySheetId = new Map<string, Map<string, SegmentSpatialEntry[]>>();
+
+  for (const segment of workingMap.model.segments) {
+    const points = buildSegmentPoints(segment, nodesById);
+    if (points.length < 2) continue;
+    const entry: SegmentSpatialEntry = {
+      id: segment.id,
+      points,
+      minX: Math.min(...points.map((point) => point.x)),
+      maxX: Math.max(...points.map((point) => point.x)),
+      minY: Math.min(...points.map((point) => point.y)),
+      maxY: Math.max(...points.map((point) => point.y)),
+    };
+    const entries = sheetSegmentEntriesBySheetId.get(segment.sheetId) ?? [];
+    entries.push(entry);
+    sheetSegmentEntriesBySheetId.set(segment.sheetId, entries);
+
+    const buckets = sheetSegmentBucketsBySheetId.get(segment.sheetId) ?? new Map<string, SegmentSpatialEntry[]>();
+    addSegmentToBuckets(buckets, entry);
+    sheetSegmentBucketsBySheetId.set(segment.sheetId, buckets);
+  }
+
+  return {
+    workingMap,
+    nodesById,
+    stationKindsById,
+    stationLineIdsByStationId,
+    stationCorridorHintsByStationId,
+    stationSequenceHintsByStationId,
+    sheetSegmentEntriesBySheetId,
+    sheetSegmentBucketsBySheetId,
+  };
+}
+
 export function normalizeRotation(rotation: number) {
   let next = rotation % 360;
   if (next > 180) next -= 360;
@@ -628,6 +779,7 @@ export function computeLabelPenalty(
   stationCorridorHintsByStationId?: Map<string, StationCorridorHint>,
   stationSequenceHintsByStationId?: Map<string, StationSequenceHint>,
   fixedPlacementsByStationId?: Map<string, ResolvedLabelPlacement>,
+  sheetSegmentBucketsBySheetId?: Map<string, Map<string, SegmentSpatialEntry[]>>,
 ) {
   if (!station.nodeId) {
     return {
@@ -661,7 +813,6 @@ export function computeLabelPenalty(
     getStationKindFontSize(stationKindsById.get(station.kindId)),
     position.rotation ?? 0,
   );
-  const sheetSegments = current.model.segments.filter((segment) => segment.sheetId === node.sheetId);
   const currentLineIds = stationLineIdsByStationId.get(station.id) ?? new Set<string>();
   const currentHint = stationCorridorHintsByStationId?.get(station.id);
 
@@ -671,8 +822,12 @@ export function computeLabelPenalty(
   }
 
   let segmentPenalty = 0;
-  for (const segment of sheetSegments) {
-    const points = buildSegmentPoints(segment, nodesById);
+  const nearbySegments = getNearbySegmentEntries(
+    box,
+    sheetSegmentBucketsBySheetId?.get(node.sheetId) ?? new Map<string, SegmentSpatialEntry[]>(),
+  );
+  for (const segment of nearbySegments) {
+    const points = segment.points;
     for (let index = 0; index < points.length - 1; index += 1) {
       const start = points[index];
       const end = points[index + 1];
@@ -838,13 +993,18 @@ function buildResolvedPlacementsFromStations(
 function refineLabelsAlongLineRuns(
   current: RailwayMap,
   stations: Station[],
-  options: { bootstrapMode?: boolean } | undefined,
-  nodesById: Map<string, MapNode>,
-  stationKindsById: Map<string, StationKind>,
-  stationLineIdsByStationId: Map<string, Set<string>>,
-  stationCorridorHintsByStationId: Map<string, StationCorridorHint>,
-  stationSequenceHintsByStationId: Map<string, StationSequenceHint>,
+  options: AutoPlaceOptions | undefined,
+  context: LabelPlacementContext,
 ) {
+  const {
+    workingMap,
+    nodesById,
+    stationKindsById,
+    stationLineIdsByStationId,
+    stationCorridorHintsByStationId,
+    stationSequenceHintsByStationId,
+    sheetSegmentBucketsBySheetId,
+  } = context;
   const placementsByStationId = buildResolvedPlacementsFromStations(stations, nodesById, stationKindsById);
   const stationsById = new Map(stations.map((station) => [station.id, station]));
   const orderedStations = [...stations]
@@ -864,7 +1024,7 @@ function refineLabelsAlongLineRuns(
     const best = candidates
       .map((position) => {
         const analysis = computeLabelPenalty(
-          current,
+          workingMap,
           station,
           position,
           otherPlacements,
@@ -874,6 +1034,7 @@ function refineLabelsAlongLineRuns(
           stationCorridorHintsByStationId,
           stationSequenceHintsByStationId,
           placementsByStationId,
+          sheetSegmentBucketsBySheetId,
         );
         const deltaPenalty =
           options?.bootstrapMode
@@ -910,22 +1071,27 @@ function refineLabelsAlongLineRuns(
   return stations.map((station) => stationsById.get(station.id) ?? station);
 }
 
-export function autoPlaceLabels(current: RailwayMap, options?: { preserveExisting?: boolean; bootstrapMode?: boolean }) {
-  const nodesById = new Map(current.model.nodes.map((node) => [node.id, node]));
-  const stationKindsById = new Map(current.config.stationKinds.map((kind) => [kind.id, kind]));
-  const stationLineIdsByStationId = buildStationLineIdsByStationId(current);
-  const stationCorridorHintsByStationId = buildStationCorridorHints(current, stationLineIdsByStationId, nodesById);
-  const stationSequenceHintsByStationId = buildStationSequenceHints(current);
+export function autoPlaceLabels(current: RailwayMap, options?: AutoPlaceOptions) {
+  const context = buildLabelPlacementContext(current, options);
+  const {
+    workingMap,
+    nodesById,
+    stationKindsById,
+    stationLineIdsByStationId,
+    stationCorridorHintsByStationId,
+    stationSequenceHintsByStationId,
+    sheetSegmentBucketsBySheetId,
+  } = context;
   const resolvedPlacements: ResolvedLabelPlacement[] = [];
 
-  const placedStations = current.model.stations.map((station) => {
+  const placedStations = workingMap.model.stations.map((station) => {
     if (!station.nodeId) return station;
     const node = nodesById.get(station.nodeId);
     if (!node) return station;
 
     const currentPosition = getStationLabelPosition(station, node);
     const currentAnalysis = computeLabelPenalty(
-      current,
+      workingMap,
       station,
       currentPosition,
       resolvedPlacements,
@@ -934,6 +1100,8 @@ export function autoPlaceLabels(current: RailwayMap, options?: { preserveExistin
       stationLineIdsByStationId,
       stationCorridorHintsByStationId,
       stationSequenceHintsByStationId,
+      undefined,
+      sheetSegmentBucketsBySheetId,
     );
 
     if (options?.preserveExisting && currentAnalysis.overlapPenalty === 0 && currentAnalysis.segmentPenalty === 0) {
@@ -961,7 +1129,7 @@ export function autoPlaceLabels(current: RailwayMap, options?: { preserveExistin
     const candidate = candidates
       .map((position) => {
         const analysis = computeLabelPenalty(
-          current,
+          workingMap,
           station,
           position,
           resolvedPlacements,
@@ -970,6 +1138,8 @@ export function autoPlaceLabels(current: RailwayMap, options?: { preserveExistin
           stationLineIdsByStationId,
           stationCorridorHintsByStationId,
           stationSequenceHintsByStationId,
+          undefined,
+          sheetSegmentBucketsBySheetId,
         );
         const currentDeltaPenalty =
           options?.bootstrapMode
@@ -999,37 +1169,36 @@ export function autoPlaceLabels(current: RailwayMap, options?: { preserveExistin
     };
   });
 
-  return refineLabelsAlongLineRuns(
-    current,
-    placedStations,
-    options,
+  const refinedStations = refineLabelsAlongLineRuns(workingMap, placedStations, options, context);
+  if (!options?.sheetId) return refinedStations;
+
+  const refinedById = new Map(refinedStations.map((station) => [station.id, station]));
+  return current.model.stations.map((station) => refinedById.get(station.id) ?? station);
+}
+
+export function evaluateLabelLayout(map: RailwayMap) {
+  const {
+    workingMap,
     nodesById,
     stationKindsById,
     stationLineIdsByStationId,
     stationCorridorHintsByStationId,
     stationSequenceHintsByStationId,
-  );
-}
-
-export function evaluateLabelLayout(map: RailwayMap) {
-  const nodesById = new Map(map.model.nodes.map((node) => [node.id, node]));
-  const stationKindsById = new Map(map.config.stationKinds.map((kind) => [kind.id, kind]));
-  const stationLineIdsByStationId = buildStationLineIdsByStationId(map);
-  const stationCorridorHintsByStationId = buildStationCorridorHints(map, stationLineIdsByStationId, nodesById);
-  const stationSequenceHintsByStationId = buildStationSequenceHints(map);
+    sheetSegmentBucketsBySheetId,
+  } = buildLabelPlacementContext(map);
   const resolvedPlacements: ResolvedLabelPlacement[] = [];
 
   let overlapCount = 0;
   let segmentIntersectionCount = 0;
   let totalScore = 0;
 
-  for (const station of map.model.stations) {
+  for (const station of workingMap.model.stations) {
     if (!station.nodeId) continue;
     const node = nodesById.get(station.nodeId);
     if (!node) continue;
     const position = getStationLabelPosition(station, node);
     const analysis = computeLabelPenalty(
-      map,
+      workingMap,
       station,
       position,
       resolvedPlacements,
@@ -1038,6 +1207,8 @@ export function evaluateLabelLayout(map: RailwayMap) {
       stationLineIdsByStationId,
       stationCorridorHintsByStationId,
       stationSequenceHintsByStationId,
+      undefined,
+      sheetSegmentBucketsBySheetId,
     );
     if (analysis.overlapPenalty > 0) {
       overlapCount += Math.round(analysis.overlapPenalty / 300);

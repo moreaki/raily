@@ -463,11 +463,25 @@ export function addLine(map: RailwayMap, patch?: Partial<Line>) {
 
 export function buildBootstrapMap() {
   const seededMap = cloneRailwayMap(DEVELOPMENT_BOOTSTRAP_MAP);
+  const stations = seededMap.model.sheets.reduce(
+    (currentStations, sheet) =>
+      autoPlaceLabels(
+        {
+          ...seededMap,
+          model: {
+            ...seededMap.model,
+            stations: currentStations,
+          },
+        },
+        { preserveExisting: true, bootstrapMode: true, sheetId: sheet.id },
+      ),
+    seededMap.model.stations,
+  );
   return {
     ...seededMap,
     model: {
       ...seededMap.model,
-      stations: autoPlaceLabels(seededMap, { preserveExisting: true, bootstrapMode: true }),
+      stations,
     },
   };
 }
@@ -477,13 +491,7 @@ export function autoPlaceSheetLabels(map: RailwayMap, currentSheetId: string) {
     ...map,
     model: {
       ...map.model,
-      stations: autoPlaceLabels(map).map((station) => {
-        if (!station.nodeId) return station;
-        const node = map.model.nodes.find((candidate) => candidate.id === station.nodeId);
-        return node?.sheetId === currentSheetId
-          ? station
-          : map.model.stations.find((candidate) => candidate.id === station.id) ?? station;
-      }),
+      stations: autoPlaceLabels(map, { sheetId: currentSheetId }),
     },
   };
 }
