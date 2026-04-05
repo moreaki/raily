@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
-import { Download, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { Line, MapNode, MapPoint, Segment, Sheet, Station, StationKind } from "@/entities/railway-map/model/types";
 import { buildSegmentPoints, lineStrokeDasharray } from "@/entities/railway-map/model/utils";
 import { DEFAULT_STATION_FONT_FAMILY, DEFAULT_STATION_FONT_WEIGHT, DEFAULT_STATION_SYMBOL_SIZE, estimateLabelBox, getStationKindFontSize, getStationLabelPosition, normalizeRotation } from "@/features/railway-map-editor/lib/labels";
@@ -61,10 +61,6 @@ type MarqueeSelection = {
 };
 
 type RailwayMapCanvasPaneProps = {
-  sidePanel: "closed" | "edit" | "manage";
-  setSidePanel: (value: "closed" | "edit" | "manage") => void;
-  exportSvg: () => void;
-  exportJson: () => void;
   pendingSegmentStart: PendingSegmentStart | null;
   laneDisplayNameById: Map<string, string>;
   zoom: number;
@@ -176,10 +172,6 @@ type RailwayMapCanvasPaneProps = {
 
 export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
   const {
-    sidePanel,
-    setSidePanel,
-    exportSvg,
-    exportJson,
     pendingSegmentStart,
     laneDisplayNameById,
     zoom,

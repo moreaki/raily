@@ -1,30 +1,22 @@
 import type { MouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Plus, Trash2 } from "lucide-react";
+import { Download } from "lucide-react";
 import { INITIAL_MAP } from "@/entities/railway-map/model/constants";
 import { railwayMapSchema } from "@/entities/railway-map/model/schema";
 import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape, StationLabelFontWeight } from "@/entities/railway-map/model/types";
 import {
   buildSegmentPoints,
-  createDefaultStation,
   createLineRunId,
-  lineStrokeDasharray,
   sanitizeRailwayMap,
 } from "@/entities/railway-map/model/utils";
 import {
-  chooseSlotIndices,
-  clamp,
   getClampedMenuPosition,
-  getSvgPoint,
   getNodeSide,
   NodeSide,
-  normalizeRect,
   normalizeSearchValue,
   offsetPoints,
-  pathFromPoints,
   snapCoordinate,
   sortPointsForSide,
-  withAnchoredSegmentEndpoints,
 } from "@/features/railway-map-editor/lib/geometry";
 import {
   addLine as addLineCommand,
@@ -55,7 +47,6 @@ import {
   updateStationKind as updateStationKindCommand,
 } from "@/features/railway-map-editor/lib/commands";
 import {
-  autoPlaceLabels,
   boxesOverlap,
   DEFAULT_STATION_FONT_FAMILY,
   DEFAULT_STATION_FONT_SIZE,
@@ -65,11 +56,8 @@ import {
   findNearbyFreePoint,
   getStationKindFontSize,
   getStationLabelPosition,
-  normalizeRotation,
-  pointInBox,
   pointToSegmentDistance,
   segmentIntersectsLabelBox,
-  STATION_FONT_WEIGHT_OPTIONS,
 } from "@/features/railway-map-editor/lib/labels";
 import { useRailwayMapContextMenus } from "@/features/railway-map-editor/lib/useRailwayMapContextMenus";
 import { useRailwayMapHistory } from "@/features/railway-map-editor/lib/useRailwayMapHistory";
@@ -82,7 +70,6 @@ import { RailwayMapManagement } from "@/features/railway-map-editor/ui/RailwayMa
 import { RailwayMapCanvasPane } from "@/features/railway-map-editor/ui/RailwayMapCanvasPane";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
 
 const STORAGE_KEY = "raily:editor-map";
 const SHEET_VIEW_STORAGE_KEY = "raily:sheet-views";
@@ -93,7 +80,6 @@ const MAX_ZOOM = 4;
 const ZOOM_STEP = 1.04;
 const WORLD_SIZE = 200000;
 const MIN_GRID_STEP = 4;
-const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12l-3 3-3-3'/><path d='M2 12l3-3 3 3'/><path d='M19.016 14v-1.95A7.05 7.05 0 0 0 8 6.22'/><path d='M16.016 17.845A7.05 7.05 0 0 1 5 12.015V10'/><path d='M5 10V9'/><path d='M19 15v-1'/></svg>") 12 12, crosshair`;
 
 type NodeMarker = {
   key: string;
@@ -199,7 +185,6 @@ export default function RailwayMapEditor() {
 
   const {
     map,
-    mapRef,
     updateMap,
     replaceMap,
     beginTransientMapChange,
@@ -269,7 +254,6 @@ export default function RailwayMapEditor() {
     setZoom,
     viewportCenter,
     setViewportCenter,
-    sheetViews,
     setSheetViews,
     showGrid,
     setShowGrid,
@@ -287,7 +271,6 @@ export default function RailwayMapEditor() {
     setPanStart,
     viewBox,
     gridLines,
-    panViewportByPixels,
     applyZoom,
     resetViewportToSheet,
   } = useRailwayMapViewport({
@@ -1217,8 +1200,6 @@ export default function RailwayMapEditor() {
     resetNodeAssignmentDrafts,
     setViewportCenter,
   });
-  const pendingSegmentStartNodeId = pendingSegmentStart?.nodeId ?? null;
-
   function handleStationContextMenu(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
     event.preventDefault();
     event.stopPropagation();
@@ -1278,10 +1259,6 @@ export default function RailwayMapEditor() {
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
           <RailwayMapCanvasPane
-            sidePanel={sidePanel}
-            setSidePanel={setSidePanel}
-            exportSvg={exportSvg}
-            exportJson={exportJson}
             pendingSegmentStart={pendingSegmentStart}
             laneDisplayNameById={laneDisplayNameById}
             zoom={zoom}
