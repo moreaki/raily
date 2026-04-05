@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { GripVertical, Plus, Trash2 } from "lucide-react";
 import type { Line, LineRun, MapNode, Segment, Station, StationKind } from "@/entities/railway-map/model/types";
 import { lineStrokeDasharray } from "@/entities/railway-map/model/utils";
 import { Badge } from "@/shared/ui/badge";
@@ -11,6 +11,9 @@ type SelectedNodeLane = {
   gridColumn?: number;
   gridRow?: number;
   cellLabel: string;
+  effectiveGridColumn: number;
+  effectiveGridRow: number;
+  isAutoPlaced: boolean;
   lineNames: Array<string | undefined>;
   lineColors: string[];
   segmentIds: string[];
@@ -203,8 +206,8 @@ export function RailwayMapInspector({
     return () => window.clearTimeout(timeout);
   }, [flashColumn, flashRow]);
   const previewBounds = useMemo(() => {
-    const columns = selectedNodeLanes.map((lane) => lane.gridColumn).filter((value): value is number => !!value);
-    const rows = selectedNodeLanes.map((lane) => lane.gridRow).filter((value): value is number => !!value);
+    const columns = selectedNodeLanes.map((lane) => lane.effectiveGridColumn);
+    const rows = selectedNodeLanes.map((lane) => lane.effectiveGridRow);
     return {
       minColumn: columns.length > 0 ? Math.min(...columns) : 1,
       maxColumn: columns.length > 0 ? Math.max(...columns) : Math.max(1, selectedNodeLanes.length),
@@ -221,15 +224,13 @@ export function RailwayMapInspector({
       columns: Array.from({ length: maxColumn - minColumn + 1 }, (_, index) => minColumn + index),
       rows: Array.from({ length: maxRow - minRow + 1 }, (_, index) => minRow + index),
       byCell: new Map(
-        selectedNodeLanes
-          .filter((lane) => lane.gridColumn && lane.gridRow)
-          .map((lane) => [`${lane.gridColumn}:${lane.gridRow}`, lane] as const),
-        ),
+        selectedNodeLanes.map((lane) => [`${lane.effectiveGridColumn}:${lane.effectiveGridRow}`, lane] as const),
+      ),
     };
   }, [previewBounds, selectedNodeLanes]);
   const dragLane = selectedNodeLanes.find((lane) => lane.id === dragLaneId) ?? null;
-  const dragLaneColumn = dragLane?.gridColumn ?? previewBounds.minColumn;
-  const dragLaneRow = dragLane?.gridRow ?? previewBounds.minRow;
+  const dragLaneColumn = dragLane?.effectiveGridColumn ?? previewBounds.minColumn;
+  const dragLaneRow = dragLane?.effectiveGridRow ?? previewBounds.minRow;
   const sortedLines = [...lines].sort((left, right) => {
     const byName = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
     if (byName !== 0) return byName;
@@ -323,10 +324,8 @@ export function RailwayMapInspector({
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                       <svg viewBox="0 0 180 56" className="h-14 w-full" aria-hidden="true">
                         {selectedNodeLanes.map((lane, index) => {
-                          const fallbackColumn = selectedNodeLaneAxis === "horizontal" ? index + 1 : 1;
-                          const fallbackRow = selectedNodeLaneAxis === "vertical" ? index + 1 : 1;
-                          const column = lane.gridColumn ?? fallbackColumn;
-                          const row = lane.gridRow ?? fallbackRow;
+                          const column = lane.effectiveGridColumn;
+                          const row = lane.effectiveGridRow;
                           const centerColumn = (previewBounds.minColumn + previewBounds.maxColumn) / 2;
                           const centerRow = (previewBounds.minRow + previewBounds.maxRow) / 2;
                           const cx = 90 + (column - centerColumn) * nodeGroupCellWidth;
@@ -346,7 +345,7 @@ export function RailwayMapInspector({
                       {selectedNodeLanes.map((lane, index) => (
                         <div
                           key={lane.id}
-                          className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
+                          className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm ${
                             activeLaneId === lane.id ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200" : "bg-slate-50 text-ink"
                           }`}
                           draggable
@@ -360,41 +359,61 @@ export function RailwayMapInspector({
                           }}
                           onDragEnd={() => setDragLaneId(null)}
                         >
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 font-medium">
-                              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: lane.lineColors[0] ?? "#94a3b8" }} />
-                              <span>{lane.lineNames.length > 0 ? lane.lineNames.join(", ") : "Unassigned lane"}</span>
-                            </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                              <Input
-                                value={laneCellDrafts[lane.id] ?? lane.cellLabel}
-                                onChange={(event) => setLaneCellDrafts((current) => ({ ...current, [lane.id]: event.target.value.toUpperCase() }))}
-                                onBlur={() => updateSelectedNodeLaneCell(lane.id, laneCellDrafts[lane.id] ?? lane.cellLabel)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    updateSelectedNodeLaneCell(lane.id, laneCellDrafts[lane.id] ?? lane.cellLabel);
-                                  }
-                                }}
-                                placeholder="A1"
-                                className="h-8 w-20 bg-white"
-                              />
-                              <div className="flex items-center gap-1">
-                                {lane.connections.map((connection, connectionIndex) => (
-                                  <span
-                                    key={`${lane.id}:connection:${connectionIndex}`}
-                                    className="inline-flex items-center justify-center rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px]"
-                                    style={{ color: connection.color ?? "#64748b" }}
-                                    title={connection.side}
-                                  >
-                                    {connection.side === "left" ? "←" : connection.side === "right" ? "→" : connection.side === "up" ? "↑" : "↓"}
-                                  </span>
-                                ))}
+                          <div className="flex min-w-0 items-start gap-2">
+                            <span className="mt-0.5 shrink-0 cursor-grab text-slate-400">
+                              <GripVertical className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 font-medium">
+                                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: lane.lineColors[0] ?? "#94a3b8" }} />
+                                <span>{lane.lineNames.length > 0 ? lane.lineNames.join(", ") : "Unassigned lane"}</span>
                               </div>
-                              {lane.segmentIds.length} segment{lane.segmentIds.length === 1 ? "" : "s"}
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                                <Input
+                                  value={laneCellDrafts[lane.id] ?? lane.cellLabel}
+                                  onChange={(event) => setLaneCellDrafts((current) => ({ ...current, [lane.id]: event.target.value.toUpperCase() }))}
+                                  onBlur={() => updateSelectedNodeLaneCell(lane.id, laneCellDrafts[lane.id] ?? lane.cellLabel)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      updateSelectedNodeLaneCell(lane.id, laneCellDrafts[lane.id] ?? lane.cellLabel);
+                                    }
+                                  }}
+                                  placeholder="A1"
+                                  className="h-8 w-20 bg-white"
+                                />
+                                <div className="flex items-center gap-1">
+                                  {lane.connections.map((connection, connectionIndex) => (
+                                    <span
+                                      key={`${lane.id}:connection:${connectionIndex}`}
+                                      className="inline-flex items-center justify-center rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px]"
+                                      style={{ color: connection.color ?? "#64748b" }}
+                                      title={connection.side}
+                                    >
+                                      {connection.side === "left" ? "←" : connection.side === "right" ? "→" : connection.side === "up" ? "↑" : "↓"}
+                                    </span>
+                                  ))}
+                                </div>
+                                {lane.segmentIds.length} segment{lane.segmentIds.length === 1 ? "" : "s"}
+                              </div>
                             </div>
                           </div>
-                          <div className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                            {lane.cellLabel || "Auto"}
+                          <div className="flex shrink-0 items-center gap-2">
+                            <div className="text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              {lane.isAutoPlaced ? `AUTO · ${toColumnLabel(lane.effectiveGridColumn)}${lane.effectiveGridRow}` : lane.cellLabel}
+                            </div>
+                            {removableNodeLaneIds.has(lane.id) ? (
+                              <button
+                                type="button"
+                                aria-label="Remove node from group"
+                                className="rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  removeSelectedNodeFromGroup(lane.id);
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       ))}
@@ -424,7 +443,7 @@ export function RailwayMapInspector({
                             className="pointer-events-none fixed z-50 rounded-md border border-sky-200 bg-white/95 px-2 py-1 text-xs font-medium text-sky-900 shadow-sm"
                             style={{ left: dragPointer.x + 14, top: dragPointer.y + 14 }}
                           >
-                            {dragLane.lineNames[0] || "Port"} {dragLane.cellLabel ? `· ${dragLane.cellLabel}` : ""}
+                            {dragLane.lineNames[0] || "Port"} · {dragLane.isAutoPlaced ? `AUTO ${toColumnLabel(dragLane.effectiveGridColumn)}${dragLane.effectiveGridRow}` : dragLane.cellLabel}
                           </div>
                         ) : null}
                         {dragLaneId ? (

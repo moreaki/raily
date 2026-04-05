@@ -714,6 +714,18 @@ export default function RailwayMapEditor() {
 
     return next;
   }, [config.lines, currentSegments, lineIdBySegmentId, model.nodeLanes]);
+  const selectedNodeLaneAxis = useMemo(() => {
+    if (!selectedNodeId) return "vertical" as const;
+    const markers = nodeMarkerCentersById.get(selectedNodeId) ?? [];
+    if (markers.length < 2) return "vertical" as const;
+
+    const xs = markers.map((marker) => marker.center.x);
+    const ys = markers.map((marker) => marker.center.y);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = Math.max(...ys) - Math.min(...ys);
+
+    return width > height ? ("horizontal" as const) : ("vertical" as const);
+  }, [nodeMarkerCentersById, selectedNodeId]);
   const selectedNodeLanes = useMemo(() => {
     if (!selectedNodeId) return [];
 
@@ -754,13 +766,16 @@ export default function RailwayMapEditor() {
         return {
           ...lane,
           cellLabel: lane.gridColumn && lane.gridRow ? `${String.fromCharCode(64 + lane.gridColumn)}${lane.gridRow}` : "",
+          effectiveGridColumn: lane.gridColumn ?? (selectedNodeLaneAxis === "horizontal" ? lane.order + 1 : 1),
+          effectiveGridRow: lane.gridRow ?? (selectedNodeLaneAxis === "vertical" ? lane.order + 1 : 1),
+          isAutoPlaced: !(lane.gridColumn && lane.gridRow),
           segmentIds,
           lineNames,
           lineColors,
           connections,
         };
       });
-  }, [config.lines, currentSegments, lineIdBySegmentId, model.nodeLanes, nodesById, selectedNodeId]);
+  }, [config.lines, currentSegments, lineIdBySegmentId, model.nodeLanes, nodesById, selectedNodeId, selectedNodeLaneAxis]);
   const selectedNodeMarkerLaneId = useMemo(() => {
     if (!selectedNodeId || !selectedNodeMarkerKey) return null;
     return nodeMarkerCentersById.get(selectedNodeId)?.find((marker) => marker.key === selectedNodeMarkerKey)?.laneId ?? null;
@@ -811,18 +826,6 @@ export default function RailwayMapEditor() {
 
     return removable;
   }, [currentNodes, currentSegments, lineIdBySegmentId, stationsByNodeId]);
-  const selectedNodeLaneAxis = useMemo(() => {
-    if (!selectedNodeId) return "vertical" as const;
-    const markers = nodeMarkerCentersById.get(selectedNodeId) ?? [];
-    if (markers.length < 2) return "vertical" as const;
-
-    const xs = markers.map((marker) => marker.center.x);
-    const ys = markers.map((marker) => marker.center.y);
-    const width = Math.max(...xs) - Math.min(...xs);
-    const height = Math.max(...ys) - Math.min(...ys);
-
-    return width > height ? ("horizontal" as const) : ("vertical" as const);
-  }, [nodeMarkerCentersById, selectedNodeId]);
   const nodeContextMenuPosition = useMemo(() => {
     if (!nodeContextMenu) return null;
     return getClampedMenuPosition(
