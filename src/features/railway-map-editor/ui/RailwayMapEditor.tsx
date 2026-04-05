@@ -226,6 +226,7 @@ export default function RailwayMapEditor() {
   const [newStationKindFontWeight, setNewStationKindFontWeight] = useState<StationLabelFontWeight>(DEFAULT_STATION_FONT_WEIGHT);
   const [newStationKindFontSize, setNewStationKindFontSize] = useState(DEFAULT_STATION_FONT_SIZE);
   const [newStationKindSymbolSize, setNewStationKindSymbolSize] = useState(DEFAULT_STATION_SYMBOL_SIZE);
+  const [preferredExtensionDelta, setPreferredExtensionDelta] = useState<MapPoint | null>(null);
   const [sidePanel, setSidePanel] = useState<"closed" | "edit" | "manage" | "settings">("edit");
   const [sidePanelWidth, setSidePanelWidth] = useState(460);
   const [isResizingSidePanel, setIsResizingSidePanel] = useState(false);
@@ -850,6 +851,7 @@ export default function RailwayMapEditor() {
   }, [lineIdBySegmentId, selectedNodeExtensionLineId, selectedNodeId, selectedNodeLanes, selectedNodeMarkerLaneId]);
   const selectedNodeExtensionDelta = useMemo(() => {
     if (!selectedNodeId) return null;
+    if (preferredExtensionDelta) return preferredExtensionDelta;
 
     const candidateSegments = currentSegments.filter((segment) => {
       const touchesNode = segment.fromNodeId === selectedNodeId || segment.toNodeId === selectedNodeId;
@@ -887,7 +889,25 @@ export default function RailwayMapEditor() {
       x: (deltaX / length) * step,
       y: (deltaY / length) * step,
     };
-  }, [currentSegments, lineIdBySegmentId, nodeGroupCellWidth, nodesById, selectedNodeExtensionLineId, selectedNodeId, selectedNodeMarkerLaneId, selectedSegmentId]);
+  }, [currentSegments, lineIdBySegmentId, nodeGroupCellWidth, nodesById, preferredExtensionDelta, selectedNodeExtensionLineId, selectedNodeId, selectedNodeMarkerLaneId, selectedSegmentId]);
+  const registerPreferredExtensionDirection = useCallback((nodeId: string) => {
+    if (!selectedNodeId || selectedNodeId === nodeId) return;
+
+    const previousNode = nodesById.get(selectedNodeId);
+    const nextNode = nodesById.get(nodeId);
+    if (!previousNode || !nextNode || previousNode.sheetId !== nextNode.sheetId) return;
+
+    const step = Math.max(90, nodeGroupCellWidth * 4);
+    const deltaX = nextNode.x - previousNode.x;
+    const deltaY = nextNode.y - previousNode.y;
+    const length = Math.hypot(deltaX, deltaY);
+    if (length < 1) return;
+
+    setPreferredExtensionDelta({
+      x: (deltaX / length) * step,
+      y: (deltaY / length) * step,
+    });
+  }, [nodeGroupCellWidth, nodesById, selectedNodeId]);
   const segmentFromPortOptions = useMemo(() => {
     if (!selectedSegment) return [{ value: "", label: "Auto" }];
     return [
@@ -1461,6 +1481,13 @@ export default function RailwayMapEditor() {
 
   function handleSelectedLineInspectorChange(lineId: string) {
     if (selectedSegment) {
+      if (!lineId) {
+        if (selectedLineId) {
+          unassignLineFromSegment(selectedLineId, selectedSegment.id);
+        }
+        setSelectedLineId("");
+        return;
+      }
       assignLineToSegment(lineId, selectedSegment.id);
       return;
     }
@@ -1489,6 +1516,7 @@ export default function RailwayMapEditor() {
     setSelectedStationId(createdStation?.id ?? "");
     setSelectedSegmentId(insertedSegment.id);
     setSelectedSegmentPolylinePoint(null);
+    setPreferredExtensionDelta(selectedNodeExtensionDelta ?? { x: step, y: 0 });
     if (selectedNodeExtensionLineId) {
       setSelectedLineId(selectedNodeExtensionLineId);
     }
@@ -1830,6 +1858,7 @@ export default function RailwayMapEditor() {
     setViewportCenter,
     updateSegmentOrthogonalElbow,
     updateSegmentPolylinePoint,
+    registerPreferredExtensionDirection,
   });
   function handleStationContextMenu(event: MouseEvent<SVGGElement>, stationId: string, nodeId: string) {
     event.preventDefault();

@@ -122,6 +122,7 @@ type UseRailwayMapInteractionsArgs = {
   setViewportCenter: (value: MapPoint) => void;
   updateSegmentOrthogonalElbow: (segmentId: string, elbow: MapPoint, options?: { trackHistory?: boolean }) => void;
   updateSegmentPolylinePoint: (segmentId: string, pointIndex: number, point: MapPoint, options?: { trackHistory?: boolean }) => void;
+  registerPreferredExtensionDirection: (nodeId: string) => void;
 };
 
 export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
@@ -170,6 +171,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     setViewportCenter,
     updateSegmentOrthogonalElbow,
     updateSegmentPolylinePoint,
+    registerPreferredExtensionDirection,
   } = args;
 
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
@@ -343,6 +345,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
       const point = getSvgPoint(svgRef.current, event.clientX, event.clientY);
       if (!point) return;
 
+      registerPreferredExtensionDirection(nodeId);
       selectSingleNode(nodeId);
       setSelectedNodeMarkerKey(markerKey);
       const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
@@ -377,10 +380,12 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
         return next;
       });
     } else if (!selectedNodeIdsSet.has(nodeId)) {
+      registerPreferredExtensionDirection(nodeId);
       selectSingleNode(nodeId);
       setSelectedNodeMarkerKey(markerKey);
       setSelectedSegmentId(segmentIds.length === 1 ? segmentIds[0] : "");
     } else {
+      registerPreferredExtensionDirection(nodeId);
       setSelectedNodeId(nodeId);
       setSelectedNodeMarkerKey(markerKey);
       const station = currentStations.find((candidate) => candidate.nodeId === nodeId);
@@ -471,6 +476,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     setSelectedNodeMarkerKey(null);
     setSelectedStationId(stationId);
     setSelectedSegmentId("");
+    registerPreferredExtensionDirection(nodeId);
     setDraggingNodeId(null);
     labelDragSnapshotRef.current = null;
     setLabelAxisGuide(null);
@@ -510,6 +516,7 @@ export function useRailwayMapInteractions(args: UseRailwayMapInteractionsArgs) {
     clearNodeLongPress();
     closeAllContextMenus();
     setSidePanel("edit");
+    registerPreferredExtensionDirection(nodeId);
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
     setSelectedNodeMarkerKey(null);

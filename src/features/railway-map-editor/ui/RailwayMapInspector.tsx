@@ -985,46 +985,53 @@ export function RailwayMapInspector({
 
           <section className="space-y-3">
             <div className="text-sm font-semibold text-ink">Selected Line</div>
-            {selectedLine ? (
+            {selectedSegment || selectedLine ? (
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <select
                   value={selectedLineId}
                   onChange={(event) => handleSelectedLineInspectorChange(event.target.value)}
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                  style={{ color: selectedLine.color }}
+                  style={selectedLine ? { color: selectedLine.color } : undefined}
                 >
+                  <option value="">No line assigned</option>
                   {sortedLines.map((line) => (
                     <option key={line.id} value={line.id} style={{ color: line.color }}>
                       {line.name}
                     </option>
                   ))}
                 </select>
-                <div className="flex items-center gap-3">
-                  <div className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: selectedLine.color }} />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-ink">{selectedLine.name}</div>
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      <Badge>{selectedLine.strokeStyle}</Badge>
-                      <Badge>{selectedLine.strokeWidth}px</Badge>
-                      <Badge>
-                        {selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0} segment
-                        {(selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0) === 1 ? "" : "s"} on this sheet
-                      </Badge>
+                {selectedLine ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: selectedLine.color }} />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-ink">{selectedLine.name}</div>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          <Badge>{selectedLine.strokeStyle}</Badge>
+                          <Badge>{selectedLine.strokeWidth}px</Badge>
+                          <Badge>
+                            {selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0} segment
+                            {(selectedLineRun?.segmentIds.filter((segmentId) => segmentsById.has(segmentId)).length ?? 0) === 1 ? "" : "s"} on this sheet
+                          </Badge>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                  <svg viewBox="0 0 180 24" className="h-6 w-full">
-                    <path
-                      d="M 8 12 L 172 12"
-                      fill="none"
-                      stroke={selectedLine.color}
-                      strokeWidth={selectedLine.strokeWidth}
-                      strokeDasharray={lineStrokeDasharray(selectedLine)}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                      <svg viewBox="0 0 180 24" className="h-6 w-full">
+                        <path
+                          d="M 8 12 L 172 12"
+                          fill="none"
+                          stroke={selectedLine.color}
+                          strokeWidth={selectedLine.strokeWidth}
+                          strokeDasharray={lineStrokeDasharray(selectedLine)}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted">This segment is currently unassigned. Choose a line above to attach it.</p>
+                )}
                 <p className="text-xs text-muted">Management contains the full line editing controls and segment assignment helper.</p>
               </div>
             ) : (
