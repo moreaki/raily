@@ -58,7 +58,7 @@ export function useRailwayMapSelection(args: UseRailwayMapSelectionArgs) {
   }, [markerKeys, selectedNodeMarkerKey]);
 
   useEffect(() => {
-    if (!configLines.some((line) => line.id === selectedLineId)) {
+    if (selectedLineId && !configLines.some((line) => line.id === selectedLineId)) {
       setSelectedLineId(configLines[0]?.id ?? "");
     }
   }, [configLines, selectedLineId]);
