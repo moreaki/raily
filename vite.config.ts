@@ -7,6 +7,17 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom"],
+          "vendor-icons": ["lucide-react"],
+          "vendor-validation": ["zod"],
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(rootDir, "./src"),
