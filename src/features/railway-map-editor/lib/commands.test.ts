@@ -27,6 +27,7 @@ import {
 
 function makeMap(): RailwayMap {
   return {
+    schemaVersion: 1,
     config: {
       stationKinds: [
         {

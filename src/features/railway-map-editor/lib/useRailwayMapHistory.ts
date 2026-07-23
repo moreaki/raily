@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RailwayMap } from "@/entities/railway-map/model/types";
+import { persistRailwayMap } from "@/features/railway-map-editor/lib/persistence";
 import { sanitizeRailwayMap } from "@/entities/railway-map/model/utils";
 
 function cloneMap(map: RailwayMap) {
@@ -13,21 +14,25 @@ function mapsEqual(left: RailwayMap, right: RailwayMap) {
 type UseRailwayMapHistoryArgs = {
   initialMap: RailwayMap;
   storageKey: string;
+  skipInitialPersistence?: boolean;
 };
 
 export function useRailwayMapHistory(args: UseRailwayMapHistoryArgs) {
-  const { initialMap, storageKey } = args;
+  const { initialMap, storageKey, skipInitialPersistence = false } = args;
   const [map, setMap] = useState<RailwayMap>(initialMap);
   const mapRef = useRef(map);
+  const blockedInitialPersistenceMapRef = useRef<RailwayMap | null>(skipInitialPersistence ? initialMap : null);
   const undoStackRef = useRef<RailwayMap[]>([]);
   const redoStackRef = useRef<RailwayMap[]>([]);
   const transientHistoryStartRef = useRef<RailwayMap | null>(null);
 
   useEffect(() => {
     mapRef.current = map;
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(storageKey, JSON.stringify(map));
-    }
+    if (typeof window === "undefined") return;
+    if (blockedInitialPersistenceMapRef.current === map) return;
+
+    blockedInitialPersistenceMapRef.current = null;
+    persistRailwayMap(window.localStorage, storageKey, map);
   }, [map, storageKey]);
 
   const pushUndoSnapshot = useCallback((snapshot: RailwayMap) => {

@@ -130,6 +130,7 @@ export interface RailwayMapModel {
 }
 
 export interface RailwayMap {
+  schemaVersion: number;
   config: RailwayMapConfig;
   model: RailwayMapModel;
 }
