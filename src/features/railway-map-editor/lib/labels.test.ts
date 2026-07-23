@@ -34,6 +34,7 @@ const OVERVIEW_BOOTSTRAP_MAP = mapForSheet(DEVELOPMENT_BOOTSTRAP_MAP, "sh-ov");
 
 function makeHorizontalMap(): RailwayMap {
   return {
+    schemaVersion: 1,
     config: {
       stationKinds: [
         {

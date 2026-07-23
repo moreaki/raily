@@ -30,6 +30,7 @@ export const LINE_PRESETS = [
 ];
 
 export const INITIAL_MAP: RailwayMap = {
+  schemaVersion: 1,
   config: {
     stationKinds: [
       { id: "sk1", name: "Stop", shape: "circle", lineStop: false, symbolSize: DEFAULT_STATION_SYMBOL_SIZE, fontFamily: DEFAULT_STATION_FONT_FAMILY, fontWeight: DEFAULT_STATION_FONT_WEIGHT, fontSize: DEFAULT_STATION_FONT_SIZE },
@@ -116,6 +117,7 @@ export const INITIAL_MAP: RailwayMap = {
 };
 
 export const DEVELOPMENT_BOOTSTRAP_MAP: RailwayMap = mergeAguablancaNordIntoBootstrap({
+  "schemaVersion": 1,
   "config": {
     "stationKinds": [
       {

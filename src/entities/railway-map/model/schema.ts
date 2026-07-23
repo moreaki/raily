@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const RAILWAY_MAP_SCHEMA_VERSION = 1;
+
 const pointSchema = z.object({
   x: z.number(),
   y: z.number(),
@@ -94,6 +96,7 @@ const lineRunSchema = z.object({
 });
 
 export const railwayMapSchema = z.object({
+  schemaVersion: z.literal(RAILWAY_MAP_SCHEMA_VERSION),
   config: z.object({
     stationKinds: z.array(stationKindSchema),
     lines: z.array(lineSchema),

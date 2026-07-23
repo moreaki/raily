@@ -2,12 +2,10 @@ import type { MouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download } from "lucide-react";
 import { INITIAL_MAP } from "@/entities/railway-map/model/constants";
-import { railwayMapSchema } from "@/entities/railway-map/model/schema";
 import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, StationKind, StationKindShape, StationLabelFontWeight } from "@/entities/railway-map/model/types";
 import {
   buildSegmentPoints,
   createLineRunId,
-  sanitizeRailwayMap,
 } from "@/entities/railway-map/model/utils";
 import {
   getClampedMenuPosition,
@@ -77,6 +75,7 @@ import {
   segmentIntersectsLabelBox,
 } from "@/features/railway-map-editor/lib/labels";
 import { useRailwayMapContextMenus } from "@/features/railway-map-editor/lib/useRailwayMapContextMenus";
+import { loadRailwayMapFromStorage, type RailwayMapLoadResult } from "@/features/railway-map-editor/lib/persistence";
 import { useRailwayMapHistory } from "@/features/railway-map-editor/lib/useRailwayMapHistory";
 import { useRailwayMapInteractions } from "@/features/railway-map-editor/lib/useRailwayMapInteractions";
 import { useRailwayMapKeyboardShortcuts } from "@/features/railway-map-editor/lib/useRailwayMapKeyboardShortcuts";
@@ -199,25 +198,26 @@ function stationKindShapeGlyph(shape: StationKindShape) {
 }
 
 function loadStoredMap() {
-  if (typeof window === "undefined") return INITIAL_MAP;
-
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) return sanitizeRailwayMap(INITIAL_MAP);
-
-  try {
-    return sanitizeRailwayMap(railwayMapSchema.parse(JSON.parse(raw)));
-  } catch {
-    return sanitizeRailwayMap(INITIAL_MAP);
+  if (typeof window !== "undefined") {
+    return loadRailwayMapFromStorage(window.localStorage, STORAGE_KEY, INITIAL_MAP);
   }
+
+  return {
+    map: INITIAL_MAP,
+    source: "empty",
+    recoveryKey: null,
+    skipInitialPersistence: false,
+  } satisfies RailwayMapLoadResult;
 }
 
 export default function RailwayMapEditor() {
-  const initialMapRef = useRef<RailwayMap | null>(null);
+  const initialLoadRef = useRef<RailwayMapLoadResult | null>(null);
   const focusHighlightTimeoutRef = useRef<number | null>(null);
-  if (!initialMapRef.current) {
-    initialMapRef.current = loadStoredMap();
+  if (!initialLoadRef.current) {
+    initialLoadRef.current = loadStoredMap();
   }
-  const initialMap = initialMapRef.current;
+  const initialLoad = initialLoadRef.current;
+  const initialMap = initialLoad.map;
 
   const {
     map,
@@ -229,6 +229,7 @@ export default function RailwayMapEditor() {
   } = useRailwayMapHistory({
     initialMap,
     storageKey: STORAGE_KEY,
+    skipInitialPersistence: initialLoad.skipInitialPersistence,
   });
   const model = map.model;
   const config = map.config;
@@ -2068,6 +2069,13 @@ export default function RailwayMapEditor() {
             </Button>
           </div>
         </header>
+
+        {initialLoad.source === "recovered" ? (
+          <div role="alert" className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            The stored map could not be loaded. Raily opened the default map without overwriting your source data.
+            {initialLoad.recoveryKey ? ` A recovery copy is stored as "${initialLoad.recoveryKey}".` : ""}
+          </div>
+        ) : null}
 
         <div
           className={sidePanel === "closed"

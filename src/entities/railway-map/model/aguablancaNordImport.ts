@@ -421,6 +421,7 @@ function buildImportedSheet(): ImportedSheetData {
   }
 
   const importedMap: RailwayMap = {
+    schemaVersion: 1,
     config: {
       stationKinds: [
         { id: "sk-stop", name: "Stop", shape: "circle", lineStop: false, symbolSize: 1, fontFamily: '"IBM Plex Sans Condensed", "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif', fontWeight: "400", fontSize: 12 },
