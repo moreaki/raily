@@ -1148,9 +1148,9 @@ export default function RailwayMapEditor() {
   }
 
   function addNodeToGroup(nodeId: string) {
-    const { laneId } = addNodeLaneCommand(map, nodeId, selectedNodeLaneAxis);
+    const { map: nextMap, laneId } = addNodeLaneCommand(map, nodeId, selectedNodeLaneAxis);
     if (!laneId) return;
-    updateMap((current) => addNodeLaneCommand(current, nodeId, selectedNodeLaneAxis).map);
+    replaceMap(nextMap);
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
     setSelectedNodeMarkerKey(null);
@@ -1232,9 +1232,14 @@ export default function RailwayMapEditor() {
     if (model.stations.some((candidate) => candidate.nodeId === nodeId)) return;
 
     const stationName = name.trim() || `Station ${model.stations.length + 1}`;
-    const { station: createdStation } = createStationAtNodeCommand(map, nodeId, stationName, kindId || config.stationKinds[0]?.id || "");
+    const { map: nextMap, station: createdStation } = createStationAtNodeCommand(
+      map,
+      nodeId,
+      stationName,
+      kindId || config.stationKinds[0]?.id || "",
+    );
     if (!createdStation) return;
-    updateMap((current) => createStationAtNodeCommand(current, nodeId, stationName, kindId || config.stationKinds[0]?.id || "").map);
+    replaceMap(nextMap);
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
     setSelectedNodeMarkerKey(null);
@@ -1245,8 +1250,8 @@ export default function RailwayMapEditor() {
   }
 
   function addSheet() {
-    const { sheet: nextSheet } = addSheetCommand(map);
-    updateMap((current) => addSheetCommand(current).map);
+    const { map: nextMap, sheet: nextSheet } = addSheetCommand(map);
+    replaceMap(nextMap);
     setSheetViews((current) => ({
       ...current,
       [nextSheet.id]: { zoom: 1, centerX: CANVAS_WIDTH / 2, centerY: CANVAS_HEIGHT / 2 },
@@ -1257,7 +1262,7 @@ export default function RailwayMapEditor() {
   }
 
   function addStationKind() {
-    const { stationKind } = addStationKindCommand(map, {
+    const { map: nextMap, stationKind } = addStationKindCommand(map, {
       name: newStationKindName,
       shape: newStationKindShape,
       lineStop: newStationKindLineStop,
@@ -1266,17 +1271,7 @@ export default function RailwayMapEditor() {
       fontWeight: newStationKindFontWeight,
       fontSize: newStationKindFontSize,
     });
-    updateMap((current) =>
-      addStationKindCommand(current, {
-        name: newStationKindName,
-        shape: newStationKindShape,
-        lineStop: newStationKindLineStop,
-        symbolSize: newStationKindSymbolSize,
-        fontFamily: newStationKindFontFamily,
-        fontWeight: newStationKindFontWeight,
-        fontSize: newStationKindFontSize,
-      }).map,
-    );
+    replaceMap(nextMap);
     setSelectedStationKindId(stationKind.id);
     setNewStationKindName("");
     setNewStationKindShape("circle");
@@ -1288,8 +1283,8 @@ export default function RailwayMapEditor() {
   }
 
   function addLine(patch?: Partial<Line>) {
-    const { line: nextLine } = addLineCommand(map, patch);
-    updateMap((current) => addLineCommand(current, patch).map);
+    const { map: nextMap, line: nextLine } = addLineCommand(map, patch);
+    replaceMap(nextMap);
     setSelectedLineId(nextLine.id);
   }
 
@@ -1420,9 +1415,9 @@ export default function RailwayMapEditor() {
     const source = model.segments.find((segment) => segment.id === segmentId);
     if (!source) return;
 
-    const { insertedNode } = insertTrackPointOnSegmentCommand(map, segmentId, snapToGrid ? snapPointToGrid : undefined);
+    const { map: nextMap, insertedNode } = insertTrackPointOnSegmentCommand(map, segmentId, snapToGrid ? snapPointToGrid : undefined);
     if (!insertedNode) return;
-    updateMap((current) => insertTrackPointOnSegmentCommand(current, segmentId, snapToGrid ? snapPointToGrid : undefined).map);
+    replaceMap(nextMap);
 
     setSelectedSegmentId("");
     setSelectedNodeId(insertedNode.id);
