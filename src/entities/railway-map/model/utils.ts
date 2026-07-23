@@ -182,12 +182,115 @@ export function buildSegmentPath(segment: Segment, nodesById: Map<string, MapNod
   return pathFromPoints(buildSegmentPoints(segment, nodesById));
 }
 
-function reversePoints(points: MapPoint[]) {
-  return [...points].reverse();
+export type OrientedLineRunSegment = {
+  segment: Segment;
+  fromNodeId: string;
+  toNodeId: string;
+};
+
+function orientSegmentsInStoredOrder(segments: Segment[]) {
+  const seed = segments[0];
+  if (!seed) return null;
+
+  for (const reverseSeed of [false, true]) {
+    const chain: OrientedLineRunSegment[] = [{
+      segment: seed,
+      fromNodeId: reverseSeed ? seed.toNodeId : seed.fromNodeId,
+      toNodeId: reverseSeed ? seed.fromNodeId : seed.toNodeId,
+    }];
+
+    for (const segment of segments.slice(1)) {
+      const endNodeId = chain[chain.length - 1].toNodeId;
+      if (segment.fromNodeId === endNodeId) {
+        chain.push({ segment, fromNodeId: segment.fromNodeId, toNodeId: segment.toNodeId });
+      } else if (segment.toNodeId === endNodeId) {
+        chain.push({ segment, fromNodeId: segment.toNodeId, toNodeId: segment.fromNodeId });
+      } else {
+        break;
+      }
+    }
+
+    if (chain.length === segments.length) return chain;
+  }
+
+  return null;
 }
 
-function pointsEqual(left: MapPoint, right: MapPoint) {
-  return left.x === right.x && left.y === right.y;
+export function buildLineRunSegmentChains(
+  lineRun: LineRun,
+  segmentsById: Map<string, Segment>,
+) {
+  const seenSegmentIds = new Set<string>();
+  const remaining = lineRun.segmentIds
+    .map((segmentId) => segmentsById.get(segmentId))
+    .filter((segment): segment is Segment => {
+      if (!segment || seenSegmentIds.has(segment.id)) return false;
+      seenSegmentIds.add(segment.id);
+      return true;
+    });
+  const storedOrderChain = orientSegmentsInStoredOrder(remaining);
+  if (storedOrderChain) return [storedOrderChain];
+  const chains: OrientedLineRunSegment[][] = [];
+
+  while (remaining.length > 0) {
+    const seed = remaining.shift();
+    if (!seed) break;
+    const chain: OrientedLineRunSegment[] = [{
+      segment: seed,
+      fromNodeId: seed.fromNodeId,
+      toNodeId: seed.toNodeId,
+    }];
+
+    while (remaining.length > 0) {
+      const startNodeId = chain[0].fromNodeId;
+      const endNodeId = chain[chain.length - 1].toNodeId;
+      const appendIndex = remaining.findIndex(
+        (segment) => segment.fromNodeId === endNodeId || segment.toNodeId === endNodeId,
+      );
+      if (appendIndex >= 0) {
+        const [segment] = remaining.splice(appendIndex, 1);
+        chain.push({
+          segment,
+          fromNodeId: endNodeId,
+          toNodeId: segment.fromNodeId === endNodeId ? segment.toNodeId : segment.fromNodeId,
+        });
+        continue;
+      }
+
+      const prependIndex = remaining.findIndex(
+        (segment) => segment.fromNodeId === startNodeId || segment.toNodeId === startNodeId,
+      );
+      if (prependIndex < 0) break;
+      const [segment] = remaining.splice(prependIndex, 1);
+      chain.unshift({
+        segment,
+        fromNodeId: segment.fromNodeId === startNodeId ? segment.toNodeId : segment.fromNodeId,
+        toNodeId: startNodeId,
+      });
+    }
+
+    chains.push(chain);
+  }
+
+  return chains;
+}
+
+export function orderLineRunSegmentIds(lineRun: LineRun, segmentsById: Map<string, Segment>) {
+  return buildLineRunSegmentChains(lineRun, segmentsById).flatMap((chain) =>
+    chain.map(({ segment }) => segment.id),
+  );
+}
+
+export function getLineRunEndpointNodeIds(lineRun: LineRun, segmentsById: Map<string, Segment>) {
+  const chains = buildLineRunSegmentChains(lineRun, segmentsById);
+  const firstChain = chains[0];
+  const lastChain = chains[chains.length - 1];
+  if (!firstChain || !lastChain) return null;
+
+  return {
+    fromNodeId: firstChain[0].fromNodeId,
+    toNodeId: lastChain[lastChain.length - 1].toNodeId,
+  };
 }
 
 export function buildLineRunPointChains(
@@ -195,44 +298,19 @@ export function buildLineRunPointChains(
   segmentsById: Map<string, Segment>,
   nodesById: Map<string, MapNode>,
 ) {
-  const chains: MapPoint[][] = [];
-  let currentChain: MapPoint[] = [];
-
-  for (const segmentId of lineRun.segmentIds) {
-    const segment = segmentsById.get(segmentId);
-    if (!segment) continue;
-
-    const points = buildSegmentPoints(segment, nodesById);
-    if (points.length < 2) continue;
-
-    if (currentChain.length === 0) {
-      currentChain = [...points];
-      continue;
-    }
-
-    const currentEnd = currentChain[currentChain.length - 1];
-    const forwardStart = points[0];
-    const forwardEnd = points[points.length - 1];
-
-    if (pointsEqual(currentEnd, forwardStart)) {
-      currentChain.push(...points.slice(1));
-      continue;
-    }
-
-    if (pointsEqual(currentEnd, forwardEnd)) {
-      currentChain.push(...reversePoints(points).slice(1));
-      continue;
-    }
-
-    chains.push(currentChain);
-    currentChain = [...points];
-  }
-
-  if (currentChain.length > 0) {
-    chains.push(currentChain);
-  }
-
-  return chains;
+  return buildLineRunSegmentChains(lineRun, segmentsById)
+    .map((chain) =>
+      chain.reduce<MapPoint[]>((points, orientedSegment) => {
+        const segmentPoints = buildSegmentPoints(orientedSegment.segment, nodesById);
+        if (segmentPoints.length < 2) return points;
+        const orientedPoints =
+          orientedSegment.segment.fromNodeId === orientedSegment.fromNodeId
+            ? segmentPoints
+            : [...segmentPoints].reverse();
+        return points.length === 0 ? orientedPoints : [...points, ...orientedPoints.slice(1)];
+      }, []),
+    )
+    .filter((points) => points.length > 1);
 }
 
 export function buildLineRunPath(

@@ -6,6 +6,7 @@ import type { Line, LineRun, MapNode, MapPoint, RailwayMap, Segment, Station, St
 import {
   buildSegmentPoints,
   createLineRunId,
+  getLineRunEndpointNodeIds,
 } from "@/entities/railway-map/model/utils";
 import {
   getClampedMenuPosition,
@@ -1022,10 +1023,14 @@ export default function RailwayMapEditor() {
         const orderedSegments = (lineRun?.segmentIds ?? [])
           .map((segmentId) => segmentsById.get(segmentId) ?? null)
           .filter((segment): segment is Segment => segment !== null && currentSegmentIds.has(segment.id));
-        const firstSegment = orderedSegments[0] ?? null;
-        const lastSegment = orderedSegments[orderedSegments.length - 1] ?? null;
-        const fromStation = firstSegment ? (stationsByNodeId.get(firstSegment.fromNodeId) ?? [])[0] ?? null : null;
-        const toStation = lastSegment ? (stationsByNodeId.get(lastSegment.toNodeId) ?? [])[0] ?? null : null;
+        const endpointNodeIds = lineRun
+          ? getLineRunEndpointNodeIds(
+              { ...lineRun, segmentIds: orderedSegments.map((segment) => segment.id) },
+              segmentsById,
+            )
+          : null;
+        const fromStation = endpointNodeIds ? (stationsByNodeId.get(endpointNodeIds.fromNodeId) ?? [])[0] ?? null : null;
+        const toStation = endpointNodeIds ? (stationsByNodeId.get(endpointNodeIds.toNodeId) ?? [])[0] ?? null : null;
 
         return {
           id: line.id,
