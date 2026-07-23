@@ -328,38 +328,77 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
   const sheetIds = new Set(map.model.sheets.map((sheet) => sheet.id));
   const nodes = map.model.nodes.filter((node) => sheetIds.has(node.sheetId));
   const nodeIds = new Set(nodes.map((node) => node.id));
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const lineIds = new Set(map.config.lines.map((line) => line.id));
+  const existingNodeLanes = (map.model.nodeLanes ?? [])
+    .filter((lane) => nodeIds.has(lane.nodeId))
+    .map((lane) => lineIds.has(lane.lineId ?? "") ? { ...lane } : { ...lane, lineId: undefined });
+  const existingNodeLanesById = new Map(existingNodeLanes.map((lane) => [lane.id, lane]));
   const segments = map.model.segments
     .filter(
-    (segment) =>
-      sheetIds.has(segment.sheetId) &&
-      nodeIds.has(segment.fromNodeId) &&
-      nodeIds.has(segment.toNodeId) &&
-      segment.fromNodeId !== segment.toNodeId,
+      (segment) =>
+        sheetIds.has(segment.sheetId) &&
+        nodesById.get(segment.fromNodeId)?.sheetId === segment.sheetId &&
+        nodesById.get(segment.toNodeId)?.sheetId === segment.sheetId &&
+        segment.fromNodeId !== segment.toNodeId,
     )
-    .map((segment) => ({ ...segment }));
+    .map((segment) => {
+      const nextSegment = { ...segment };
+      const fromLane = segment.fromLaneId ? existingNodeLanesById.get(segment.fromLaneId) : null;
+      const toLane = segment.toLaneId ? existingNodeLanesById.get(segment.toLaneId) : null;
+      if (!fromLane || fromLane.nodeId !== segment.fromNodeId) delete nextSegment.fromLaneId;
+      if (!toLane || toLane.nodeId !== segment.toNodeId) delete nextSegment.toLaneId;
+      return nextSegment;
+    });
   const segmentIds = new Set(segments.map((segment) => segment.id));
-  const lineIds = new Set(map.config.lines.map((line) => line.id));
-  const claimedSegmentIds = new Set<string>();
-  const sanitizedLineRuns = map.model.lineRuns
-    .filter((lineRun) => lineIds.has(lineRun.lineId))
-    .map((lineRun) => ({
-      ...lineRun,
-      segmentIds: lineRun.segmentIds.filter((segmentId) => {
-        if (!segmentIds.has(segmentId) || claimedSegmentIds.has(segmentId)) return false;
-        claimedSegmentIds.add(segmentId);
-        return true;
-      }),
-    }));
-
-  const lineRunIndexByLineId = new Map(sanitizedLineRuns.map((lineRun, index) => [lineRun.lineId, index]));
-  const owningLineIdBySegmentId = new Map<string, string>();
-  for (const lineRun of sanitizedLineRuns) {
+  const segmentsById = new Map(segments.map((segment) => [segment.id, segment]));
+  const sourceLineRunsByLineId = new Map<string, LineRun[]>();
+  const claimingLineIdsBySegmentId = new Map<string, Set<string>>();
+  for (const lineRun of map.model.lineRuns) {
+    if (!lineIds.has(lineRun.lineId)) continue;
+    const runsForLine = sourceLineRunsByLineId.get(lineRun.lineId) ?? [];
+    runsForLine.push(lineRun);
+    sourceLineRunsByLineId.set(lineRun.lineId, runsForLine);
     for (const segmentId of lineRun.segmentIds) {
-      if (!owningLineIdBySegmentId.has(segmentId)) {
-        owningLineIdBySegmentId.set(segmentId, lineRun.lineId);
-      }
+      if (!segmentIds.has(segmentId)) continue;
+      const claimingLineIds = claimingLineIdsBySegmentId.get(segmentId) ?? new Set<string>();
+      claimingLineIds.add(lineRun.lineId);
+      claimingLineIdsBySegmentId.set(segmentId, claimingLineIds);
     }
   }
+
+  const owningLineIdBySegmentId = new Map<string, string>();
+  for (const segment of segments) {
+    const claimingLineIds = [...(claimingLineIdsBySegmentId.get(segment.id) ?? [])].sort();
+    if (claimingLineIds.length === 0) continue;
+    const endpointLineIds = [segment.fromLaneId, segment.toLaneId]
+      .map((laneId) => laneId ? existingNodeLanesById.get(laneId)?.lineId : undefined)
+      .filter((lineId): lineId is string => typeof lineId === "string" && claimingLineIds.includes(lineId))
+      .sort();
+    owningLineIdBySegmentId.set(segment.id, endpointLineIds[0] ?? claimingLineIds[0]);
+  }
+
+  const sanitizedLineRuns = map.config.lines.flatMap((line) => {
+    const sourceRuns = [...(sourceLineRunsByLineId.get(line.id) ?? [])].sort((left, right) => left.id.localeCompare(right.id));
+    if (sourceRuns.length === 0) return [];
+    const seenIds = new Set<string>();
+    const ownedSegmentIds = sourceRuns
+      .flatMap((lineRun) => lineRun.segmentIds)
+      .filter((segmentId) => {
+        if (seenIds.has(segmentId) || owningLineIdBySegmentId.get(segmentId) !== line.id) return false;
+        seenIds.add(segmentId);
+        return true;
+      });
+    const mergedLineRun = {
+      id: sourceRuns[0].id,
+      lineId: line.id,
+      segmentIds: ownedSegmentIds,
+    };
+    return [{
+      ...mergedLineRun,
+      segmentIds: orderLineRunSegmentIds(mergedLineRun, segmentsById),
+    }];
+  });
 
   const segmentsByNodeId = new Map<string, Segment[]>();
   for (const segment of segments) {
@@ -373,7 +412,6 @@ export function sanitizeRailwayMap(map: RailwayMap): RailwayMap {
   }
 
   const lineOrderById = new Map(map.config.lines.map((line, index) => [line.id, index]));
-  const existingNodeLanes = (map.model.nodeLanes ?? []).filter((lane) => nodeIds.has(lane.nodeId));
   const existingNodeLanesByNodeId = new Map<string, NodeLane[]>();
   for (const lane of existingNodeLanes) {
     const current = existingNodeLanesByNodeId.get(lane.nodeId) ?? [];
