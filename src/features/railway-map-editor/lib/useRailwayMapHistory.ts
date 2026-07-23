@@ -25,15 +25,44 @@ export function useRailwayMapHistory(args: UseRailwayMapHistoryArgs) {
   const undoStackRef = useRef<RailwayMap[]>([]);
   const redoStackRef = useRef<RailwayMap[]>([]);
   const transientHistoryStartRef = useRef<RailwayMap | null>(null);
+  const persistenceTimeoutRef = useRef<number | null>(null);
+
+  const schedulePersistence = useCallback((nextMap: RailwayMap) => {
+    if (typeof window === "undefined") return;
+    if (blockedInitialPersistenceMapRef.current === nextMap) return;
+    blockedInitialPersistenceMapRef.current = null;
+    if (persistenceTimeoutRef.current !== null) {
+      window.clearTimeout(persistenceTimeoutRef.current);
+    }
+    persistenceTimeoutRef.current = window.setTimeout(() => {
+      persistRailwayMap(window.localStorage, storageKey, nextMap);
+      persistenceTimeoutRef.current = null;
+    }, 250);
+  }, [storageKey]);
 
   useEffect(() => {
     mapRef.current = map;
-    if (typeof window === "undefined") return;
-    if (blockedInitialPersistenceMapRef.current === map) return;
+    if (!transientHistoryStartRef.current) {
+      schedulePersistence(map);
+    }
+  }, [map, schedulePersistence]);
 
-    blockedInitialPersistenceMapRef.current = null;
-    persistRailwayMap(window.localStorage, storageKey, map);
-  }, [map, storageKey]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const persistBeforeUnload = () => {
+      if (blockedInitialPersistenceMapRef.current !== mapRef.current) {
+        persistRailwayMap(window.localStorage, storageKey, mapRef.current);
+      }
+    };
+    window.addEventListener("beforeunload", persistBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", persistBeforeUnload);
+      if (persistenceTimeoutRef.current !== null) {
+        window.clearTimeout(persistenceTimeoutRef.current);
+        persistenceTimeoutRef.current = null;
+      }
+    };
+  }, [storageKey]);
 
   const pushUndoSnapshot = useCallback((snapshot: RailwayMap) => {
     undoStackRef.current = [...undoStackRef.current.slice(-99), cloneMap(snapshot)];
@@ -42,15 +71,18 @@ export function useRailwayMapHistory(args: UseRailwayMapHistoryArgs) {
 
   const updateMap = useCallback((updater: (current: RailwayMap) => RailwayMap, options?: { trackHistory?: boolean }) => {
     setMap((current) => {
-      const next = sanitizeRailwayMap(updater(current));
-      if (next === current || mapsEqual(next, current)) {
+      const isTransient = transientHistoryStartRef.current !== null;
+      const updated = updater(current);
+      const next = isTransient ? updated : sanitizeRailwayMap(updated);
+      if (next === current || (!isTransient && mapsEqual(next, current))) {
         return current;
       }
 
-      if (options?.trackHistory !== false && !transientHistoryStartRef.current) {
+      if (options?.trackHistory !== false && !isTransient) {
         pushUndoSnapshot(current);
       }
 
+      mapRef.current = next;
       return next;
     });
   }, [pushUndoSnapshot]);
@@ -66,13 +98,19 @@ export function useRailwayMapHistory(args: UseRailwayMapHistoryArgs) {
         pushUndoSnapshot(current);
       }
 
-      return cloneMap(sanitizedNextMap);
+      const clonedNextMap = cloneMap(sanitizedNextMap);
+      mapRef.current = clonedNextMap;
+      return clonedNextMap;
     });
   }, [pushUndoSnapshot]);
 
   const beginTransientMapChange = useCallback(() => {
     if (!transientHistoryStartRef.current) {
       transientHistoryStartRef.current = cloneMap(mapRef.current);
+      if (typeof window !== "undefined" && persistenceTimeoutRef.current !== null) {
+        window.clearTimeout(persistenceTimeoutRef.current);
+        persistenceTimeoutRef.current = null;
+      }
     }
   }, []);
 
@@ -80,9 +118,15 @@ export function useRailwayMapHistory(args: UseRailwayMapHistoryArgs) {
     const snapshot = transientHistoryStartRef.current;
     transientHistoryStartRef.current = null;
     if (!snapshot) return;
-    if (mapsEqual(snapshot, mapRef.current)) return;
+    const sanitizedMap = sanitizeRailwayMap(mapRef.current);
+    if (!mapsEqual(sanitizedMap, mapRef.current)) {
+      mapRef.current = sanitizedMap;
+      setMap(sanitizedMap);
+    }
+    schedulePersistence(sanitizedMap);
+    if (mapsEqual(snapshot, sanitizedMap)) return;
     pushUndoSnapshot(snapshot);
-  }, [pushUndoSnapshot]);
+  }, [pushUndoSnapshot, schedulePersistence]);
 
   const undoLastChange = useCallback(() => {
     completeTransientMapChange();
@@ -91,7 +135,9 @@ export function useRailwayMapHistory(args: UseRailwayMapHistoryArgs) {
 
     undoStackRef.current = undoStackRef.current.slice(0, -1);
     redoStackRef.current = [...redoStackRef.current, cloneMap(mapRef.current)];
-    setMap(cloneMap(previous));
+    const clonedPrevious = cloneMap(previous);
+    mapRef.current = clonedPrevious;
+    setMap(clonedPrevious);
     return true;
   }, [completeTransientMapChange]);
 

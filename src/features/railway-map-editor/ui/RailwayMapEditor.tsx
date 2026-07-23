@@ -304,7 +304,6 @@ export default function RailwayMapEditor() {
     panStart,
     setPanStart,
     viewBox,
-    gridLines,
     applyZoom,
     resetViewportToSheet,
   } = useRailwayMapViewport({
@@ -2130,7 +2129,6 @@ export default function RailwayMapEditor() {
             handleCanvasContextMenu={handleCanvasContextMenu}
             handleSvgMouseMove={handleSvgMouseMove}
             handleSvgMouseUp={handleSvgMouseUp}
-            gridLines={gridLines}
             currentSegments={currentSegments}
             nodesById={nodesById}
             nodeLaneLayoutByNodeId={nodeLaneLayoutByNodeId}

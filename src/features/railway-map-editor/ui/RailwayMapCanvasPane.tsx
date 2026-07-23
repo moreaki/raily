@@ -127,7 +127,6 @@ type RailwayMapCanvasPaneProps = {
   handleCanvasContextMenu: (event: ReactMouseEvent<SVGSVGElement>) => void;
   handleSvgMouseMove: (event: ReactMouseEvent<SVGSVGElement>) => void;
   handleSvgMouseUp: (event: ReactMouseEvent<SVGSVGElement>) => void;
-  gridLines: { vertical: number[]; horizontal: number[] };
   currentSegments: Segment[];
   nodesById: Map<string, MapNode>;
   nodeLaneLayoutByNodeId: Map<string, Array<{ laneId: string; column: number; row: number }>>;
@@ -276,7 +275,6 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
     handleCanvasContextMenu,
     handleSvgMouseMove,
     handleSvgMouseUp,
-    gridLines,
     currentSegments,
   nodesById,
   nodeLaneLayoutByNodeId,
@@ -379,6 +377,8 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
   const [gridStepYDraft, setGridStepYDraft] = useState(String(gridStepY));
 
   const diagonalGuideLength = Math.max(viewBox.width, viewBox.height) * 1.6;
+  const effectiveGridStepX = Math.max(minGridStep, gridStepX);
+  const effectiveGridStepY = Math.max(minGridStep, gridStepY);
   const showSheetRail = sheetRailOpen || renamingSheetId !== null;
   const showToolsRail = toolsRailOpen;
 
@@ -454,14 +454,34 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
             >
               <rect x={-worldSize / 2} y={-worldSize / 2} width={worldSize} height={worldSize} fill="white" pointerEvents="none" />
               {showGrid ? (
-                <g data-export="exclude" pointerEvents="none">
-                  {gridLines.vertical.map((x) => (
-                    <line key={`grid-x-${x}`} x1={x} y1={viewBox.y - viewBox.height} x2={x} y2={viewBox.y + viewBox.height * 2} stroke="#cbd5e1" strokeOpacity={gridLineOpacity} strokeWidth="1" />
-                  ))}
-                  {gridLines.horizontal.map((y) => (
-                    <line key={`grid-y-${y}`} x1={viewBox.x - viewBox.width} y1={y} x2={viewBox.x + viewBox.width * 2} y2={y} stroke="#cbd5e1" strokeOpacity={gridLineOpacity} strokeWidth="1" />
-                  ))}
-                </g>
+                <>
+                  <defs data-export="exclude">
+                    <pattern
+                      id="railway-grid-pattern"
+                      width={effectiveGridStepX}
+                      height={effectiveGridStepY}
+                      patternUnits="userSpaceOnUse"
+                    >
+                      <path
+                        d={`M ${effectiveGridStepX} 0 L 0 0 0 ${effectiveGridStepY}`}
+                        fill="none"
+                        stroke="#cbd5e1"
+                        strokeOpacity={gridLineOpacity}
+                        strokeWidth="1"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </pattern>
+                  </defs>
+                  <rect
+                    data-export="exclude"
+                    x={viewBox.x}
+                    y={viewBox.y}
+                    width={viewBox.width}
+                    height={viewBox.height}
+                    fill="url(#railway-grid-pattern)"
+                    pointerEvents="none"
+                  />
+                </>
               ) : null}
 
               {currentSegments.map((segment) => {

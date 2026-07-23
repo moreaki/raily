@@ -4,14 +4,45 @@ import { clamp, getSheetContentCenter, getSvgPoint, normalizeWheelDelta } from "
 
 type SheetView = { zoom: number; centerX: number; centerY: number };
 
-function loadStoredSheetViews(storageKey: string) {
+export function parseStoredSheetViews(raw: string, minZoom: number, maxZoom: number) {
+  const parsed = JSON.parse(raw) as unknown;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+
+  return Object.fromEntries(
+    Object.entries(parsed)
+      .filter((entry): entry is [string, SheetView] => {
+        const value = entry[1];
+        return (
+          typeof value === "object" &&
+          value !== null &&
+          "zoom" in value &&
+          "centerX" in value &&
+          "centerY" in value &&
+          typeof value.zoom === "number" &&
+          typeof value.centerX === "number" &&
+          typeof value.centerY === "number" &&
+          Number.isFinite(value.zoom) &&
+          Number.isFinite(value.centerX) &&
+          Number.isFinite(value.centerY)
+        );
+      })
+      .map(([sheetId, view]) => [
+        sheetId,
+        {
+          zoom: clamp(view.zoom, minZoom, maxZoom),
+          centerX: view.centerX,
+          centerY: view.centerY,
+        },
+      ]),
+  ) as Record<string, SheetView>;
+}
+
+function loadStoredSheetViews(storageKey: string, minZoom: number, maxZoom: number) {
   if (typeof window === "undefined") return {} as Record<string, SheetView>;
 
-  const raw = window.localStorage.getItem(storageKey);
-  if (!raw) return {};
-
   try {
-    return JSON.parse(raw) as Record<string, SheetView>;
+    const raw = window.localStorage.getItem(storageKey);
+    return raw ? parseStoredSheetViews(raw, minZoom, maxZoom) : {};
   } catch {
     return {};
   }
@@ -46,7 +77,9 @@ export function useRailwayMapViewport(args: UseRailwayMapViewportArgs) {
 
   const [zoom, setZoom] = useState(1);
   const [viewportCenter, setViewportCenter] = useState({ x: canvasWidth / 2, y: canvasHeight / 2 });
-  const [sheetViews, setSheetViews] = useState<Record<string, SheetView>>(() => loadStoredSheetViews(sheetViewStorageKey));
+  const [sheetViews, setSheetViews] = useState<Record<string, SheetView>>(() =>
+    loadStoredSheetViews(sheetViewStorageKey, minZoom, maxZoom),
+  );
   const [showGrid, setShowGrid] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
   const [gridStepX, setGridStepX] = useState(20);
@@ -84,23 +117,6 @@ export function useRailwayMapViewport(args: UseRailwayMapViewportArgs) {
     };
   }, [viewBoxDimensions, viewportCenter]);
 
-  const gridLines = useMemo(() => {
-    if (!showGrid) return { vertical: [] as number[], horizontal: [] as number[] };
-
-    const vertical: number[] = [];
-    const horizontal: number[] = [];
-
-    const startX = Math.floor(viewBox.x / effectiveGridStepX) * effectiveGridStepX;
-    const endX = Math.ceil((viewBox.x + viewBox.width) / effectiveGridStepX) * effectiveGridStepX;
-    const startY = Math.floor(viewBox.y / effectiveGridStepY) * effectiveGridStepY;
-    const endY = Math.ceil((viewBox.y + viewBox.height) / effectiveGridStepY) * effectiveGridStepY;
-
-    for (let x = startX; x <= endX; x += effectiveGridStepX) vertical.push(x);
-    for (let y = startY; y <= endY; y += effectiveGridStepY) horizontal.push(y);
-
-    return { vertical, horizontal };
-  }, [effectiveGridStepX, effectiveGridStepY, showGrid, viewBox.height, viewBox.width, viewBox.x, viewBox.y]);
-
   useEffect(() => {
     zoomRef.current = zoom;
   }, [zoom]);
@@ -111,7 +127,11 @@ export function useRailwayMapViewport(args: UseRailwayMapViewportArgs) {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(sheetViewStorageKey, JSON.stringify(sheetViews));
+      try {
+        window.localStorage.setItem(sheetViewStorageKey, JSON.stringify(sheetViews));
+      } catch {
+        // View persistence is optional and should never interrupt editing.
+      }
     }
   }, [sheetViewStorageKey, sheetViews]);
 
@@ -122,14 +142,14 @@ export function useRailwayMapViewport(args: UseRailwayMapViewportArgs) {
     lastRestoredSheetIdRef.current = currentSheetId;
     const savedView = sheetViews[currentSheetId];
     if (savedView) {
-      setZoom(savedView.zoom);
+      setZoom(clamp(savedView.zoom, minZoom, maxZoom));
       setViewportCenter({ x: savedView.centerX, y: savedView.centerY });
       return;
     }
 
     setZoom(1);
     setViewportCenter({ x: canvasWidth / 2, y: canvasHeight / 2 });
-  }, [canvasHeight, canvasWidth, currentSheetId, sheetViews]);
+  }, [canvasHeight, canvasWidth, currentSheetId, maxZoom, minZoom, sheetViews]);
 
   useEffect(() => {
     if (!currentSheetId) return;
@@ -256,7 +276,6 @@ export function useRailwayMapViewport(args: UseRailwayMapViewportArgs) {
     panStart,
     setPanStart,
     viewBox,
-    gridLines,
     panViewportByPixels,
     applyZoom,
     resetViewportToSheet,
