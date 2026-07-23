@@ -16,6 +16,7 @@ import {
   offsetPoints,
   snapCoordinate,
   sortPointsForSide,
+  withAnchoredSegmentEndpoints,
 } from "@/features/railway-map-editor/lib/geometry";
 import {
   addNodeLane as addNodeLaneCommand,
@@ -76,6 +77,7 @@ import {
 } from "@/features/railway-map-editor/lib/labels";
 import { useRailwayMapContextMenus } from "@/features/railway-map-editor/lib/useRailwayMapContextMenus";
 import { loadRailwayMapFromStorage, type RailwayMapLoadResult } from "@/features/railway-map-editor/lib/persistence";
+import { calculateExportBounds, prepareSvgElementForExport, type ExportExtent } from "@/features/railway-map-editor/lib/svgExport";
 import { useRailwayMapHistory } from "@/features/railway-map-editor/lib/useRailwayMapHistory";
 import { useRailwayMapInteractions } from "@/features/railway-map-editor/lib/useRailwayMapInteractions";
 import { useRailwayMapKeyboardShortcuts } from "@/features/railway-map-editor/lib/useRailwayMapKeyboardShortcuts";
@@ -113,23 +115,6 @@ function downloadFile(filename: string, content: string, mime: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
-}
-
-function expandBounds(
-  bounds: { minX: number; maxX: number; minY: number; maxY: number } | null,
-  x: number,
-  y: number,
-) {
-  if (!bounds) {
-    return { minX: x, maxX: x, minY: y, maxY: y };
-  }
-
-  return {
-    minX: Math.min(bounds.minX, x),
-    maxX: Math.max(bounds.maxX, x),
-    minY: Math.min(bounds.minY, y),
-    maxY: Math.max(bounds.maxY, y),
-  };
 }
 
 function renderNodeSymbol(
@@ -1944,15 +1929,44 @@ export default function RailwayMapEditor() {
 
   function exportSvg() {
     if (!svgRef.current) return;
-    let bounds: { minX: number; maxX: number; minY: number; maxY: number } | null = null;
-
-    for (const node of currentNodes) {
-      bounds = expandBounds(bounds, node.x, node.y);
-    }
+    const extents: ExportExtent[] = [];
 
     for (const segment of currentSegments) {
-      for (const point of buildSegmentPoints(segment, nodesById)) {
-        bounds = expandBounds(bounds, point.x, point.y);
+      const points = withAnchoredSegmentEndpoints(
+        segment,
+        offsetPoints(buildSegmentPoints(segment, nodesById), segmentOffsetById.get(segment.id) ?? 0),
+        anchoredEndpointBySegmentNodeKey,
+      );
+      const lineId = lineIdBySegmentId.get(segment.id);
+      const lineStrokeWidth = lineId ? (linesById.get(lineId)?.strokeWidth ?? 0) : config.segmentIndicatorWidth;
+      const geometryPadding = Math.max(lineStrokeWidth / 2, 2);
+      for (const point of points) {
+        extents.push({ x: point.x, y: point.y, padding: geometryPadding });
+      }
+    }
+
+    for (const node of currentNodes) {
+      const markers = nodeMarkerCentersById.get(node.id) ?? [{ center: { x: node.x, y: node.y } }];
+      const station = (stationsByNodeId.get(node.id) ?? [])[0] ?? null;
+      const stationKind = station ? stationKindsById.get(station.kindId) : null;
+      const symbolSize = stationKind?.symbolSize ?? DEFAULT_STATION_SYMBOL_SIZE;
+      const showGroupOutline = (node.showGroupOutline ?? markers.length > 1) && markers.length > 1;
+      const outlineStrokeWidth = node.groupOutlineStrokeWidth ?? config.hubOutlineStrokeWidth;
+      const outlinePadding = Math.max(
+        nodeGroupCellWidth * 0.38,
+        nodeGroupCellHeight * 0.38,
+        12 * symbolSize,
+      ) * config.hubOutlineScale + outlineStrokeWidth / 2;
+      const markerPadding = showGroupOutline ? outlinePadding : Math.max(8, 12 * symbolSize);
+
+      for (const marker of markers) {
+        const scale = showGroupOutline ? config.hubOutlineScale : 1;
+        extents.push({
+          x: node.x + (marker.center.x - node.x) * scale,
+          y: node.y + (marker.center.y - node.y) * scale,
+          padding: markerPadding,
+        });
+        extents.push({ x: marker.center.x, y: marker.center.y, padding: Math.max(8, 12 * symbolSize) });
       }
     }
 
@@ -1962,30 +1976,17 @@ export default function RailwayMapEditor() {
       const stationKind = stationKindsById.get(station.kindId);
       const position = getStationLabelPosition(station, node);
       const box = estimateLabelBox(station.name, position.x, position.y, getStationKindFontSize(stationKind), position.rotation);
-      bounds = expandBounds(bounds, box.minX, box.minY);
-      bounds = expandBounds(bounds, box.maxX, box.maxY);
+      extents.push({ x: box.minX, y: box.minY });
+      extents.push({ x: box.maxX, y: box.maxY });
     }
 
-    const exportPadding = 140;
-    const exportBounds = bounds
-      ? {
-          minX: bounds.minX - exportPadding,
-          minY: bounds.minY - exportPadding,
-          width: Math.max(1, bounds.maxX - bounds.minX + exportPadding * 2),
-          height: Math.max(1, bounds.maxY - bounds.minY + exportPadding * 2),
-        }
-      : {
-          minX: viewBox.x,
-          minY: viewBox.y,
-          width: viewBox.width,
-          height: viewBox.height,
-        };
-
-    const exportSvgElement = svgRef.current.cloneNode(true) as SVGSVGElement;
-    exportSvgElement.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    exportSvgElement.setAttribute("width", String(Math.ceil(exportBounds.width)));
-    exportSvgElement.setAttribute("height", String(Math.ceil(exportBounds.height)));
-    exportSvgElement.setAttribute("viewBox", `${exportBounds.minX} ${exportBounds.minY} ${exportBounds.width} ${exportBounds.height}`);
+    const exportBounds = calculateExportBounds(extents, 40, {
+      minX: viewBox.x,
+      minY: viewBox.y,
+      width: viewBox.width,
+      height: viewBox.height,
+    });
+    const exportSvgElement = prepareSvgElementForExport(svgRef.current, exportBounds);
 
     downloadFile("railway-map.svg", exportSvgElement.outerHTML, "image/svg+xml;charset=utf-8");
   }

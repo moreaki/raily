@@ -454,7 +454,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
             >
               <rect x={-worldSize / 2} y={-worldSize / 2} width={worldSize} height={worldSize} fill="white" pointerEvents="none" />
               {showGrid ? (
-                <g pointerEvents="none">
+                <g data-export="exclude" pointerEvents="none">
                   {gridLines.vertical.map((x) => (
                     <line key={`grid-x-${x}`} x1={x} y1={viewBox.y - viewBox.height} x2={x} y2={viewBox.y + viewBox.height * 2} stroke="#cbd5e1" strokeOpacity={gridLineOpacity} strokeWidth="1" />
                   ))}
@@ -471,13 +471,13 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                   offsetPoints(segmentPoints, segmentOffsetById.get(segment.id) ?? 0),
                   anchoredEndpointBySegmentNodeKey,
                 );
-                const indicatorStroke =
-                  selectedSegmentId === segment.id ? "#94a3b8" : assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee";
-                const indicatorWidth = selectedSegmentId === segment.id ? segmentIndicatorWidth + selectedSegmentIndicatorBoost : segmentIndicatorWidth;
-                const hitAreaWidth = Math.max(indicatorWidth + 8, 24);
+                const isSelected = selectedSegmentId === segment.id;
+                const indicatorStroke = assignedSegmentIds.has(segment.id) ? "transparent" : "#dbe4ee";
+                const hitAreaWidth = Math.max(segmentIndicatorWidth + selectedSegmentIndicatorBoost + 8, 24);
                 return (
                   <g key={segment.id}>
                     <path
+                      data-export="exclude"
                       d={pathFromPoints(offsetPointsForSegment)}
                       fill="none"
                       stroke="transparent"
@@ -491,11 +491,23 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       d={pathFromPoints(offsetPointsForSegment)}
                       fill="none"
                       stroke={indicatorStroke}
-                      strokeWidth={indicatorWidth}
+                      strokeWidth={segmentIndicatorWidth}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       pointerEvents="none"
                     />
+                    {isSelected ? (
+                      <path
+                        data-export="exclude"
+                        d={pathFromPoints(offsetPointsForSegment)}
+                        fill="none"
+                        stroke="#94a3b8"
+                        strokeWidth={segmentIndicatorWidth + selectedSegmentIndicatorBoost}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        pointerEvents="none"
+                      />
+                    ) : null}
                   </g>
                 );
               })}
@@ -533,7 +545,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
 
                 if (selectedSegment.geometry.kind === "orthogonal") {
                   return (
-                    <g>
+                    <g data-export="exclude">
                       <circle
                         cx={selectedSegment.geometry.elbow.x}
                         cy={selectedSegment.geometry.elbow.y}
@@ -560,7 +572,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
 
                 if (selectedSegment.geometry.kind === "polyline") {
                   return (
-                    <g>
+                    <g data-export="exclude">
                       {selectedSegment.geometry.points.map((point, pointIndex) => {
                         const isDraggingPoint =
                           draggingSegmentPolylinePointState?.segmentId === selectedSegment.id &&
@@ -617,6 +629,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
 
               {segmentDrawState ? (
                 <line
+                  data-export="exclude"
                   x1={(nodeMarkerCenterByKey.get(segmentDrawState.markerKey) ?? nodesById.get(segmentDrawState.nodeId) ?? segmentDrawState.currentPoint).x}
                   y1={(nodeMarkerCenterByKey.get(segmentDrawState.markerKey) ?? nodesById.get(segmentDrawState.nodeId) ?? segmentDrawState.currentPoint).y}
                   x2={segmentDrawState.currentPoint.x}
@@ -684,9 +697,10 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       <>
                         {primaryStation?.id === highlightedStationId ? (
                           outlinePath ? (
-                            <path d={outlinePath} fill="#fde68a" fillOpacity="0.2" stroke="#eab308" strokeWidth={outlineStrokeWidth + 2} />
+                            <path data-export="exclude" d={outlinePath} fill="#fde68a" fillOpacity="0.2" stroke="#eab308" strokeWidth={outlineStrokeWidth + 2} />
                           ) : (
                             <rect
+                              data-export="exclude"
                               x={outlineRect!.x - 4}
                               y={outlineRect!.y - 4}
                               width={outlineRect!.width + 8}
@@ -743,6 +757,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       >
                         {!outlineRect && primaryStation?.id === highlightedStationId ? (
                           <circle
+                            data-export="exclude"
                             cx={marker.center.x}
                             cy={marker.center.y}
                             r={isTrackPoint ? "18" : `${18 * symbolSize}`}
@@ -755,6 +770,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                         {!outlineRect ? renderNodeSymbol(shape, marker.center, isTrackPoint, symbolSize) : null}
                         {outlineRect ? (
                           <circle
+                            data-export="exclude"
                             cx={marker.center.x}
                             cy={marker.center.y}
                             r="12"
@@ -763,15 +779,16 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                             pointerEvents="all"
                           />
                         ) : null}
-                        {selectedNodeMarkerKey === marker.key ? <circle cx={marker.center.x} cy={marker.center.y} r={isTrackPoint ? "14" : "16"} fill="none" stroke="#0f172a" strokeDasharray="4 3" /> : null}
+                        {selectedNodeMarkerKey === marker.key ? <circle data-export="exclude" cx={marker.center.x} cy={marker.center.y} r={isTrackPoint ? "14" : "16"} fill="none" stroke="#0f172a" strokeDasharray="4 3" /> : null}
                       </g>
                     ))}
                     {isSelected && !hasSelectedMarker ? (
                       showGroupOutline ? (
                         outlinePath ? (
-                          <path d={outlinePath} fill="none" stroke="#0f172a" strokeDasharray="4 3" />
+                          <path data-export="exclude" d={outlinePath} fill="none" stroke="#0f172a" strokeDasharray="4 3" />
                         ) : (
                         <rect
+                          data-export="exclude"
                           x={outlineRect!.x - 3}
                           y={outlineRect!.y - 3}
                           width={outlineRect!.width + 6}
@@ -783,7 +800,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                         />
                         )
                       ) : (
-                        <circle cx={node.x} cy={node.y} r={isTrackPoint ? "14" : "16"} fill="none" stroke="#0f172a" strokeDasharray="4 3" />
+                        <circle data-export="exclude" cx={node.x} cy={node.y} r={isTrackPoint ? "14" : "16"} fill="none" stroke="#0f172a" strokeDasharray="4 3" />
                       )
                     ) : null}
                   </g>
@@ -791,7 +808,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
               })}
 
               {labelAxisGuide ? (
-                <g pointerEvents="none">
+                <g data-export="exclude" pointerEvents="none">
                   {labelAxisGuide.snapX ? (
                     <line
                       x1={labelAxisGuide.nodeCenter.x}
@@ -873,10 +890,11 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                     onContextMenu={(event) => handleStationContextMenu(event, station.id, node.id)}
                     style={{ cursor: "grab", userSelect: "none", WebkitUserSelect: "none" }}
                   >
-                    {shouldShowLeader ? <line x1={node.x} y1={node.y} x2={labelCenterX} y2={labelCenterY} stroke={diagnostics?.colliding ? "#dc2626" : "#94a3b8"} strokeWidth="1.5" strokeDasharray="3 3" /> : null}
+                    {shouldShowLeader ? <line data-export="exclude" x1={node.x} y1={node.y} x2={labelCenterX} y2={labelCenterY} stroke={diagnostics?.colliding ? "#dc2626" : "#94a3b8"} strokeWidth="1.5" strokeDasharray="3 3" /> : null}
                     <g transform={labelTransform}>
                       {isHighlighted ? (
                         <rect
+                          data-export="exclude"
                           x={box.localMinX - 4}
                           y={box.localMinY - 4}
                           width={box.localMaxX - box.localMinX + 8}
@@ -890,6 +908,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       ) : null}
                       {diagnostics?.colliding || isDragging || isRotating || isSelected ? (
                         <rect
+                          data-export="exclude"
                           x={box.localMinX}
                           y={box.localMinY}
                           width={box.localMaxX - box.localMinX}
@@ -903,6 +922,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                       ) : null}
                       {isSelected ? (
                         <rect
+                          data-export="exclude"
                           x={box.localMinX}
                           y={box.localMinY}
                           width={box.localMaxX - box.localMinX}
@@ -922,14 +942,14 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
                         fontSize={getStationKindFontSize(stationKind)}
                         fontFamily={stationKind?.fontFamily ?? DEFAULT_STATION_FONT_FAMILY}
                         fontWeight={stationKind?.fontWeight ?? DEFAULT_STATION_FONT_WEIGHT}
-                        fill={diagnostics?.colliding ? "#991b1b" : "#111827"}
+                        fill="#111827"
                         style={{ userSelect: "none", WebkitUserSelect: "none" }}
                       >
                         {station.name}
                       </text>
                     </g>
                     {isRotating ? (
-                      <g pointerEvents="none">
+                      <g data-export="exclude" pointerEvents="none">
                         <rect x={labelCenterX - rotationBadgeWidth / 2} y={box.minY - 28} width={rotationBadgeWidth} height="20" rx="10" fill="#0f172a" fillOpacity="0.92" />
                         <text x={labelCenterX} y={box.minY - 14} textAnchor="middle" fontSize="11" fontFamily={DEFAULT_STATION_FONT_FAMILY} fontWeight="700" fill="white">
                           {rotationLabel}
@@ -942,6 +962,7 @@ export function RailwayMapCanvasPane(props: RailwayMapCanvasPaneProps) {
 
               {marqueeSelection ? (
                 <rect
+                  data-export="exclude"
                   x={normalizeRect(marqueeSelection.start, marqueeSelection.end).minX}
                   y={normalizeRect(marqueeSelection.start, marqueeSelection.end).minY}
                   width={normalizeRect(marqueeSelection.start, marqueeSelection.end).width}
