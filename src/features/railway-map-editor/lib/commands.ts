@@ -12,6 +12,7 @@ import {
   createSegmentId,
   createStationKindId,
   createStraightSegmentForSheet,
+  orderLineRunSegmentIds,
 } from "@/entities/railway-map/model/utils";
 import {
   DEFAULT_STATION_FONT_FAMILY,
@@ -927,6 +928,7 @@ function ensureLineRun(map: RailwayMap, lineId: string) {
 export function assignLineToSegment(map: RailwayMap, lineId: string, segmentId: string) {
   const { map: ensuredMap, lineRun } = ensureLineRun(map, lineId);
   const segmentsByNodeId = new Map<string, Segment[]>();
+  const segmentsById = new Map(ensuredMap.model.segments.map((segment) => [segment.id, segment]));
   const stationKindById = new Map(ensuredMap.config.stationKinds.map((kind) => [kind.id, kind]));
   const lineStopNodeIds = new Set(
     ensuredMap.model.stations
@@ -947,7 +949,7 @@ export function assignLineToSegment(map: RailwayMap, lineId: string, segmentId: 
     const currentSegmentId = queue.shift();
     if (!currentSegmentId || segmentIdsToAssign.has(currentSegmentId)) continue;
     segmentIdsToAssign.add(currentSegmentId);
-    const currentSegment = ensuredMap.model.segments.find((segment) => segment.id === currentSegmentId);
+    const currentSegment = segmentsById.get(currentSegmentId);
     if (!currentSegment) continue;
     for (const nodeId of [currentSegment.fromNodeId, currentSegment.toNodeId]) {
       if (lineStopNodeIds.has(nodeId)) continue;
@@ -973,7 +975,13 @@ export function assignLineToSegment(map: RailwayMap, lineId: string, segmentId: 
           for (const propagatedSegmentId of segmentIdsToAssign) {
             if (!segmentIds.includes(propagatedSegmentId)) segmentIds.push(propagatedSegmentId);
           }
-          return { ...candidate, segmentIds };
+          return {
+            ...candidate,
+            segmentIds: orderLineRunSegmentIds(
+              { ...candidate, segmentIds },
+              segmentsById,
+            ),
+          };
         }
         return {
           ...candidate,

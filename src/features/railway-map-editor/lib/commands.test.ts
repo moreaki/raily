@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { RailwayMap } from "@/entities/railway-map/model/types";
 import {
+  buildLineRunPointChains,
+  buildLineRunSegmentChains,
+  getLineRunEndpointNodeIds,
+} from "@/entities/railway-map/model/utils";
+import {
   addLine,
   addNodeLane,
   addSegmentPolylinePoint,
@@ -124,6 +129,59 @@ describe("railway-map commands", () => {
 
     expect(run?.segmentIds).toEqual(["sg1", "sg2"]);
     expect(next.model.lineRuns.find((candidate) => candidate.lineId === "line-a")?.segmentIds).toEqual([]);
+  });
+
+  it("assignLineToSegment orders a corridor when assignment starts in the middle", () => {
+    const base = makeMap();
+    const map: RailwayMap = {
+      ...base,
+      model: {
+        ...base.model,
+        nodes: [...base.model.nodes, { id: "n5", sheetId: "sheet-main", x: 300, y: 0 }],
+        segments: [
+          ...base.model.segments,
+          { id: "sg4", sheetId: "sheet-main", fromNodeId: "n3", toNodeId: "n5", geometry: { kind: "straight" } },
+        ],
+      },
+    };
+
+    const next = assignLineToSegment(map, "line-b", "sg2");
+
+    expect(next.model.lineRuns.find((candidate) => candidate.lineId === "line-b")?.segmentIds).toEqual(["sg1", "sg2", "sg4"]);
+  });
+
+  it("derives endpoints and points from reversed segment geometry", () => {
+    const base = makeMap();
+    const segments = [
+      { id: "sg1", sheetId: "sheet-main", fromNodeId: "n2", toNodeId: "n1", geometry: { kind: "straight" as const } },
+      { id: "sg2", sheetId: "sheet-main", fromNodeId: "n3", toNodeId: "n2", geometry: { kind: "straight" as const } },
+    ];
+    const segmentsById = new Map(segments.map((segment) => [segment.id, segment]));
+    const nodesById = new Map(base.model.nodes.map((node) => [node.id, node]));
+    const lineRun = { id: "lr-b", lineId: "line-b", segmentIds: ["sg1", "sg2"] };
+
+    expect(getLineRunEndpointNodeIds(lineRun, segmentsById)).toEqual({
+      fromNodeId: "n1",
+      toNodeId: "n3",
+    });
+    expect(buildLineRunPointChains(lineRun, segmentsById, nodesById)).toEqual([[
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 200, y: 0 },
+    ]]);
+  });
+
+  it("keeps disconnected line-run components as separate chains", () => {
+    const segments = [
+      { id: "sg1", sheetId: "sheet-main", fromNodeId: "n1", toNodeId: "n2", geometry: { kind: "straight" as const } },
+      { id: "sg4", sheetId: "sheet-main", fromNodeId: "n3", toNodeId: "n5", geometry: { kind: "straight" as const } },
+    ];
+    const chains = buildLineRunSegmentChains(
+      { id: "lr-b", lineId: "line-b", segmentIds: ["sg1", "sg4"] },
+      new Map(segments.map((segment) => [segment.id, segment])),
+    );
+
+    expect(chains.map((chain) => chain.map(({ segment }) => segment.id))).toEqual([["sg1"], ["sg4"]]);
   });
 
   it("assignLineToSegment stops propagating at a line-stop station", () => {
