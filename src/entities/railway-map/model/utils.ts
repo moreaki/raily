@@ -104,11 +104,11 @@ export function createDefaultStationAtNode(map: RailwayMap, node: MapNode, name:
 
 export function createDefaultLine(
   index: number,
-  preset: { id: string; color: string; strokeWidth: number; strokeStyle: Line["strokeStyle"] },
+  preset: { name: string; color: string; strokeWidth: number; strokeStyle: Line["strokeStyle"] },
 ): Line {
   return {
     id: createLineId(),
-    name: preset.id || `L${index + 1}`,
+    name: preset.name.trim() || `L${index + 1}`,
     color: preset.color,
     strokeWidth: preset.strokeWidth,
     strokeStyle: preset.strokeStyle,

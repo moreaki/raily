@@ -484,10 +484,16 @@ export function addStationKind(
   };
 }
 
-export function addLine(map: RailwayMap, patch?: Partial<Line>) {
+export function addLine(map: RailwayMap, patch?: Partial<Omit<Line, "id">>) {
   const preset = LINE_PRESETS[map.config.lines.length % LINE_PRESETS.length];
   const baseLine = createDefaultLine(map.config.lines.length, preset);
-  const line = { ...baseLine, ...patch };
+  const line: Line = {
+    ...baseLine,
+    name: patch?.name?.trim() || baseLine.name,
+    color: patch?.color ?? baseLine.color,
+    strokeWidth: patch?.strokeWidth ?? baseLine.strokeWidth,
+    strokeStyle: patch?.strokeStyle ?? baseLine.strokeStyle,
+  };
   return {
     map: {
       ...map,

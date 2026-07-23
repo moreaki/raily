@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RailwayMap } from "@/entities/railway-map/model/types";
 import {
+  addLine,
   addNodeLane,
   addSegmentPolylinePoint,
   assignLineToSegment,
@@ -87,6 +88,20 @@ function makeMap(): RailwayMap {
 }
 
 describe("railway-map commands", () => {
+  it("addLine preserves a valid generated name when the draft is unnamed", () => {
+    const { map, line } = addLine(makeMap(), { name: undefined });
+
+    expect(line.name).toBe("C3");
+    expect(map.config.lines.at(-1)).toEqual(line);
+  });
+
+  it("addLine trims and preserves a user-provided name", () => {
+    const { map, line } = addLine(makeMap(), { name: "  Airport Express  " });
+
+    expect(line.name).toBe("Airport Express");
+    expect(map.config.lines.at(-1)?.name).toBe("Airport Express");
+  });
+
   it("assignStationToNode attaches the station and seeds a right-side label", () => {
     const map = makeMap();
     const next = assignStationToNode(map, "s1", "n2");
